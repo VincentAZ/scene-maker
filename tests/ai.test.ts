@@ -178,7 +178,11 @@ describe("live AI contract with deterministic model responses", () => {
     );
     expect(requested).toContain("anthropic:character-a");
     expect(requested).toContain("kimi:character-b");
-    expect(next.entities[0].clips.length).toBe(s.entities[0].clips.length + 2);
+    expect(
+      next.entities[0].clips.filter((c) => c.motionId === "talk"),
+    ).toHaveLength(
+      s.entities[0].clips.filter((c) => c.motionId === "talk").length + 2,
+    );
     expect(s.transcript).toHaveLength(0);
   });
   it("supports all requested provider adapters and rejects missing credentials", () => {

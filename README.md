@@ -26,10 +26,10 @@ Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback.
 2. Select an object to edit its placement, color, size, and character personality. The move tool also provides a 3D translation gizmo.
 3. Select a character and add actions. Reorder actions, change their duration, and assign props in Details. Space plays/pauses; the timeline scrubs; Ctrl/Cmd+Z undoes.
 4. Describe changes to the assistant. Without a provider, the **offline command helper** supports a small, explicit command vocabulary, such as “Add a coffee cup”, “Mila walk then jump”, and “Set moonlight”. It is not a simulated AI service.
-5. Use **Direct the cast** to give multiple characters a mission or topic. With connected providers, characters take turns responding to the conversation and adding physical actions. Save their dialogue as text.
+5. Use **Direct the cast** to give multiple characters a mission or topic. With connected providers, visible characters take turns responding to the conversation. Each completed turn appears and saves immediately, with its action scheduled after the previous turn. Stop at any time; continuing starts with the next speaker. Preview a line from the transcript to see its caption and action, or save dialogue as text and timed subtitles as SRT. Voice audio is not generated.
 6. Export an editable project, an animated production package, a Blender file, or a still image. Open a package again from the project browser to restore the scene and imported assets.
 
-The assistant can also manage your workspace. Try “Create a new scene called Moonwalk”, “Copy this project as Second take”, “Open Moonwalk”, “Save”, “Export scene”, or “Reset camera” with the offline helper. With a connected model, one request can create a project, add and direct its cast, save, and export in order. The assistant receives recent chat context for follow-up requests. “Let them talk” runs the cast with its assigned models; file imports open the appropriate file-selection flow.
+The assistant can also manage your workspace. Try “Create a new scene called Moonwalk”, “Copy this project as Second take”, “Open Moonwalk”, “Save”, “Export scene”, “Export subtitles”, or “Reset camera” with the offline helper. With a connected model, one request can create a project, add and direct its cast, save, and export in order. The assistant receives recent chat context for follow-up requests. “Let them talk” runs the cast with its assigned models; file imports open the appropriate file-selection flow.
 
 Projects save automatically on the local service with revision checks. A recovery copy is stored in this browser; conflicting remote revisions are never silently overwritten. Undo history lasts for the current session. Switching projects waits for all pending edits to save. Failed operations stop an assistant workflow and identify any steps that already completed.
 
@@ -42,7 +42,7 @@ Technical controls are **two steps deep: Studio settings → Connections**.
 - **Mixamo:** download your own rigged character with its animation as FBX and import it. Blender converts it; native animation clips up to 60 seconds enter the action library. Imported clips are bound to their original character, so they cannot accidentally animate an incompatible skeleton. Generic procedural actions are best on the built-in rigs; arbitrary imported rigs need proper retargeting for equivalent results.
 - **Unreal:** export the production package, enable Python Editor Script and Interchange in Unreal, and run the included `unreal_import.py` using **Execute Python Script**. It imports the scene hierarchy into the current level. Save the level. Live Unreal import has not been verified in this environment.
 
-The production ZIP includes `scene.glb` (baked skeletal/object animation at 24 fps), `scene.json`, original imported GLBs, and engine import scripts. Plain project JSON does not embed imported assets; use ZIP for portability. Lighting in the editor is for preview; configure production cameras and lighting in your destination engine.
+The production ZIP includes `scene.glb` (baked skeletal/object animation at 24 fps), `scene.json`, original imported GLBs, engine import scripts, and `dialogue.srt` when the scene contains timed dialogue. Plain project JSON does not embed imported assets; use ZIP for portability. Lighting in the editor is for preview; configure production cameras and lighting in your destination engine.
 
 ## Implementation
 
@@ -61,7 +61,7 @@ npm run build
 npm audit
 ```
 
-Tests cover ordered assistant workflows, project switches and failed saves, edits made during saving, isolated export snapshots, scene invariants, motion chaining, skeletal weights, custom paths, assistant structured-output contracts, per-character provider routing, ordered conversation context, on-disk persistence, revision conflicts, credential redaction, origin checks, and invalid imports. Provider tests use deterministic model responses, not paid live API calls.
+Tests cover ordered assistant workflows, project switches and failed saves, edits made during saving, isolated export snapshots, scene invariants, motion chaining, skeletal weights, custom paths, assistant structured-output contracts, per-character provider routing, ordered conversation context, progressive HTTP delivery, cancellation, partial provider failures, truncated streams, caption timing and subtitle export, on-disk persistence, revision conflicts, credential redaction, origin checks, and invalid imports. Provider tests use deterministic model responses, not paid live API calls. The HTTP conversation tests use the production stream handler and parser with controlled model responses. A provider failure or Stop preserves delivered turns; editing the scene cancels the active conversation so it cannot overwrite your changes. A server or network crash can still lose an unfinished turn.
 
 For a browser-exported starter scene, extract the ZIP and run:
 

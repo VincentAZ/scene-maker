@@ -14,7 +14,8 @@ import {
   readProject,
   listProjects,
 } from "./storage";
-import { assistant, conversation, type Config } from "./ai";
+import { assistant, type Config } from "./ai";
+import { conversationRoute } from "./conversationRoute";
 import { validateScene, providers, type Scene } from "../shared/scene";
 import { conversationHistorySchema } from "../shared/studio";
 const run = promisify(execFile);
@@ -167,16 +168,7 @@ app.post("/api/assistant", async (req, res) => {
   }
   res.json(result);
 });
-app.post("/api/conversation", async (req, res) => {
-  const scene = validateScene(req.body.scene),
-    rounds = z
-      .number()
-      .int()
-      .min(1)
-      .max(5)
-      .parse(req.body.rounds || 1);
-  res.json(await conversation(config(), scene, rounds));
-});
+app.post("/api/conversation", conversationRoute(config));
 const upload = multer({
   dest: path.join(dataDir, "uploads"),
   limits: { fileSize: 100 * 1024 * 1024, files: 1 },

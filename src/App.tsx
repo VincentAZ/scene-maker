@@ -42,6 +42,17 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import JSZip from "jszip";
+import { dialogueSubtitles } from "../shared/conversation";
+import {
+  readConversationStream,
+  mergeConversationTurn,
+} from "./conversationStream";
+import {
+  CastProgress,
+  DialogueCaptions,
+  DialogueTranscript,
+  type CastProgressState,
+} from "./Dialogue";
 import { type AssistantReply, type StudioStep } from "../shared/studio";
 import { runStudioPlan, StudioPlanError } from "./studioRunner";
 import { ProjectSaveQueue } from "./projectSave";
@@ -106,6 +117,7 @@ export default function App() {
     ]),
     [prompt, setPrompt] = useState(""),
     [busy, setBusy] = useState(false),
+    [castProgress, setCastProgress] = useState<CastProgressState | null>(null),
     [exporting, setExporting] = useState(false),
     [projects, setProjects] = useState<
       { id: string; name: string; environment: string; updated: number }[]
@@ -115,6 +127,8 @@ export default function App() {
     [importCategory, setImportCategory] = useState<"characters" | "props">(
       "characters",
     );
+  const conversationController = useRef<AbortController | null>(null);
+  useEffect(() => () => conversationController.current?.abort(), []);
   const viewport = useRef<ViewportHandle>(null),
     sceneRef = useRef(scene),
     history = useRef<{ past: Scene[]; future: Scene[] }>({
@@ -249,8 +263,14 @@ export default function App() {
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy]);
-  const change = (next: Scene) => {
+  function cancelConversationForEdit() {
+    conversationController.current?.abort(
+      "The scene changed, so the conversation stopped. Completed turns and your edits are kept.",
+    );
+  }
+  const change = (next: Scene, fromConversation = false) => {
     next = validateScene(next);
+    if (!fromConversation) cancelConversationForEdit();
     history.current.past.push(structuredClone(sceneRef.current));
     if (history.current.past.length > 60) history.current.past.shift();
     history.current.future = [];
@@ -268,6 +288,7 @@ export default function App() {
   const undo = () => {
     const old = history.current.past.pop();
     if (!old) return;
+    cancelConversationForEdit();
     history.current.future.push(sceneRef.current);
     const next = { ...old, revision: sceneRef.current.revision };
     sceneRef.current = next;
@@ -277,6 +298,7 @@ export default function App() {
   const redo = () => {
     const next = history.current.future.pop();
     if (!next) return;
+    cancelConversationForEdit();
     history.current.past.push(sceneRef.current);
     next.revision = sceneRef.current.revision;
     sceneRef.current = next;
@@ -318,6 +340,15 @@ export default function App() {
       "characters",
   );
   const total = duration(scene);
+  const dialogueClips = useMemo(
+    () =>
+      new Set(
+        scene.transcript
+          .filter((line) => line.clipId)
+          .map((line) => `${line.characterId}:${line.clipId}`),
+      ),
+    [scene.transcript],
+  );
   const update = (id: string, changes: Partial<Entity>) =>
     execute([{ type: "update", id, changes }]);
   function add(asset: Asset) {
@@ -420,7 +451,12 @@ export default function App() {
       return;
     }
     if (step.type === "export") {
-      if (step.format === "dialogue") {
+      if (step.format === "subtitles") {
+        const subtitles = dialogueSubtitles(sceneRef.current);
+        if (!subtitles)
+          throw Error("There are no timed dialogue lines to export yet.");
+        download(subtitles, "scene-dialogue.srt", "text/plain");
+      } else if (step.format === "dialogue") {
         if (!sceneRef.current.transcript.length)
           throw Error("There is no dialogue to export yet.");
         download(
@@ -469,28 +505,83 @@ export default function App() {
       }
     }
   }
+  function stopConversation() {
+    conversationController.current?.abort();
+    setCastProgress((progress) =>
+      progress ? { ...progress, stopping: true } : null,
+    );
+  }
   async function runConversation(roundCount = rounds, propagate = false) {
+    if (conversationController.current)
+      throw Error("A cast conversation is already running.");
+    if (!propagate && busy) return;
     if (!propagate) setBusy(true);
     setPlaying(false);
-    const starting = sceneRef.current;
+    setError("");
+    const controller = new AbortController();
+    conversationController.current = controller;
+    let completed = 0;
+    setCastProgress({
+      name: "",
+      completed: 0,
+      total: cast.filter((e) => e.visible).length * roundCount,
+    });
     try {
-      const next = await api<Scene>("/api/conversation", {
+      await saveOrThrow();
+      controller.signal.throwIfAborted();
+      let expected = structuredClone(sceneRef.current);
+      const response = await fetch("/api/conversation", {
         method: "POST",
-        body: JSON.stringify({ scene: starting, rounds: roundCount }),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/x-ndjson",
+          "X-Scene-Maker": "1",
+        },
+        body: JSON.stringify({ scene: expected, rounds: roundCount }),
+        signal: controller.signal,
       });
-      if (
-        sceneRef.current.id !== starting.id ||
-        sameContent(sceneRef.current) !== sameContent(starting)
-      )
-        throw Error(
-          "The scene changed during the conversation. Run it again to use the latest scene.",
-        );
-      change(validateScene(next));
-      toast("Your cast has a new conversation");
+      await readConversationStream(response, async (event) => {
+        if (event.type === "thinking")
+          setCastProgress({
+            name: event.name,
+            completed,
+            total: event.total,
+            stopping: controller.signal.aborted,
+          });
+        if (event.type === "turn") {
+          const next = mergeConversationTurn(
+            sceneRef.current,
+            expected,
+            event.scene,
+          );
+          change(next, true);
+          expected = structuredClone(next);
+          completed = event.completed;
+          setCastProgress((progress) => ({
+            name: progress?.name || "",
+            completed,
+            total: event.total,
+            stopping: controller.signal.aborted,
+          }));
+          await saveOrThrow();
+        }
+      });
+      toast(`Your cast added ${completed} turns to the scene`);
     } catch (e) {
-      if (propagate) throw e;
-      report((e as Error).message);
+      const stopped = controller.signal.aborted;
+      // Closing the stream also cancels the active provider request on the server.
+      controller.abort();
+      const message = stopped
+        ? typeof controller.signal.reason === "string"
+          ? controller.signal.reason
+          : `Conversation stopped. ${completed} completed ${completed === 1 ? "turn is" : "turns are"} kept.`
+        : (e as Error).message;
+      if (propagate) throw Error(message);
+      if (stopped) toast(message);
+      else report(message);
     } finally {
+      conversationController.current = null;
+      setCastProgress(null);
       if (!propagate) setBusy(false);
     }
   }
@@ -504,6 +595,7 @@ export default function App() {
     }
   }
   function loadScene(next: Scene) {
+    cancelConversationForEdit();
     setPlaying(false);
     setTime(0);
     setSelected(next.entities[0]?.id || null);
@@ -631,6 +723,8 @@ export default function App() {
           const zip = new JSZip();
           zip.file("scene.json", JSON.stringify(snapshot, null, 2));
           zip.file("scene.glb", glb);
+          const subtitles = dialogueSubtitles(snapshot);
+          if (subtitles) zip.file("dialogue.srt", subtitles);
           for (const a of snapshot.customAssets) {
             if (a.url) {
               const res = await fetch(a.url);
@@ -997,6 +1091,15 @@ export default function App() {
               onError={report}
               move={move}
             />
+            <DialogueCaptions scene={scene} time={time} />
+            {castProgress && (
+              <div className="stage-progress">
+                <CastProgress
+                  progress={castProgress}
+                  onStop={stopConversation}
+                />
+              </div>
+            )}
             <div className="stage-top">
               <span className="view-label">
                 <span className="status-dot" /> LIVE PREVIEW
@@ -1171,7 +1274,11 @@ export default function App() {
                           }}
                           title={`${allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${c.duration}s`}
                         >
-                          <Footprints size={12} />
+                          {dialogueClips.has(`${e.id}:${c.id}`) ? (
+                            <MessageCircle size={12} />
+                          ) : (
+                            <Footprints size={12} />
+                          )}
                           {
                             allMotions(scene).find((m) => m.id === c.motionId)
                               ?.name
@@ -1948,6 +2055,7 @@ export default function App() {
               <textarea
                 rows={3}
                 value={scene.mission}
+                disabled={!!castProgress}
                 onChange={(e) =>
                   execute([
                     { type: "scene", changes: { mission: e.target.value } },
@@ -1961,6 +2069,7 @@ export default function App() {
                 Rounds
                 <select
                   value={rounds}
+                  disabled={!!castProgress}
                   onChange={(e) => setRounds(Number(e.target.value))}
                 >
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -1970,7 +2079,7 @@ export default function App() {
               </label>
               <button
                 className="primary"
-                disabled={busy || cast.length < 2}
+                disabled={busy || cast.filter((e) => e.visible).length < 2}
                 onClick={() => runConversation()}
               >
                 {busy ? (
@@ -1978,43 +2087,60 @@ export default function App() {
                 ) : (
                   <Play size={15} />
                 )}{" "}
-                {busy ? "Your cast is thinking…" : "Let them talk"}
+                {busy
+                  ? "Your cast is thinking…"
+                  : scene.transcript.length
+                    ? "Continue the conversation"
+                    : "Let them talk"}
               </button>
             </div>
+            {castProgress && (
+              <CastProgress progress={castProgress} onStop={stopConversation} />
+            )}
             <p className="small muted">
-              Each character speaks through their connected AI model. Their
-              words and actions become part of your scene.
+              Each character uses their assigned AI model. Completed turns save
+              as they arrive. Preview their words as captions alongside their
+              actions; audio is not generated.
             </p>
-            <div className="conversation-transcript">
-              {scene.transcript.length ? (
-                scene.transcript.map((line, i) => (
-                  <div key={i}>
-                    <strong>{line.name}</strong>
-                    <p>{line.text}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <MessageCircle size={25} />
-                  <p>A good conversation can change the whole story.</p>
-                </div>
-              )}
-            </div>
+            <DialogueTranscript
+              scene={scene}
+              onPreview={(start) => {
+                setTime(start);
+                setPlaying(true);
+                setModal(null);
+              }}
+            />
             {scene.transcript.length > 0 && (
-              <button
-                className="text-button"
-                onClick={() =>
-                  download(
-                    scene.transcript
-                      .map((t) => `${t.name}: ${t.text}`)
-                      .join("\n\n"),
-                    "scene-dialogue.txt",
-                    "text/plain",
-                  )
-                }
-              >
-                <Download size={14} /> Save dialogue
-              </button>
+              <div className="row">
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    download(
+                      scene.transcript
+                        .map((t) => `${t.name}: ${t.text}`)
+                        .join("\n\n"),
+                      "scene-dialogue.txt",
+                      "text/plain",
+                    )
+                  }
+                >
+                  <Download size={14} /> Save dialogue
+                </button>
+                <button
+                  className="text-button"
+                  disabled={!dialogueClips.size}
+                  onClick={() =>
+                    download(
+                      dialogueSubtitles(scene),
+                      "scene-dialogue.srt",
+                      "text/plain",
+                    )
+                  }
+                >
+                  <Download size={14} />
+                  Save subtitles
+                </button>
+              </div>
             )}
           </div>
         </Modal>

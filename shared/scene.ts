@@ -138,6 +138,13 @@ export const entitySchema = z.object({
   clips: z.array(clipSchema).max(100),
 });
 export type Entity = z.infer<typeof entitySchema>;
+export const dialogueLineSchema = z.object({
+  characterId: z.string(),
+  name: z.string(),
+  text: z.string().max(8000),
+  clipId: z.string().optional(),
+});
+export type DialogueLine = z.infer<typeof dialogueLineSchema>;
 export const sceneSchema = z.object({
   version: z.literal(1),
   id: z.string().regex(/^[a-zA-Z0-9-]+$/),
@@ -156,15 +163,7 @@ export const sceneSchema = z.object({
   entities: z.array(entitySchema).max(100),
   customAssets: z.array(assetSchema).max(100),
   customMotions: z.array(motionSchema).max(100),
-  transcript: z
-    .array(
-      z.object({
-        characterId: z.string(),
-        name: z.string(),
-        text: z.string().max(8000),
-      }),
-    )
-    .max(300),
+  transcript: z.array(dialogueLineSchema).max(300),
 });
 export type Scene = z.infer<typeof sceneSchema>;
 export const commandSchema = z.discriminatedUnion("type", [
@@ -407,6 +406,15 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
       s.transcript = [];
     }
   }
+  // Keep dialogue as editable history if its character/action is removed.
+  for (const line of s.transcript)
+    if (
+      line.clipId &&
+      !s.entities
+        .find((e) => e.id === line.characterId)
+        ?.clips.some((c) => c.id === line.clipId)
+    )
+      delete line.clipId;
   return validateScene(s);
 }
 export function validateScene(input: unknown): Scene {
@@ -429,6 +437,16 @@ export function validateScene(input: unknown): Scene {
         throw Error("Missing action target.");
     }
   }
+  const linked = s.transcript.filter((line) => line.clipId);
+  if (!unique(linked.map((line) => `${line.characterId}:${line.clipId}`)))
+    throw Error("An action can have only one dialogue line.");
+  for (const line of linked)
+    if (
+      !s.entities
+        .find((e) => e.id === line.characterId)
+        ?.clips.some((c) => c.id === line.clipId)
+    )
+      throw Error("Missing dialogue action.");
   return s;
 }
 export const duration = (s: Scene) =>

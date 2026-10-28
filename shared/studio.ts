@@ -44,7 +44,14 @@ export const studioStepSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("export"),
-    format: z.enum(["package", "project", "blender", "dialogue", "image"]),
+    format: z.enum([
+      "package",
+      "project",
+      "blender",
+      "dialogue",
+      "subtitles",
+      "image",
+    ]),
   }),
   z.object({
     type: z.literal("show"),
