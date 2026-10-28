@@ -116,7 +116,9 @@ export function entityPose(
   scene: Scene,
   time: number,
   options: {
-    nativeRoot?: (motion: Motion) => { start: Point; delta: Point } | undefined;
+    nativeRoot?: (
+      motion: Motion,
+    ) => { start: Point; delta: Point; heading?: number } | undefined;
     canClimb?: boolean;
   } = {},
 ): Pose {
@@ -195,6 +197,7 @@ export function entityPose(
     if (time >= end) {
       const last = motionPose(m, 1);
       addRoot(native?.delta || last.root);
+      p.heading! += native?.heading || 0;
       start = end;
       continue;
     }

@@ -2,13 +2,13 @@ import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import * as T from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { exportSnapshot } from "./exportSnapshot";
 import { bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
-import { configureImportedRig } from "./rig";
+import { setMotionSources } from "./rig";
+import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
 import type { PathFrame } from "../shared/path";
 import { interactionSessions, type HoldSession } from "../shared/interactions";
 import { type Scene, allAssets, allMotions, duration } from "../shared/scene";
@@ -48,6 +48,7 @@ const modelKey = (scene: Scene) =>
       e.assetId,
       e.color,
       allAssets(scene).find((a) => a.id === e.assetId),
+      requiredMotionSources(scene, e),
     ]),
   ]);
 const stateKey = (scene: Scene) => JSON.stringify({ ...scene, revision: 0 });
@@ -259,6 +260,20 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       const ctx = context.current;
       if (!ctx) return;
       let cancelled = false;
+      const originals = new Map<string, Promise<T.Group>>();
+      const loadedOriginals = new Set<T.Group>();
+      const original = (asset: ReturnType<typeof allAssets>[number]) => {
+        let pending = originals.get(asset.id);
+        if (!pending) {
+          pending = loadImportedAsset(asset).then((group) => {
+            if (cancelled) disposeObject(group);
+            else loadedOriginals.add(group);
+            return group;
+          });
+          originals.set(asset.id, pending);
+        }
+        return pending;
+      };
       readyKey.current = "";
       ctx.transform.detach();
       for (const c of [...ctx.content.children]) {
@@ -286,7 +301,27 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             : "#fff0ce",
       );
       sun.intensity = props.scene.lighting === "moonlight" ? 1.2 : 4;
-      const setup = (obj: T.Group, id: string) => {
+      const setup = async (obj: T.Group, id: string) => {
+        try {
+          const actor = props.scene.entities.find(
+            (entity) => entity.id === id,
+          )!;
+          const loaded = await Promise.all(
+            requiredMotionSources(props.scene, actor).map(
+              async (asset) => [asset.id, await original(asset)] as const,
+            ),
+          );
+          setMotionSources(obj, new Map(loaded));
+        } catch (error) {
+          disposeObject(obj);
+          if (!cancelled)
+            live.current.onError(
+              error instanceof Error
+                ? error.message
+                : "Could not load the original action.",
+            );
+          return;
+        }
         if (cancelled) {
           disposeObject(obj);
           return;
@@ -311,34 +346,14 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         const a = allAssets(props.scene).find((a) => a.id === e.assetId);
         if (!a) continue;
         if (a.url) {
-          new GLTFLoader().load(
-            a.url,
-            (gltf) => {
-              const obj = new T.Group();
-              // Each entity has its own loader result. Keep its node UUIDs so
-              // native animation tracks also bind when a node has no name.
-              const imported = gltf.scene;
-              const bounds = new T.Box3().setFromObject(imported);
-              const height = bounds.max.y - bounds.min.y;
-              imported.scale.setScalar(
-                a.category === "characters" ? 1.85 / (height || 1) : 1,
-              );
-              imported.position.y = -bounds.min.y * imported.scale.y;
-              obj.add(imported);
-              if (a.category === "characters")
-                configureImportedRig(obj, imported, gltf.animations);
-              else {
-                obj.userData.mixer = new T.AnimationMixer(imported);
-                obj.userData.animations = gltf.animations;
-              }
-              setup(obj, e.id);
-            },
-            undefined,
-            () =>
-              live.current.onError(
-                `Could not load ${e.name}. Reimport the character from your files.`,
-              ),
-          );
+          void loadImportedAsset(a)
+            .then((obj) => setup(obj, e.id))
+            .catch(() => {
+              if (!cancelled)
+                live.current.onError(
+                  `Could not load ${e.name}. Reimport the character from your files.`,
+                );
+            });
         } else
           setup(
             a.category === "characters"
@@ -350,6 +365,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       if (!props.scene.entities.length) readyKey.current = requestedModelKey;
       return () => {
         cancelled = true;
+        for (const source of loadedOriginals) disposeObject(source);
       };
     }, [requestedModelKey]);
     useEffect(() => {

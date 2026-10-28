@@ -2,6 +2,9 @@ import * as T from "three";
 import {
   applyHumanoidPose,
   nativeRootMotion,
+  motionSource,
+  transferredRootMotion,
+  applyTransferredClip,
   sampleNativeClip,
   humanoidWarning,
 } from "./rig";
@@ -440,7 +443,19 @@ export function applyAnimatedEntityPose(
         "rightShin",
       ].every((name) => bones[name]),
     nativeRoot: (motion) => {
-      if (!mixer || motion.sourceAssetId !== entity.assetId) return;
+      if (motion.sourceAssetId !== entity.assetId) {
+        const source = motionSource(group, motion.sourceAssetId!);
+        const clip =
+          source &&
+          T.AnimationClip.findByName(
+            source.userData.animations,
+            motion.animationName!,
+          );
+        return source && clip
+          ? transferredRootMotion(source, group, clip)
+          : undefined;
+      }
+      if (!mixer) return;
       const native = T.AnimationClip.findByName(
         group.userData.animations,
         motion.animationName || "",
@@ -451,20 +466,19 @@ export function applyAnimatedEntityPose(
         : undefined;
     },
   });
-  if (!mixer) {
-    applyEntityPose(group, entity, scene, time, false, pose);
-    return;
-  }
   let start = 0;
-  let current: { clip: T.AnimationClip; time: number } | undefined;
+  let current:
+    { clip: T.AnimationClip; time: number; source?: T.Group } | undefined;
+  let missing = false;
   for (const clip of entity.clips) {
     const motion = allMotions(scene).find((m) => m.id === clip.motionId);
-    if (
-      motion?.kind === "imported" &&
-      motion.sourceAssetId === entity.assetId
-    ) {
+    if (motion?.kind === "imported") {
+      const source =
+        motion.sourceAssetId === entity.assetId
+          ? group
+          : motionSource(group, motion.sourceAssetId!);
       const native = T.AnimationClip.findByName(
-        group.userData.animations,
+        source?.userData.animations || [],
         motion.animationName || "",
       );
       if (native) {
@@ -472,15 +486,32 @@ export function applyAnimatedEntityPose(
           current = {
             clip: native,
             time: ((time - start) * native.duration) / clip.duration,
+            source: source === group ? undefined : source,
           };
         }
-      }
+      } else if (time >= start && time < start + clip.duration) missing = true;
     }
     if (time < start + clip.duration) break;
     start += clip.duration;
   }
-  applyEntityPose(group, entity, scene, time, !!current, pose);
-  if (current) sampleNativeClip(group, current.clip, current.time);
+  applyEntityPose(
+    group,
+    entity,
+    scene,
+    time,
+    !!current && !current.source,
+    pose,
+  );
+  if (current?.source)
+    group.userData.motionWarning = applyTransferredClip(
+      current.source,
+      group,
+      current.clip,
+      current.time,
+    );
+  else if (current) sampleNativeClip(group, current.clip, current.time);
+  if (missing)
+    group.userData.motionWarning = `The original file for ${entity.name}'s action is unavailable. Reimport it to use this motion.`;
 }
 export function disposeObject(root: T.Object3D) {
   root.traverse((o) => {

@@ -1008,9 +1008,15 @@ export default function App() {
                         <strong>{m.name}</strong>
                         <small>
                           {Number(m.duration.toFixed(1))}s ·{" "}
-                          {m.kind === "custom"
-                            ? "Your creation"
-                            : "Ready to use"}
+                          {m.kind === "imported"
+                            ? m.sourceAssetId === entity?.assetId
+                              ? "Original action"
+                              : isCharacter
+                                ? `Adapt to ${entity!.name}`
+                                : "From your files"
+                            : m.kind === "custom"
+                              ? "Your creation"
+                              : "Ready to use"}
                         </small>
                       </span>
                       <Plus size={15} />
@@ -2184,7 +2190,9 @@ export default function App() {
               FBX imports need a connected Blender installation. Set it up in
               Studio settings → Connections. Original animations come with your
               character. Studio actions adapt automatically when we can
-              recognize its body.
+              recognize its body. Select another character to reuse an imported
+              action from the Actions library; compatible humanoid motions adapt
+              to their body.
             </p>
           </div>
         </Modal>

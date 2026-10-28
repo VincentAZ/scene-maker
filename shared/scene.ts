@@ -417,8 +417,6 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
         throw Error("Choose a character to add an action.");
       const m = allMotions(s).find((m) => m.id === cmd.motionId);
       if (!m) throw Error("Motion not found.");
-      if (m.kind === "imported" && m.sourceAssetId !== e.assetId)
-        throw Error("This imported action belongs to its original character.");
       if (cmd.targetId) find(cmd.targetId);
       e.clips.push({
         id: uid(),
@@ -486,6 +484,23 @@ export function validateScene(input: unknown): Scene {
     for (const c of e.clips) {
       if (!allMotions(s).some((m) => m.id === c.motionId))
         throw Error("Unknown action in scene.");
+      const motion = allMotions(s).find((m) => m.id === c.motionId)!;
+      if (motion.kind === "imported") {
+        const source = allAssets(s).find((a) => a.id === motion.sourceAssetId);
+        if (!source)
+          throw Error(
+            "The original asset for this imported action is missing.",
+          );
+        if (
+          motion.sourceAssetId !== e.assetId &&
+          (source.category !== "characters" ||
+            allAssets(s).find((a) => a.id === e.assetId)?.category !==
+              "characters")
+        )
+          throw Error(
+            "Shared imported actions need a source character and a receiving character.",
+          );
+      }
       if (c.targetId && !s.entities.some((t) => t.id === c.targetId))
         throw Error("Missing action target.");
       if (

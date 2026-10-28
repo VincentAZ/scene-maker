@@ -41,13 +41,15 @@ To direct a route, ask “Draw a path for Mila” or choose **Actions → Draw a
 
 The offline helper can also create “Mila walk in a circle then wave” and “Mila run in a square”. Connected AI can create and revise arbitrary level routes using the same validated data. Characters turn into their route, follow its curves, and keep the final position and facing for the next action. Routes guide motion; creators still need to leave room around props. They do not automatically avoid obstacles or adapt to stairs and uneven ground.
 
+Imported humanoid actions can be shared across the cast. Select a different character and choose the imported action in **Actions**; its label reads **Adapt to [character]**. Or ask “Mila Turn and greet then walk”, using your imported action's name. The studio adapts recognized body joints and scales travel to the receiving body. Its final position and facing carry into the next action. The original file remains unchanged, and the original character does not need to stay in the scene. Production ZIPs retain the source asset so the editable project remains portable.
+
 ## Connect AI and production tools
 
 Technical controls are **two steps deep: Studio settings → Connections**.
 
 - **AI:** enter your own API key and a model identifier available to that account. Select the studio assistant provider. Assign each character a different provider/model or inherit the studio default. Supports OpenAI, Anthropic, Google, xAI, Kimi (international Moonshot endpoint), and OpenRouter. Choose models that support structured JSON output. API usage is billed by your provider; a conversation makes one request per visible character per round.
 - **Blender:** install Blender 4.5 LTS or compatible and enter the executable path, or use `BLENDER_PATH`. The adapter creates original weighted character meshes from validated AI specifications, converts FBX imports, and saves animated `.blend` scenes. Model-generated Python is never executed.
-- **Mixamo:** download your own rigged character with its animation as FBX and import it. Blender converts it; native animation clips up to 60 seconds enter the action library. Studio actions adapt to recognized humanoid hierarchies, including namespaced Mixamo-style bones, rotated bone axes, and T-pose arms. Original clips retain their own poses and remain bound to their source character. Native translation carries into later actions. Unrecognized bodies show a staging hint when a studio action is requested; their original animations remain available.
+- **Mixamo:** download your own rigged character with its animation as FBX and import it. Blender converts it; native animation clips up to 60 seconds enter the action library. Studio actions adapt to recognized humanoid hierarchies, including namespaced Mixamo-style bones, rotated bone axes, and T-pose arms. Original clips retain their own playback on their source character and can also be adapted to other compatible humanoids. Native translation carries into later actions. Unrecognized bodies show a staging hint when a studio or shared action is requested; their original animations remain available.
 - **Unreal:** export the production package, enable Python Editor Script and Interchange in Unreal, and run the included `unreal_import.py` using **Execute Python Script**. It imports the scene hierarchy into the current level. Save the level. Live Unreal import has not been verified in this environment.
 
 The production ZIP includes `scene.glb` (baked skeletal/object animation at 24 fps), `scene.json`, original imported GLBs, engine import scripts, and `dialogue.srt` when the scene contains timed dialogue. Plain project JSON does not embed imported assets; use ZIP for portability. Lighting in the editor is for preview; configure production cameras and lighting in your destination engine.
@@ -88,6 +90,8 @@ For an exported built-in character whose first actions are Pick up → Take a si
 
 `tests/verify_path_blender.py` checks the browser-authored Walk → curved route → Wave → Walk fixture in Blender, measuring waypoint positions, facing, travel speed, boundary continuity, and leg animation. See the [path editor](docs/path-editor.jpg) and [playback preview](docs/path-preview.jpg).
 
+`tests/create_shared_motion_fixture.py` makes an original FBX with a T-pose bind skeleton, changed bone axes, travel, a turn, and an overhead gesture. `tests/verify_shared_motion_blender.py` compares the original and two receiving characters in the browser export, checking limb directions, scaled travel, final facing, and the following walk. [Shared motion preview](docs/shared-motion-preview.jpg) shows the same imported gesture on all three characters.
+
 See [decisions](docs/DECISIONS.md), [verification evidence and remaining work](docs/VERIFICATION.md), and [integration references](docs/REFERENCES.md).
 
 ## Current scope limits
@@ -96,4 +100,4 @@ This is an implemented studio foundation, not proof of the entire original produ
 
 Prop interactions use geometric reach solving on compatible arm rigs. They do not provide collision avoidance, automatic navigation to a prop, finger articulation, or general physical simulation. Custom props can specify local `grip` and `mouth` contact points through their validated asset definition.
 
-Imported humanoid calibration requires recognizable joints, compatible ancestry, and uniform positive scale along the bone hierarchy. It is not universal retargeting. Transferring a native clip to another character, automatically carrying its final facing direction into later actions, and smoothing pose changes between unrelated clips remain unsupported.
+Imported humanoid calibration requires recognizable joints, compatible ancestry, and uniform positive scale along the bone hierarchy. Sharing transfers eleven body joints, hip movement, and body travel; it does not transfer fingers, facial animation, morph shapes, or planted-foot constraints. Actions that animate bone lengths or scale remain available only on their original character. This is not universal retargeting. Original-source playback still does not carry its final facing into later actions; adapted playback does. Smooth pose blending between unrelated clips remains unfinished.

@@ -15,6 +15,7 @@ type HumanoidRig = {
   neutralWorld: Partial<Record<BoneName, T.Quaternion>>;
   compatible: boolean;
   bindRoot: T.Vector3;
+  bindHips: T.Vector3;
   roots: Map<T.AnimationClip, RootMotion>;
 };
 const rigs = new WeakMap<T.Group, HumanoidRig>();
@@ -170,6 +171,9 @@ export function configureImportedRig(
     neutralWorld: {},
     compatible,
     bindRoot: bones.hips ? rootPoint(group) : new T.Vector3(),
+    bindHips: bones.hips
+      ? group.worldToLocal(position(bones.hips))
+      : new T.Vector3(),
     roots: new Map(),
   };
   rigs.set(group, data);
@@ -284,4 +288,211 @@ export function humanoidWarning(group: T.Group, name: string, native: boolean) {
   return data && !data.compatible && !native
     ? `Studio actions cannot match ${name}'s body yet. Use this character's original actions or choose another character.`
     : "";
+}
+
+type Rotations = Partial<Record<BoneName, T.Quaternion>>;
+type TransferProfile = {
+  start: T.Vector3;
+  delta: T.Vector3;
+  startHeading: number;
+  heading: number;
+};
+const transfers = new WeakMap<T.Group, Map<T.AnimationClip, TransferProfile>>();
+const transferIssues = new WeakMap<T.Group, Map<T.AnimationClip, string>>();
+const sources = new WeakMap<T.Group, Map<string, T.Group>>();
+export function setMotionSources(
+  target: T.Group,
+  originals: Map<string, T.Group>,
+) {
+  sources.set(target, originals);
+}
+export function motionSource(target: T.Group, assetId: string) {
+  return sources.get(target)?.get(assetId);
+}
+function canonicalRotations(group: T.Group): Rotations {
+  const data = rigs.get(group)!;
+  const bones = group.userData.bones as Record<string, T.Bone>;
+  const inverse = group.getWorldQuaternion(new T.Quaternion()).invert();
+  return Object.fromEntries(
+    boneNames.map((name) => [
+      name,
+      inverse
+        .clone()
+        .multiply(bones[name].getWorldQuaternion(new T.Quaternion()))
+        .multiply(data.neutralWorld[name]!.clone().invert())
+        .normalize(),
+    ]),
+  );
+}
+function sampleOriginal(source: T.Group, clip: T.AnimationClip, time: number) {
+  (source.userData.mixer as T.AnimationMixer).stopAllAction();
+  restore(rigs.get(source)!);
+  sampleNativeClip(source, clip, time);
+  source.updateWorldMatrix(true, true);
+}
+function standingHeight(group: T.Group) {
+  const data = rigs.get(group);
+  if (data) return data.bindHips.y - data.bindRoot.y;
+  // The same hip-to-ankle landmark as rootPoint, using fixed neutral offsets.
+  const bones = group.userData.bones as Record<string, T.Bone> | undefined;
+  return bones?.leftLeg && bones.leftShin
+    ? Math.abs(bones.leftLeg.position.y) +
+        Math.abs(bones.leftShin.position.y) * (1 + 0.35 / 0.4)
+    : 0;
+}
+export function transferWarning(
+  source: T.Group,
+  target: T.Group,
+  clip?: T.AnimationClip,
+) {
+  if (!rigs.get(source)?.compatible)
+    return "This action's original character needs a recognizable humanoid body before it can be shared.";
+  const targetData = rigs.get(target);
+  if (
+    (targetData && !targetData.compatible) ||
+    !boneNames.every((name) => target.userData.bones?.[name])
+  )
+    return "This character's body cannot use shared humanoid actions yet. Use its original actions.";
+  if (standingHeight(source) < 0.1 || standingHeight(target) < 0.1)
+    return "This action needs an upright humanoid bind pose before it can be shared.";
+  if (clip) {
+    let cache = transferIssues.get(source);
+    if (!cache) transferIssues.set(source, (cache = new Map()));
+    if (!cache.has(clip)) {
+      const data = rigs.get(source)!,
+        hips = source.userData.bones.hips as T.Bone;
+      const root = (source.userData.mixer as T.AnimationMixer).getRoot();
+      const unsupported = clip.tracks.some((track) => {
+        const path = T.PropertyBinding.parseTrackName(track.name);
+        const node = T.PropertyBinding.findNode(root, path.nodeName);
+        if (!(node instanceof T.Object3D)) return false;
+        const bind = data.bind.find((entry) => entry.object === node);
+        if (!bind) return false;
+        const relevant = node instanceof T.Bone || hasAncestor(hips, node);
+        const baseline =
+          path.propertyName === "scale" && relevant
+            ? bind.scale
+            : path.propertyName === "position" &&
+                node instanceof T.Bone &&
+                node !== hips &&
+                !hasAncestor(hips, node)
+              ? bind.position
+              : undefined;
+        return (
+          baseline &&
+          Array.from(track.values).some(
+            (value, index) =>
+              Math.abs(value - baseline.getComponent(index % 3)) > 1e-4,
+          )
+        );
+      });
+      cache.set(
+        clip,
+        unsupported
+          ? "This action changes bone lengths or scale. Keep it on its original character; shared actions support joint rotations and body travel."
+          : "",
+      );
+    }
+    return cache.get(clip)!;
+  }
+  return "";
+}
+function transferProfile(source: T.Group, clip: T.AnimationClip) {
+  let cache = transfers.get(source);
+  if (!cache) transfers.set(source, (cache = new Map()));
+  const known = cache.get(clip);
+  if (known) return known;
+  const data = rigs.get(source)!;
+  const headingAt = () => {
+    const forward = new T.Vector3(0, 0, 1).applyQuaternion(
+      canonicalRotations(source).hips!,
+    );
+    return Math.atan2(forward.x, forward.z);
+  };
+  sampleOriginal(source, clip, 0);
+  const start = rootPoint(source),
+    startHeading = headingAt();
+  let heading = startHeading;
+  // Unwrap complete turns instead of losing them at the +/- pi boundary.
+  const frames = Math.max(1, Math.ceil(clip.duration * 24));
+  for (let frame = 1; frame <= frames; frame++) {
+    sampleOriginal(source, clip, (clip.duration * frame) / frames);
+    const angle = headingAt();
+    heading += Math.atan2(Math.sin(angle - heading), Math.cos(angle - heading));
+  }
+  const result = {
+    start: start.clone().sub(data.bindRoot),
+    delta: rootPoint(source)
+      .sub(start)
+      .applyAxisAngle(new T.Vector3(0, 1, 0), -startHeading),
+    startHeading,
+    heading: heading - startHeading,
+  };
+  (source.userData.mixer as T.AnimationMixer).stopAllAction();
+  restore(data);
+  source.updateWorldMatrix(true, true);
+  cache.set(clip, result);
+  return result;
+}
+export function transferredRootMotion(
+  source: T.Group,
+  target: T.Group,
+  clip: T.AnimationClip,
+) {
+  if (transferWarning(source, target, clip)) return;
+  const profile = transferProfile(source, clip);
+  return {
+    start: [0, 0, 0] as [number, number, number],
+    delta: profile.delta
+      .clone()
+      .multiplyScalar(standingHeight(target) / standingHeight(source))
+      .toArray(),
+    heading: profile.heading,
+  };
+}
+/** Transfer anatomical world rotations, compensating for both rigs' bone axes and neutral poses. */
+export function applyTransferredClip(
+  source: T.Group,
+  target: T.Group,
+  clip: T.AnimationClip,
+  time: number,
+) {
+  const warning = transferWarning(source, target, clip);
+  if (warning) return warning;
+  const data = rigs.get(source)!,
+    targetData = rigs.get(target);
+  const profile = transferProfile(source, clip);
+  sampleOriginal(source, clip, time);
+  const rotations = canonicalRotations(source);
+  const initialTurn = new T.Quaternion().setFromAxisAngle(
+    new T.Vector3(0, 1, 0),
+    -profile.startHeading,
+  );
+  for (const name of boneNames) rotations[name]!.premultiply(initialTurn);
+  const offset = source
+    .worldToLocal(position(source.userData.bones.hips))
+    .sub(data.bindHips)
+    .sub(profile.start)
+    .applyQuaternion(initialTurn)
+    .multiplyScalar(standingHeight(target) / standingHeight(source));
+  const heading = target.getWorldQuaternion(new T.Quaternion());
+  const scale = target.getWorldScale(new T.Vector3()).x;
+  target.position.add(offset.multiplyScalar(scale).applyQuaternion(heading));
+  target.updateWorldMatrix(true, true);
+  const bones = target.userData.bones as Record<string, T.Bone>;
+  for (const name of boneNames) {
+    const desired = heading.clone().multiply(rotations[name]!);
+    if (targetData) desired.multiply(targetData.neutralWorld[name]!);
+    const bone = bones[name];
+    bone.quaternion
+      .copy(
+        bone
+          .parent!.getWorldQuaternion(new T.Quaternion())
+          .invert()
+          .multiply(desired),
+      )
+      .normalize();
+    bone.updateWorldMatrix(true, true);
+  }
+  return "";
 }
