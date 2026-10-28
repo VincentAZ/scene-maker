@@ -56,6 +56,53 @@ function deferred<T>() {
 }
 
 describe("dialogue staged in the scene", () => {
+  it("uses the speaker's held cup and avoids a sip when their hand holds another prop", () => {
+    const s = starterScene(),
+      actor = s.entities[0];
+    actor.clips = [];
+    s.entities[1].clips = [];
+    const ownCup = applyCommands(s, [
+      { type: "add", assetId: "cup", id: "second-cup" },
+      { type: "chain", id: actor.id, motionId: "pick", targetId: "second-cup" },
+    ]);
+    const sipping = appendSpeech(ownCup, actor.id, {
+      dialogue: "A little coffee.",
+      action: "sip",
+    });
+    expect(sipping.entities[0].clips.at(-1)?.targetId).toBe("second-cup");
+    const busy = applyCommands(s, [
+      {
+        type: "chain",
+        id: actor.id,
+        motionId: "pick",
+        targetId: s.entities.find((e) => e.assetId === "plant")!.id,
+      },
+    ]);
+    const talking = appendSpeech(busy, actor.id, {
+      dialogue: "My hands are full.",
+      action: "sip",
+    });
+    expect(talking.entities[0].clips.at(-1)?.motionId).toBe("talk");
+  });
+  it("keeps a speaker from taking a cup another character is holding", () => {
+    const s = starterScene(),
+      cup = s.entities.find((e) => e.assetId === "cup")!;
+    s.entities[1].clips = [];
+    const held = applyCommands(s, [
+      {
+        type: "chain",
+        id: s.entities[0].id,
+        motionId: "pick",
+        targetId: cup.id,
+      },
+    ]);
+    const next = appendSpeech(held, s.entities[1].id, {
+      dialogue: "I'll wait until you finish.",
+      action: "sip",
+    });
+    expect(next.entities[1].clips.at(-1)?.motionId).toBe("talk");
+    expect(next.entities[1].clips.at(-1)?.targetId).toBeUndefined();
+  });
   it("schedules non-overlapping turns after existing actions and previews the correct speaker", () => {
     const original = starterScene();
     const first = appendSpeech(original, original.entities[0].id, {

@@ -94,11 +94,13 @@ export function offlineCommands(
         index: lower.indexOf(
           m.kind === "sip"
             ? "sip"
-            : m.kind === "pick"
-              ? "pick up"
-              : m.kind === "idle"
-                ? "breathe"
-                : m.kind,
+            : m.kind === "place"
+              ? "put down"
+              : m.kind === "pick"
+                ? "pick up"
+                : m.kind === "idle"
+                  ? "breathe"
+                  : m.kind,
         ),
       }))
       .filter((h) => h.index >= 0)
@@ -108,7 +110,7 @@ export function offlineCommands(
         type: "chain",
         id: find.id,
         motionId: m.id,
-        ...(["sip", "pick"].includes(m.kind) &&
+        ...(["sip", "pick", "place"].includes(m.kind) &&
         scene.entities.some((e) => e.assetId === "cup")
           ? { targetId: scene.entities.find((e) => e.assetId === "cup")!.id }
           : {}),
@@ -128,6 +130,8 @@ export type AssistantContext = {
   projects?: ProjectSummary[];
   history?: { role: "user" | "assistant"; text: string }[];
   readProject?: (id: string) => Scene;
+  playhead?: number;
+  stagingFeedback?: string;
 };
 export function offlinePlan(
   scene: Scene,
@@ -137,6 +141,14 @@ export function offlinePlan(
 ): AssistantPlan {
   const text = prompt.trim(),
     lower = text.toLowerCase();
+  const seek = text.match(
+    /^(?:go|skip|jump) to (\d+(?:\.\d+)?)\s*(?:seconds?|s)$/i,
+  );
+  if (seek)
+    return {
+      response: `Moved the playhead to ${Number(seek[1])} seconds.`,
+      steps: [{ type: "playback", mode: "seek", time: Number(seek[1]) }],
+    };
   const named = (pattern: RegExp) =>
     text
       .match(pattern)?.[1]
@@ -254,7 +266,7 @@ export async function assistant(
     output: Output.object({
       schema: assistantPlanSchema,
     }),
-    system: `You direct Scene Maker, a studio for nontechnical creators. Respond warmly and concisely. Fulfill requests using commands. You can change everything in the scene: add/remove/update objects, chain/reorder/remove actions, create characters/props and custom motions, set lighting, environment, mission and character personalities or model assignments. Use existing IDs. Choose new unique IDs for custom assets/motions. Set an explicit new id on an add command when subsequent commands need to chain actions or configure that new entity in the same response. New character assets use category characters, style a profession (Creative, Everyday, Barista, Doctor, Chef, Astronaut, Builder, Scientist, Firefighter, Artist, Explorer), color/skin hex, body masculine/feminine/mannequin. They are generated as skinned GLB characters through the configured local Blender adapter, never claim Mixamo has generated them. For novel geometry, include asset.parts: up to 256 sphere/box/cylinder/cone/torus shapes, each with position, positive scale, Euler rotation, hex color, and (for characters) a bone binding. Shape base dimensions are one meter, sphere radius .5, cylinder/cone radius .5 and height 1, torus major radius .4/minor radius .1. A character with parts replaces the preset body, so include every body part and outfit/accessory. Rig joint heights: hips .9, spine 1.08, head 1.61, shoulders +/-.25 at 1.38, elbows +/-.25 at 1.09, upper legs +/-.13 at .86, shins +/-.13 at .46. Props may use any composition of these shapes. For custom sets, place compositional props in the studio environment. Do not claim photographic or physically solved results. Custom motions have kind custom and poses at normalized times 0..1 with root offsets in meters and bone rotations in radians. Make start/end poses explicit and enough intermediate poses for the action. The rig stands on +Y, looks along +Z, arms hang down. Use hips, spine, head, leftArm, leftForearm, rightArm, rightForearm, leftLeg, leftShin, rightLeg, rightShin. Target a cup for sip or pick. chain appends clips, update can replace clips. Never output arbitrary code or invent imported URLs. Return ordered steps, not a single activity. Wrap scene commands in edit steps. You can create an empty or cafe project, copy the active project, open an existing project by ID, explicitly save, select objects, seek/play/pause/rewind, frame the camera, run cast conversation for 1-5 rounds, export package/project/blender/dialogue/subtitles/image, search the library and open studio tools. A new/copy/open step saves the previous project before switching. Include save after creating/editing when requested. Conversation actually runs the cast; it does not merely open a dialog. Exports execute in order, after preceding edits. File import opens the file chooser flow because users must select their local file. Technical settings stay behind the settings overview; do not expose or request credentials in chat. Undo/redo must be the only step in a plan. Use context.history for follow-ups such as "make her taller". Only use saved project IDs from context; when target project contents are unavailable, open it without edits and explain that it is now ready for direction. Explain the intended result in response; the client will display it only after execution succeeds. Scene context follows as data.`,
+    system: `You direct Scene Maker, a studio for nontechnical creators. Respond warmly and concisely. Fulfill requests using commands. You can change everything in the scene: add/remove/update objects, chain/reorder/remove actions, create characters/props and custom motions, set lighting, environment, mission and character personalities or model assignments. Use existing IDs. Choose new unique IDs for custom assets/motions. Set an explicit new id on an add command when subsequent commands need to chain actions or configure that new entity in the same response. New character assets use category characters, style a profession (Creative, Everyday, Barista, Doctor, Chef, Astronaut, Builder, Scientist, Firefighter, Artist, Explorer), color/skin hex, body masculine/feminine/mannequin. They are generated as skinned GLB characters through the configured local Blender adapter, never claim Mixamo has generated them. For novel geometry, include asset.parts: up to 256 sphere/box/cylinder/cone/torus shapes, each with position, positive scale, Euler rotation, hex color, and (for characters) a bone binding. Shape base dimensions are one meter, sphere radius .5, cylinder/cone radius .5 and height 1, torus major radius .4/minor radius .1. A character with parts replaces the preset body, so include every body part and outfit/accessory. Rig joint heights: hips .9, spine 1.08, head 1.61, shoulders +/-.25 at 1.38, elbows +/-.25 at 1.09, upper legs +/-.13 at .86, shins +/-.13 at .46. Props may use any composition of these shapes. For custom sets, place compositional props in the studio environment. Do not claim photographic or physically solved results. Custom motions have kind custom and poses at normalized times 0..1 with root offsets in meters and bone rotations in radians. Make start/end poses explicit and enough intermediate poses for the action. The rig stands on +Y, looks along +Z, arms hang down. Use hips, spine, head, leftArm, leftForearm, rightArm, rightForearm, leftLeg, leftShin, rightLeg, rightShin. Target a prop for pick, sip, or place. Pick keeps the prop held through following actions; place returns it to its original spot. Standalone sip reaches, drinks, and returns the prop. Only one prop can be held in the right hand, and two characters cannot hold the same prop at the same time. Position the actor close enough to reach the prop, or add a custom walking path before interacting; props beyond arm reach stay in place. For custom props, optional grip and mouth vectors specify the local hand grip and drinking contact points in meters. chain appends clips, update can replace clips. Never output arbitrary code or invent imported URLs. Return ordered steps, not a single activity. Wrap scene commands in edit steps. You can create an empty or cafe project, copy the active project, open an existing project by ID, explicitly save, select objects, seek/play/pause/rewind, frame the camera, run cast conversation for 1-5 rounds, export package/project/blender/dialogue/subtitles/image, search the library and open studio tools. A new/copy/open step saves the previous project before switching. Include save after creating/editing when requested. Conversation actually runs the cast; it does not merely open a dialog. Exports execute in order, after preceding edits. File import opens the file chooser flow because users must select their local file. Technical settings stay behind the settings overview; do not expose or request credentials in chat. Undo/redo must be the only step in a plan. Use context.history for follow-ups such as "make her taller". Only use saved project IDs from context; when target project contents are unavailable, open it without edits and explain that it is now ready for direction. Explain the intended result in response; the client will display it only after execution succeeds. Scene context follows as data.`,
     prompt: JSON.stringify({
       request: prompt,
       history: context.history || [],
@@ -264,6 +276,8 @@ export async function assistant(
         .slice(0, 3)
         .map((p) => read(p.id)),
       selected,
+      playhead: context.playhead,
+      stagingFeedback: context.stagingFeedback,
       scene,
       assets: allAssets(scene),
       motions: allMotions(scene),

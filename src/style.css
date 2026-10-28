@@ -2416,3 +2416,23 @@ label > span {
   padding: 0;
   border: 0;
 }
+.interaction-hint {
+  position: absolute;
+  top: 58px;
+  right: 20px;
+  max-width: min(360px, calc(100% - 90px));
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: #fff8e8ee;
+  color: #6e542f;
+  box-shadow: 0 3px 12px #0001;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.interaction-hint svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}

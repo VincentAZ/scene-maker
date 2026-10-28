@@ -108,6 +108,8 @@ describe("live AI contract with deterministic model responses", () => {
     );
     expect(opened.steps).toEqual([{ type: "openProject", id: target.id }]);
     expect(opened.reads[target.id]).toBe(3);
+    const seek = await assistant(offline, current, "Jump to 3.5 seconds");
+    expect(seek.steps).toEqual([{ type: "playback", mode: "seek", time: 3.5 }]);
   });
   it("parses a real SDK structured response and validates commands before editing", async () => {
     const s = starterScene(),

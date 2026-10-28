@@ -87,7 +87,7 @@ export function motionPose(m: Motion, t: number): Pose {
     r.leftArm[0] = -2.7 + cycle * 0.4;
     r.rightArm[0] = -2.7 - cycle * 0.4;
   }
-  if (m.kind === "pick") {
+  if (m.kind === "pick" || m.kind === "place") {
     r.spine[0] = s * 0.8;
     r.rightArm[0] = -s * 0.7;
   }
@@ -118,6 +118,9 @@ export function entityPose(e: Entity, scene: Scene, time: number): Pose {
       continue;
     }
     const local = motionPose(m, (time - start) / clip.duration);
+    if (clip.targetId && ["pick", "sip", "place"].includes(m.kind))
+      for (const bone of ["spine", "head", "rightArm", "rightForearm"])
+        local.rotations[bone] = [0, 0, 0];
     p.root = p.root.map(
       (v, i) => v + (offset[i] + local.root[i]) * e.scale,
     ) as Pose["root"];

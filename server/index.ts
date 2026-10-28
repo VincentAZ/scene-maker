@@ -130,6 +130,12 @@ app.post("/api/assistant", async (req, res) => {
       projects: listProjects(),
       readProject,
       history: conversationHistorySchema.parse(req.body.history || []),
+      playhead: z.number().min(0).max(6000).optional().parse(req.body.playhead),
+      stagingFeedback: z
+        .string()
+        .max(1000)
+        .optional()
+        .parse(req.body.stagingFeedback),
     },
   );
   for (const command of result.steps.flatMap((step) =>

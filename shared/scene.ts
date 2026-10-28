@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { interactionSessions } from "./interactions";
 export const providers = [
   "openai",
   "anthropic",
@@ -47,6 +48,7 @@ export const motionSchema = z
       "climb",
       "sip",
       "pick",
+      "place",
       "talk",
       "bow",
       "custom",
@@ -115,6 +117,8 @@ export const assetSchema = z.object({
     .optional(),
   description: z.string().max(1000).default(""),
   parts: z.array(shapeSchema).max(256).optional(),
+  grip: vec3.optional(),
+  mouth: vec3.optional(),
 });
 export type Asset = z.infer<typeof assetSchema>;
 export const clipSchema = z.object({
@@ -303,6 +307,7 @@ export const motions: Motion[] = [
   ["crawl", "Crawl", 4, 1.6],
   ["climb", "Climb a ladder", 4, 1],
   ["pick", "Pick up", 2, 0],
+  ["place", "Put down", 2, 0],
   ["sip", "Take a sip", 3, 0],
   ["talk", "Talk", 4, 0],
   ["bow", "Take a bow", 2, 0],
@@ -435,6 +440,19 @@ export function validateScene(input: unknown): Scene {
         throw Error("Unknown action in scene.");
       if (c.targetId && !s.entities.some((t) => t.id === c.targetId))
         throw Error("Missing action target.");
+      if (
+        c.targetId &&
+        ["pick", "sip", "place"].includes(
+          allMotions(s).find((m) => m.id === c.motionId)!.kind,
+        )
+      ) {
+        const target = s.entities.find((t) => t.id === c.targetId)!;
+        if (
+          allAssets(s).find((a) => a.id === target.assetId)?.category !==
+          "props"
+        )
+          throw Error("Choose a prop for this interaction.");
+      }
     }
   }
   const linked = s.transcript.filter((line) => line.clipId);
@@ -447,6 +465,7 @@ export function validateScene(input: unknown): Scene {
         ?.clips.some((c) => c.id === line.clipId)
     )
       throw Error("Missing dialogue action.");
+  interactionSessions(s, allMotions(s));
   return s;
 }
 export const duration = (s: Scene) =>
@@ -471,7 +490,7 @@ export function starterScene(): Scene {
   };
   s = applyCommands(s, [
     { type: "add", assetId: "mila", position: [-1.2, 0, 0.4] },
-    { type: "add", assetId: "leo", position: [1.2, 0, 0.1] },
+    { type: "add", assetId: "leo", position: [0.75, 0, -0.25] },
     { type: "add", assetId: "table", position: [0, 0, -0.35] },
     { type: "add", assetId: "cup", position: [0.2, 1.01, -0.35] },
     { type: "add", assetId: "plant", position: [-3, 0, -1.8] },

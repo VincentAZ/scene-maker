@@ -6,6 +6,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { exportSnapshot } from "./exportSnapshot";
+import { applyInteractions } from "./interactions";
+import { configureRigContacts } from "./ik";
+import { interactionSessions, type HoldSession } from "../shared/interactions";
 import {
   type Scene,
   allAssets,
@@ -17,8 +20,7 @@ import {
   createCharacter,
   createProp,
   createEnvironment,
-  applyEntityPose,
-  activeTarget,
+  applyAnimatedEntityPose,
   disposeObject,
 } from "./world";
 export type ViewportHandle = {
@@ -37,6 +39,7 @@ type Props = {
   onTime: (t: number) => void;
   onMove: (id: string, position: [number, number, number]) => void;
   onError: (text: string) => void;
+  onInteractionWarning: (text: string) => void;
   move: boolean;
 };
 const modelKey = (scene: Scene) =>
@@ -133,60 +136,34 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         }
       });
       const objects = new Map<string, T.Group>();
+      let sessionScene: Scene | null = null,
+        sessions: HoldSession[] = [],
+        interactionWarning = "",
+        lastWarning = "";
       const renderAt = (time: number) => {
+        if (sessionScene !== live.current.scene) {
+          sessionScene = live.current.scene;
+          sessions = interactionSessions(
+            sessionScene,
+            allMotions(sessionScene),
+          );
+        }
         for (const e of live.current.scene.entities) {
           const obj = objects.get(e.id);
           if (obj && !(transform.dragging && transform.object === obj)) {
-            applyEntityPose(obj, e, live.current.scene, time);
-            const mixer = obj.userData.mixer as T.AnimationMixer | undefined;
-            if (mixer) {
-              mixer.stopAllAction();
-              applyEntityPose(obj, e, live.current.scene, time);
-              let start = 0;
-              for (const clip of e.clips) {
-                const motion = allMotions(live.current.scene).find(
-                  (m) => m.id === clip.motionId,
-                );
-                if (
-                  time >= start &&
-                  time < start + clip.duration &&
-                  motion?.kind === "imported" &&
-                  motion.sourceAssetId === e.assetId
-                ) {
-                  const native = T.AnimationClip.findByName(
-                    obj.userData.animations,
-                    motion.animationName || "",
-                  );
-                  if (native) {
-                    const action = mixer.clipAction(native);
-                    action.reset().play();
-                    mixer.setTime(
-                      ((time - start) * native.duration) / clip.duration,
-                    );
-                  }
-                  break;
-                }
-                start += clip.duration;
-              }
-            }
+            applyAnimatedEntityPose(obj, e, live.current.scene, time);
           }
         }
         content.updateMatrixWorld(true);
-        for (const e of live.current.scene.entities) {
-          const actor = activeTarget(live.current.scene, time, e.id);
-          if (actor) {
-            const obj = objects.get(e.id),
-              rig = objects.get(actor.id);
-            const hand = rig?.userData.bones?.rightForearm as
-              T.Bone | undefined;
-            if (obj && hand) {
-              obj.position.copy(
-                hand.localToWorld(new T.Vector3(0, -0.3, 0.04)),
-              );
-              obj.quaternion.copy(hand.getWorldQuaternion(new T.Quaternion()));
-            }
-          }
-        }
+        interactionWarning = applyInteractions(
+          live.current.scene,
+          time,
+          objects,
+          sessions,
+        )
+          .map((w) => w.message)
+          .slice(0, 2)
+          .join(" ");
       };
       context.current = {
         renderer,
@@ -255,6 +232,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         } else elapsed = live.current.time;
         wasPlaying = live.current.playing;
         renderAt(elapsed);
+        if (interactionWarning !== lastWarning) {
+          lastWarning = interactionWarning;
+          live.current.onInteractionWarning(interactionWarning);
+        }
         controls.update();
         renderer.render(world, camera);
       };
@@ -307,6 +288,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           return;
         }
         obj.name = "entity_" + id;
+        configureRigContacts(obj);
         obj.userData.entityId = id;
         obj.traverse((o) => {
           if (o instanceof T.Mesh) {
@@ -346,10 +328,13 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
                 leftforearm: "leftForearm",
                 rightarm: "rightArm",
                 rightforearm: "rightForearm",
+                righthand: "rightHand",
                 leftupleg: "leftLeg",
                 leftleg: "leftShin",
+                leftfoot: "leftFoot",
                 rightupleg: "rightLeg",
                 rightleg: "rightShin",
+                rightfoot: "rightFoot",
               };
               imported.traverse((o) => {
                 if (o instanceof T.Bone) {

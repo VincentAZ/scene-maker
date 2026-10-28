@@ -106,6 +106,7 @@ export default function App() {
       | null
     >(null),
     [error, setError] = useState(""),
+    [interactionWarning, setInteractionWarning] = useState(""),
     [notice, setNotice] = useState(""),
     [saveState, setSaveState] = useState("Opening studio…"),
     [messages, setMessages] = useState<Message[]>([
@@ -375,6 +376,8 @@ export default function App() {
           scene: starting,
           prompt: text,
           selected,
+          playhead: time,
+          stagingFeedback: interactionWarning,
           history: messages
             .filter((m) => m.mode !== "welcome" && m.mode !== "error")
             .slice(-20)
@@ -1089,9 +1092,16 @@ export default function App() {
               onTime={setTime}
               onMove={(id, position) => update(id, { position })}
               onError={report}
+              onInteractionWarning={setInteractionWarning}
               move={move}
             />
             <DialogueCaptions scene={scene} time={time} />
+            {interactionWarning && (
+              <div className="interaction-hint" role="status">
+                <Lightbulb size={16} />
+                <span>{interactionWarning}</span>
+              </div>
+            )}
             {castProgress && (
               <div className="stage-progress">
                 <CastProgress
@@ -1680,7 +1690,7 @@ export default function App() {
                                 />
                                 <span>sec</span>
                               </div>
-                              {["sip", "pick"].includes(
+                              {["sip", "pick", "place"].includes(
                                 allMotions(scene).find(
                                   (m) => m.id === c.motionId,
                                 )?.kind || "",

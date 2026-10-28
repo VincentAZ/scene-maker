@@ -5,7 +5,6 @@ import {
   type Scene,
   type Entity,
   boneNames,
-  allAssets,
   allMotions,
 } from "../shared/scene";
 import { entityPose } from "../shared/animation";
@@ -184,6 +183,12 @@ export function createCharacter(a: Asset, color = a.color) {
   group.updateMatrixWorld(true);
   mesh.bind(new T.Skeleton(boneNames.map((n) => bones[n])));
   group.userData.bones = bones;
+  group.userData.rest = Object.fromEntries(
+    Object.entries(bones).map(([name, bone]) => [
+      name,
+      bone.quaternion.clone(),
+    ]),
+  );
   return group;
 }
 export function createProp(
@@ -376,22 +381,39 @@ export function applyEntityPose(
       else bone.rotation.set(...rot);
     }
 }
-export function activeTarget(s: Scene, time: number, targetId: string) {
-  for (const e of s.entities) {
-    let start = 0;
-    for (const c of e.clips) {
+// Use one sampler for preview, interaction contact checks and export. Stopping a
+// native clip first restores its animated translations as well as rotations.
+export function applyAnimatedEntityPose(
+  group: T.Group,
+  entity: Entity,
+  scene: Scene,
+  time: number,
+) {
+  const mixer = group.userData.mixer as T.AnimationMixer | undefined;
+  mixer?.stopAllAction();
+  applyEntityPose(group, entity, scene, time);
+  if (!mixer) return;
+  let start = 0;
+  for (const clip of entity.clips) {
+    if (time >= start && time < start + clip.duration) {
+      const motion = allMotions(scene).find((m) => m.id === clip.motionId);
       if (
-        time >= start &&
-        time < start + c.duration &&
-        c.targetId === targetId
+        motion?.kind === "imported" &&
+        motion.sourceAssetId === entity.assetId
       ) {
-        const m = allMotions(s).find((m) => m.id === c.motionId);
-        if (m?.kind === "sip" || m?.kind === "pick") return e;
+        const native = T.AnimationClip.findByName(
+          group.userData.animations,
+          motion.animationName || "",
+        );
+        if (native) {
+          mixer.clipAction(native).reset().play();
+          mixer.setTime(((time - start) * native.duration) / clip.duration);
+        }
       }
-      start += c.duration;
+      return;
     }
+    start += clip.duration;
   }
-  return null;
 }
 export function disposeObject(root: T.Object3D) {
   root.traverse((o) => {

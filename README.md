@@ -31,6 +31,8 @@ Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback.
 
 The assistant can also manage your workspace. Try “Create a new scene called Moonwalk”, “Copy this project as Second take”, “Open Moonwalk”, “Save”, “Export scene”, “Export subtitles”, or “Reset camera” with the offline helper. With a connected model, one request can create a project, add and direct its cast, save, and export in order. The assistant receives recent chat context for follow-up requests. “Let them talk” runs the cast with its assigned models; file imports open the appropriate file-selection flow.
 
+For a prop interaction, position the character within reach and ask “Leo pick up the cup then sip then put down”. Pick up reaches before lifting and keeps the prop in hand across later actions. Take a sip brings its rim to the mouth; Put down returns it to its original spot. A standalone sip returns the cup automatically. Unreachable props stay in place with a staging hint; if the character has walked too far to put a held prop back, it stays in hand until the staging is corrected. Each character uses one prop in the right hand. Try “Jump to 3.5 seconds” to inspect a pose. The assistant receives the playhead and current staging hint.
+
 Projects save automatically on the local service with revision checks. A recovery copy is stored in this browser; conflicting remote revisions are never silently overwritten. Undo history lasts for the current session. Switching projects waits for all pending edits to save. Failed operations stop an assistant workflow and identify any steps that already completed.
 
 ## Connect AI and production tools
@@ -48,7 +50,7 @@ The production ZIP includes `scene.glb` (baked skeletal/object animation at 24 f
 
 - React + TypeScript + Vite; Three.js for the interactive scene and animated GLB export.
 - An engine-neutral scene schema and command reducer in `shared/`; scene changes use the same validation path from both UI and AI.
-- 14 original rigged character presets, 12 props, 6 sets, 13 procedural actions, custom keyframed actions, and imported native clips.
+- 14 original rigged character presets, 12 props, 6 sets, 14 procedural actions, custom keyframed actions, and imported native clips.
 - The AI SDK uses native provider adapters for OpenAI/Anthropic/Google and OpenAI-compatible adapters for xAI/Kimi/OpenRouter. Credentials are server-side only after entry and are stored with mode `0600` in `.data/connections.json` (local disk storage, not an encrypted credential vault).
 - Local JSON persistence uses atomic writes and optimistic revision checks. Imported assets and generated exports live under `.data/`; nothing in this folder is committed.
 - `SCENE_MAKER_DATA` changes the data directory; `PORT` changes the production server port (dev proxy uses 4311). Browser write requests require the studio header and an allowed loopback origin.
@@ -72,8 +74,12 @@ blender --background --python-exit-code 1 --python tests/verify_blender.py -- sc
 
 The verification script checks the two starter rigs, 22 bones, and actual pose changes, then creates a character FBX fixture for the conversion path. It is intentionally specific to the starter scene.
 
+For an exported built-in character whose first actions are Pick up → Take a sip → Put down on a reachable coffee cup, `tests/verify_interactions_blender.py` accepts the resulting `scene.blend` and `scene.json`. It measures baked hand/grip and rim/mouth contact, lift, and return to the original transform. Interaction unit tests also cover low reaches, reverse scrubbing, ownership conflicts, unreachable staging, and preservation of imported body animation while carrying.
+
 See [decisions](docs/DECISIONS.md), [verification evidence and remaining work](docs/VERIFICATION.md), and [integration references](docs/REFERENCES.md).
 
 ## Current scope limits
 
 This is an implemented studio foundation, not proof of the entire original product vision. The brief's “Mixxar” is assumed to mean Mixamo; automatic creation/rigging through that service is not implemented. AI-created characters currently use a stylized Blender generator with preset outfits and custom compositions of validated geometric shapes. High-fidelity textured geometry generation, universal motion retargeting, live Unreal round-trip editing, and provider credentials/live-service validation remain outstanding. The assistant can edit scenes, generate supported assets/actions, create/copy/open/save projects, control the view and playback, run cast conversations, export, and open studio tools. It does not automate external logins or arbitrary external-engine operations. Its live planning and conversation contracts are tested with deterministic responses; real provider calls still require account credentials.
+
+Prop interactions use geometric reach solving on compatible arm rigs. They do not provide collision avoidance, automatic navigation to a prop, finger articulation, or general physical simulation. Custom props can specify local `grip` and `mouth` contact points through their validated asset definition.

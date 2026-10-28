@@ -8,3 +8,4 @@ Consulted during implementation on 2026-10-28. API SDK call shapes were checked 
 - [Adobe Mixamo FAQ](https://helpx.adobe.com/be_en/creative-cloud/faq/mixamo-faq.html) — humanoid rigging and user-owned downloaded characters. The implementation uses file interchange; this reference does not establish a supported public generation API.
 - [AI SDK structured output](https://ai-sdk.dev/docs/ai-sdk-core/generating-structured-data) — schema-validated assistant instructions.
 - [Moonshot API](https://platform.moonshot.ai/docs/api/chat), [xAI API](https://docs.x.ai/docs/api-reference), [OpenRouter API](https://openrouter.ai/docs/api-reference/overview) — provider endpoints.
+- [Three.js Quaternion](https://threejs.org/docs/pages/Quaternion.html) and [Object3D](https://threejs.org/docs/pages/Object3D.html) — world/local transform conversion and quaternion rotation for reach solving; checked against installed Three.js 0.180 source.

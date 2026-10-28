@@ -16,7 +16,7 @@ describe("creator scene workflows", () => {
   it("ships rigged characters, props, sets and distinct actions", () => {
     const s = starterScene();
     expect(allAssets(s).length).toBeGreaterThanOrEqual(32);
-    expect(allMotions(s).length).toBe(13);
+    expect(allMotions(s).length).toBe(14);
     for (const a of characters) {
       const rig = createCharacter(a);
       const mesh = rig.children.find(
@@ -121,6 +121,14 @@ describe("creator scene workflows", () => {
     expect(offlineCommands(s, "Add a coffee cup").commands).toEqual([
       { type: "add", assetId: "cup" },
     ]);
+    const interaction = offlineCommands(
+      s,
+      "Leo pick up the cup then sip then put down",
+    );
+    expect(
+      interaction.commands.map((c) => (c.type === "chain" ? c.motionId : "")),
+    ).toEqual(["pick", "sip", "place"]);
+    expect(() => applyCommands(s, interaction.commands)).not.toThrow();
   });
 });
 

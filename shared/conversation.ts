@@ -5,7 +5,9 @@ import {
   sceneSchema,
   applyCommands,
   validateScene,
+  allMotions,
 } from "./scene";
+import { interactionSessions } from "./interactions";
 
 export const speechSchema = z.object({
   dialogue: z.string().trim().min(1).max(1800),
@@ -61,6 +63,19 @@ export function appendSpeech(
     30,
     Math.max(3, speech.dialogue.split(/\s+/).length / 2.5 + 1),
   );
+  const held = interactionSessions(scene, allMotions(scene)).filter(
+    (session) => session.end === Infinity,
+  );
+  const cup = scene.entities.find(
+    (e) =>
+      e.visible &&
+      e.assetId === "cup" &&
+      !held.some(
+        (session) =>
+          (session.targetId === e.id && session.actorId !== actor.id) ||
+          (session.actorId === actor.id && session.targetId !== e.id),
+      ),
+  );
   const commands: Parameters<typeof applyCommands>[1] = [
     ...Array.from({ length: waits }, () => ({
       type: "chain",
@@ -71,16 +86,9 @@ export function appendSpeech(
     {
       type: "chain",
       id: actor.id,
-      motionId: speech.action,
+      motionId: speech.action === "sip" && !cup ? "talk" : speech.action,
       duration: length,
-      ...(speech.action === "sip" &&
-      scene.entities.some((e) => e.visible && e.assetId === "cup")
-        ? {
-            targetId: scene.entities.find(
-              (e) => e.visible && e.assetId === "cup",
-            )!.id,
-          }
-        : {}),
+      ...(speech.action === "sip" && cup ? { targetId: cup.id } : {}),
     },
   ];
   const next = applyCommands(scene, commands);
