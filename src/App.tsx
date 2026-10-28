@@ -207,9 +207,22 @@ export default function App() {
       } catch (e) {
         if (active) {
           report((e as Error).message);
-          setSaveState("Working offline");
-          readyRef.current = true;
-          setReady(true);
+          const recovery = localStorage.getItem("scene-maker-recovery");
+          if (recovery) {
+            try {
+              const draft = validateScene(JSON.parse(recovery));
+              sceneRef.current = draft;
+              setScene(draft);
+              setSelected(draft.entities[0]?.id || null);
+              readyRef.current = true;
+              setReady(true);
+              setSaveState("Recovered local changes");
+            } catch {
+              setSaveState("Reconnect to open projects");
+            }
+          } else {
+            setSaveState("Reconnect to open projects");
+          }
         }
       }
     })();

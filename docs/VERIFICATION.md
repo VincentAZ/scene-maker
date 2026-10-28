@@ -45,3 +45,7 @@ The screenshot in [studio-preview.jpg](studio-preview.jpg) is from the live brow
 No provider keys were supplied, so real AI completion, custom character generation from a live prompt, and multi-provider cast conversation cannot be verified here. No Unreal installation was found, so the importer is based on Epic's documented Interchange API and has not run in an editor. There is no established supported Mixamo generation/rigging API in this session; the current integration is file interchange. These limits are not represented as completed features.
 
 Independent product work also remains for unrestricted asset generation, general skeleton retargeting, richer interaction solving, and a complete conversational project lifecycle. Passing the current tests does not close those requirements.
+
+## Development-mode follow-up
+
+Private data access was checked directly against the Vite server: both `/.data/connections.json` and the corresponding `/@fs/` URL return **403** without exposing contents. The private directory is excluded from file watching. Startup failure recovers the existing local draft when available and does not create and save a replacement project. Save retries remain bounded; revision conflicts still require explicit resolution.

@@ -7,7 +7,7 @@ export type ConnectionsData = {
   blender: string;
   providers: Record<string, { connected: boolean; model: string }>;
 };
-export const providerNames: Record<string, string> = {
+const providerNames: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   google: "Google",
