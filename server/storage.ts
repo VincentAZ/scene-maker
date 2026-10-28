@@ -1,0 +1,38 @@
+import fs from "node:fs";
+import path from "node:path";
+import { validateScene, type Scene } from "../shared/scene";
+export const dataDir = path.resolve(process.env.SCENE_MAKER_DATA || ".data");
+fs.mkdirSync(path.join(dataDir, "projects"), { recursive: true, mode: 0o700 });
+fs.mkdirSync(path.join(dataDir, "uploads"), { recursive: true, mode: 0o700 });
+export function readJSON<T>(file: string, fallback: T): T {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return fallback;
+    throw e;
+  }
+}
+export function atomicWrite(file: string, data: unknown) {
+  const temp = file + "." + crypto.randomUUID() + ".tmp";
+  fs.writeFileSync(temp, JSON.stringify(data, null, 2), { mode: 0o600 });
+  fs.renameSync(temp, file);
+}
+export function projectPath(id: string) {
+  if (!/^[a-zA-Z0-9-]+$/.test(id)) throw Error("Invalid project ID.");
+  return path.join(dataDir, "projects", id + ".json");
+}
+export function saveProject(input: unknown): Scene {
+  const scene = validateScene(input),
+    file = projectPath(scene.id),
+    existing = readJSON<Scene | null>(file, null);
+  if (existing && existing.revision !== scene.revision)
+    throw Object.assign(
+      Error(
+        "This project changed in another window. Export your changes before reopening the saved project.",
+      ),
+      { status: 409 },
+    );
+  const saved = { ...scene, revision: scene.revision + 1 };
+  atomicWrite(file, saved);
+  return saved;
+}

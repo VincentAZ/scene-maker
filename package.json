@@ -1,0 +1,47 @@
+{
+  "name": "scene-maker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
+    "build": "tsc -b && vite build",
+    "start": "tsx server/index.ts",
+    "test": "vitest run",
+    "format": "prettier --write src shared server \"tests/*.ts\" README.md docs vite.config.ts",
+    "check": "tsc -b"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.91",
+    "@ai-sdk/google": "^4.0.107",
+    "@ai-sdk/openai": "^4.0.104",
+    "@ai-sdk/openai-compatible": "^3.0.80",
+    "ai": "^7.0.156",
+    "express": "^5.1.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.468.0",
+    "multer": "^2.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.180.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.0.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.0.0",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
