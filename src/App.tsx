@@ -939,7 +939,7 @@ export default function App() {
                       <span>
                         <strong>{m.name}</strong>
                         <small>
-                          {m.duration}s ·{" "}
+                          {Number(m.duration.toFixed(1))}s ·{" "}
                           {m.kind === "custom"
                             ? "Your creation"
                             : "Ready to use"}
@@ -1282,7 +1282,7 @@ export default function App() {
                             setRightTab("details");
                             setPanel(true);
                           }}
-                          title={`${allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${c.duration}s`}
+                          title={`${allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${Number(c.duration.toFixed(1))}s`}
                         >
                           {dialogueClips.has(`${e.id}:${c.id}`) ? (
                             <MessageCircle size={12} />
@@ -2035,8 +2035,9 @@ export default function App() {
             </button>
             <p className="small muted">
               FBX imports need a connected Blender installation. Set it up in
-              Studio settings → Connections. Imported character rigs should use
-              Mixamo bone names for built-in actions.
+              Studio settings → Connections. Original animations come with your
+              character. Studio actions adapt automatically when we can
+              recognize its body.
             </p>
           </div>
         </Modal>

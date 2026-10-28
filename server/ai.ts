@@ -149,6 +149,20 @@ export function offlinePlan(
       response: `Moved the playhead to ${Number(seek[1])} seconds.`,
       steps: [{ type: "playback", mode: "seek", time: Number(seek[1]) }],
     };
+  const focus = text.match(/^(?:frame|focus(?: on)?)\s+(.+?)\.?$/i);
+  if (focus) {
+    const name = focus[1].toLowerCase();
+    const target = scene.entities.find(
+      (entity) =>
+        entity.name.toLowerCase() === name ||
+        (name === "selection" && entity.id === selected),
+    );
+    if (target)
+      return {
+        response: `Framed ${target.name}.`,
+        steps: [{ type: "camera", view: "default", focusId: target.id }],
+      };
+  }
   const named = (pattern: RegExp) =>
     text
       .match(pattern)?.[1]

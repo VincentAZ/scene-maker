@@ -1,4 +1,10 @@
 import * as T from "three";
+import {
+  applyHumanoidPose,
+  nativeRootMotion,
+  sampleNativeClip,
+  humanoidWarning,
+} from "./rig";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import {
   type Asset,
@@ -362,12 +368,23 @@ export function applyEntityPose(
   e: Entity,
   scene: Scene,
   time: number,
+  native = false,
 ) {
   const pose = entityPose(e, scene, time);
   group.position.set(...pose.root);
   group.rotation.set(0, e.rotation, 0);
   group.scale.setScalar(e.scale);
   group.visible = e.visible;
+  group.userData.motionWarning =
+    e.visible &&
+    e.clips.some(
+      (clip) =>
+        allMotions(scene).find((m) => m.id === clip.motionId)?.kind !==
+        "imported",
+    )
+      ? humanoidWarning(group, e.name, native)
+      : "";
+  if (applyHumanoidPose(group, pose.rotations, native)) return;
   const bones = group.userData.bones as Record<string, T.Bone> | undefined;
   if (bones)
     for (const [name, rot] of Object.entries(pose.rotations)) {
@@ -391,29 +408,45 @@ export function applyAnimatedEntityPose(
 ) {
   const mixer = group.userData.mixer as T.AnimationMixer | undefined;
   mixer?.stopAllAction();
-  applyEntityPose(group, entity, scene, time);
-  if (!mixer) return;
+  if (!mixer) {
+    applyEntityPose(group, entity, scene, time);
+    return;
+  }
   let start = 0;
+  const offset = new T.Vector3();
+  let current: { clip: T.AnimationClip; time: number } | undefined;
   for (const clip of entity.clips) {
-    if (time >= start && time < start + clip.duration) {
-      const motion = allMotions(scene).find((m) => m.id === clip.motionId);
-      if (
-        motion?.kind === "imported" &&
-        motion.sourceAssetId === entity.assetId
-      ) {
-        const native = T.AnimationClip.findByName(
-          group.userData.animations,
-          motion.animationName || "",
-        );
-        if (native) {
-          mixer.clipAction(native).reset().play();
-          mixer.setTime(((time - start) * native.duration) / clip.duration);
+    const motion = allMotions(scene).find((m) => m.id === clip.motionId);
+    if (
+      motion?.kind === "imported" &&
+      motion.sourceAssetId === entity.assetId
+    ) {
+      const native = T.AnimationClip.findByName(
+        group.userData.animations,
+        motion.animationName || "",
+      );
+      if (native) {
+        const root = nativeRootMotion(group, native);
+        if (time >= start + clip.duration) {
+          if (root) offset.add(root.delta);
+        } else if (time >= start) {
+          if (root) offset.sub(root.start);
+          current = {
+            clip: native,
+            time: ((time - start) * native.duration) / clip.duration,
+          };
         }
       }
-      return;
     }
+    if (time < start + clip.duration) break;
     start += clip.duration;
   }
+  applyEntityPose(group, entity, scene, time, !!current);
+  if (current) sampleNativeClip(group, current.clip, current.time);
+  offset
+    .multiplyScalar(entity.scale)
+    .applyAxisAngle(new T.Vector3(0, 1, 0), entity.rotation);
+  group.position.add(offset);
 }
 export function disposeObject(root: T.Object3D) {
   root.traverse((o) => {

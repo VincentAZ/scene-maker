@@ -4,18 +4,13 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
-import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { exportSnapshot } from "./exportSnapshot";
+import { bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
+import { configureImportedRig } from "./rig";
 import { interactionSessions, type HoldSession } from "../shared/interactions";
-import {
-  type Scene,
-  allAssets,
-  allMotions,
-  duration,
-  boneNames,
-} from "../shared/scene";
+import { type Scene, allAssets, allMotions, duration } from "../shared/scene";
 import {
   createCharacter,
   createProp,
@@ -155,13 +150,20 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           }
         }
         content.updateMatrixWorld(true);
-        interactionWarning = applyInteractions(
+        const interactionMessages = applyInteractions(
           live.current.scene,
           time,
           objects,
           sessions,
-        )
-          .map((w) => w.message)
+        ).map((w) => w.message);
+        interactionWarning = [
+          ...interactionMessages,
+          ...Array.from(
+            objects.values(),
+            (object) => (object.userData.motionWarning as string) || "",
+          ),
+        ]
+          .filter(Boolean)
           .slice(0, 2)
           .join(" ");
       };
@@ -311,7 +313,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             a.url,
             (gltf) => {
               const obj = new T.Group();
-              const imported = clone(gltf.scene);
+              // Each entity has its own loader result. Keep its node UUIDs so
+              // native animation tracks also bind when a node has no name.
+              const imported = gltf.scene;
               const bounds = new T.Box3().setFromObject(imported);
               const height = bounds.max.y - bounds.min.y;
               imported.scale.setScalar(
@@ -319,42 +323,12 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               );
               imported.position.y = -bounds.min.y * imported.scale.y;
               obj.add(imported);
-              const bones: Record<string, T.Bone> = {};
-              const aliases: Record<string, string> = {
-                hips: "hips",
-                spine: "spine",
-                head: "head",
-                leftarm: "leftArm",
-                leftforearm: "leftForearm",
-                rightarm: "rightArm",
-                rightforearm: "rightForearm",
-                righthand: "rightHand",
-                leftupleg: "leftLeg",
-                leftleg: "leftShin",
-                leftfoot: "leftFoot",
-                rightupleg: "rightLeg",
-                rightleg: "rightShin",
-                rightfoot: "rightFoot",
-              };
-              imported.traverse((o) => {
-                if (o instanceof T.Bone) {
-                  const key = o.name
-                    .replace(/mixamorig[:_]?/i, "")
-                    .toLowerCase();
-                  if (boneNames.includes(o.name as (typeof boneNames)[number]))
-                    bones[o.name] = o;
-                  else if (aliases[key]) bones[aliases[key]] = o;
-                }
-              });
-              obj.userData.bones = bones;
-              obj.userData.rest = Object.fromEntries(
-                Object.entries(bones).map(([name, bone]) => [
-                  name,
-                  bone.quaternion.clone(),
-                ]),
-              );
-              obj.userData.mixer = new T.AnimationMixer(imported);
-              obj.userData.animations = gltf.animations;
+              if (a.category === "characters")
+                configureImportedRig(obj, imported, gltf.animations);
+              else {
+                obj.userData.mixer = new T.AnimationMixer(imported);
+                obj.userData.animations = gltf.animations;
+              }
               setup(obj, e.id);
             },
             undefined,
@@ -461,54 +435,18 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           if (!c) throw Error("The scene is still loading.");
           if (c.objects.size !== live.current.scene.entities.length)
             throw Error("Wait for imported assets to finish loading.");
-          const tracks: T.KeyframeTrack[] = [];
-          const total = duration(live.current.scene),
-            times = Array.from({ length: Math.ceil(total * 24) + 1 }, (_, i) =>
-              Math.min(i / 24, total),
-            );
-          const sampled = new Map<
-            T.Object3D,
-            { positions: number[]; rotations: number[] }
-          >();
-          for (const obj of c.objects.values()) {
-            sampled.set(obj, { positions: [], rotations: [] });
-            obj.traverse((b) => {
-              if (b instanceof T.Bone)
-                sampled.set(b, { positions: [], rotations: [] });
-            });
-          }
-          for (const time of times) {
-            c.renderAt(time);
-            for (const [o, data] of sampled) {
-              data.positions.push(...o.position.toArray());
-              data.rotations.push(...o.quaternion.toArray());
-            }
-          }
-          for (const [o, data] of sampled) {
-            tracks.push(
-              new T.VectorKeyframeTrack(
-                `${o.uuid}.position`,
-                times,
-                data.positions,
-              ),
-            );
-            tracks.push(
-              new T.QuaternionKeyframeTrack(
-                `${o.uuid}.quaternion`,
-                times,
-                data.rotations,
-              ),
-            );
-          }
+          const animation = bakeAnimation(
+            c.objects.values(),
+            duration(live.current.scene),
+            c.renderAt,
+          );
           c.renderAt(0);
           const snapshot = exportSnapshot(c.content);
           c.renderAt(live.current.time);
           try {
             return (await new GLTFExporter().parseAsync(snapshot, {
               binary: true,
-              animations: [
-                new T.AnimationClip("Scene Maker sequence", total, tracks),
-              ],
+              animations: [animation],
               onlyVisible: true,
             })) as ArrayBuffer;
           } finally {
