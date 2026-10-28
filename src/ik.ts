@@ -53,6 +53,7 @@ export function solveLimb(
 }
 export type RigContacts = {
   hand: T.Vector3;
+  leftHand?: T.Vector3;
   leftFoot?: T.Vector3;
   rightFoot?: T.Vector3;
 };
@@ -81,6 +82,13 @@ export function configureRigContacts(group: T.Group): RigContacts | null {
       bones.rightHand,
     ),
   };
+  if (bones.leftArm && bones.leftForearm)
+    contacts.leftHand = extension(
+      bones.leftArm,
+      bones.leftForearm,
+      0.3 / 0.29,
+      bones.leftHand,
+    );
   for (const side of ["left", "right"] as const)
     if (bones[side + "Leg"] && bones[side + "Shin"])
       contacts[(side + "Foot") as "leftFoot" | "rightFoot"] = extension(

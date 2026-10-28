@@ -341,7 +341,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           setup(
             a.category === "characters"
               ? createCharacter(a, e.color)
-              : createProp(a.style, e.color, a.parts),
+              : createProp(a.style, e.color, a.parts, a.ladder),
             e.id,
           );
       }

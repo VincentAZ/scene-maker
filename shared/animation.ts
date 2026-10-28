@@ -3,11 +3,22 @@ import {
   type Motion,
   type Scene,
   allMotions,
+  allAssets,
   boneNames,
 } from "./scene";
+import {
+  ladderProfile,
+  planLadder,
+  sampleLadder,
+  turnPoint,
+  type LadderSample,
+  type Point,
+} from "./ladder";
 export type Pose = {
   root: [number, number, number];
   rotations: Record<string, [number, number, number]>;
+  heading?: number;
+  climb?: LadderSample;
 };
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 export function motionPose(m: Motion, t: number): Pose {
@@ -99,21 +110,66 @@ export function motionPose(m: Motion, t: number): Pose {
   if (m.kind === "bow") r.spine[0] = s * 0.8;
   return p;
 }
-export function entityPose(e: Entity, scene: Scene, time: number): Pose {
+export function entityPose(
+  e: Entity,
+  scene: Scene,
+  time: number,
+  options: {
+    nativeRoot?: (motion: Motion) => { start: Point; delta: Point } | undefined;
+    canClimb?: boolean;
+  } = {},
+): Pose {
   const p: Pose = {
     root: [...e.position],
+    heading: e.rotation,
     rotations: Object.fromEntries(boneNames.map((n) => [n, [0, 0, 0]])),
   };
-  let start = 0,
-    offset = [0, 0, 0];
+  let start = 0;
   const library = allMotions(scene);
+  const addRoot = (offset: Point) => {
+    const world = turnPoint(
+      offset.map((n) => n * e.scale) as Point,
+      p.heading!,
+    );
+    p.root = p.root.map((n, i) => n + world[i]) as Point;
+  };
   for (const clip of e.clips) {
     const m = library.find((m) => m.id === clip.motionId);
     if (!m) continue;
     const end = start + clip.duration;
+    const target =
+      clip.targetId &&
+      scene.entities.find((entity) => entity.id === clip.targetId);
+    const asset =
+      target && allAssets(scene).find((asset) => asset.id === target.assetId);
+    if (m.kind === "climb" && target && asset && ladderProfile(asset)) {
+      const plan = planLadder(
+        p.root,
+        p.heading!,
+        e,
+        target,
+        asset,
+        options.canClimb !== false,
+      );
+      const sample = sampleLadder(plan, (time - start) / clip.duration);
+      p.climb = sample;
+      p.root = sample.root;
+      p.heading = sample.heading;
+      p.rotations = motionPose({ ...m, kind: "idle" }, 0).rotations;
+      if (sample.progress < 0.18 && !plan.warning)
+        p.rotations = motionPose(
+          { ...m, kind: "walk" },
+          sample.progress / 0.18,
+        ).rotations;
+      if (time < end) return p;
+      start = end;
+      continue;
+    }
+    p.climb = undefined;
+    const native = m.kind === "imported" ? options.nativeRoot?.(m) : undefined;
     if (time >= end) {
       const last = motionPose(m, 1);
-      offset = offset.map((v, i) => v + last.root[i]);
+      addRoot(native?.delta || last.root);
       start = end;
       continue;
     }
@@ -121,24 +177,9 @@ export function entityPose(e: Entity, scene: Scene, time: number): Pose {
     if (clip.targetId && ["pick", "sip", "place"].includes(m.kind))
       for (const bone of ["spine", "head", "rightArm", "rightForearm"])
         local.rotations[bone] = [0, 0, 0];
-    p.root = p.root.map(
-      (v, i) => v + (offset[i] + local.root[i]) * e.scale,
-    ) as Pose["root"];
-    const dx = p.root[0] - e.position[0],
-      dz = p.root[2] - e.position[2];
-    p.root[0] =
-      e.position[0] + dx * Math.cos(e.rotation) + dz * Math.sin(e.rotation);
-    p.root[2] =
-      e.position[2] - dx * Math.sin(e.rotation) + dz * Math.cos(e.rotation);
+    addRoot(native ? (native.start.map((n) => -n) as Point) : local.root);
     p.rotations = local.rotations;
     return p;
   }
-  const dx = offset[0] * e.scale,
-    dz = offset[2] * e.scale;
-  p.root = [
-    e.position[0] + dx * Math.cos(e.rotation) + dz * Math.sin(e.rotation),
-    e.position[1] + offset[1] * e.scale,
-    e.position[2] - dx * Math.sin(e.rotation) + dz * Math.cos(e.rotation),
-  ];
   return p;
 }

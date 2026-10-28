@@ -12,6 +12,7 @@ import {
 } from "../shared/interactions";
 import { applyAnimatedEntityPose } from "./world";
 import { configureRigContacts, solveLimb, type RigContacts } from "./ik";
+import { applyClimbContacts } from "./climbing";
 const smooth = (n: number) => {
   const t = Math.min(1, Math.max(0, n));
   return t * t * (3 - 2 * t);
@@ -301,5 +302,5 @@ export function applyInteractions(
       prop.updateWorldMatrix(true, true);
     }
   }
-  return warnings;
+  return [...warnings, ...applyClimbContacts(scene, objects, occupiedActors)];
 }

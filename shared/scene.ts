@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { interactionSessions } from "./interactions";
+import { ladderProfile } from "./ladder";
 export const providers = [
   "openai",
   "anthropic",
@@ -119,6 +120,19 @@ export const assetSchema = z.object({
   parts: z.array(shapeSchema).max(256).optional(),
   grip: vec3.optional(),
   mouth: vec3.optional(),
+  ladder: z
+    .object({
+      height: z.number().min(0.5).max(20),
+      width: z.number().min(0.3).max(3),
+      firstRung: z.number().min(0.05).max(1),
+      spacing: z.number().min(0.1).max(0.8),
+      rungs: z.number().int().min(3).max(32),
+    })
+    .refine(
+      (p) => p.firstRung + (p.rungs - 1) * p.spacing < p.height,
+      "Ladder rungs must fit below its top.",
+    )
+    .optional(),
 });
 export type Asset = z.infer<typeof assetSchema>;
 export const clipSchema = z.object({
@@ -305,7 +319,7 @@ export const motions: Motion[] = [
   ["sit", "Sit down", 2, 0],
   ["dance", "Little dance", 4, 0],
   ["crawl", "Crawl", 4, 1.6],
-  ["climb", "Climb a ladder", 4, 1],
+  ["climb", "Climb a ladder", 6, 1],
   ["pick", "Pick up", 2, 0],
   ["place", "Put down", 2, 0],
   ["sip", "Take a sip", 3, 0],
@@ -440,6 +454,20 @@ export function validateScene(input: unknown): Scene {
         throw Error("Unknown action in scene.");
       if (c.targetId && !s.entities.some((t) => t.id === c.targetId))
         throw Error("Missing action target.");
+      if (
+        c.targetId &&
+        allMotions(s).find((m) => m.id === c.motionId)!.kind === "climb"
+      ) {
+        if (
+          allAssets(s).find((a) => a.id === e.assetId)!.category !==
+          "characters"
+        )
+          throw Error("Choose a character to climb the ladder.");
+        const target = s.entities.find((t) => t.id === c.targetId)!;
+        const asset = allAssets(s).find((a) => a.id === target.assetId)!;
+        if (asset.category !== "props" || !ladderProfile(asset))
+          throw Error("Choose a ladder with known rungs for this climb.");
+      }
       if (
         c.targetId &&
         ["pick", "sip", "place"].includes(

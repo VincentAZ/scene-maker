@@ -42,6 +42,7 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import JSZip from "jszip";
+import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { dialogueSubtitles } from "../shared/conversation";
 import {
   readConversationStream,
@@ -927,8 +928,31 @@ export default function App() {
                           report("Choose a character in your scene first.");
                           return;
                         }
+                        const ladder =
+                          m.kind === "climb"
+                            ? nearestLadder(
+                                scene.entities,
+                                allAssets(scene),
+                                entity,
+                              )
+                            : undefined;
+                        if (m.kind === "climb" && !ladder) {
+                          toast(
+                            "Add a ladder from Props, then try this action.",
+                          );
+                          return;
+                        }
                         execute([
-                          { type: "chain", id: entity.id, motionId: m.id },
+                          {
+                            type: "chain",
+                            id: entity.id,
+                            motionId: m.id,
+                            ...(m.kind === "climb"
+                              ? {
+                                  targetId: ladder?.id,
+                                }
+                              : {}),
+                          },
                         ]);
                         toast(`${m.name} added to ${entity.name}’s sequence`);
                       }}
@@ -1690,7 +1714,7 @@ export default function App() {
                                 />
                                 <span>sec</span>
                               </div>
-                              {["sip", "pick", "place"].includes(
+                              {["sip", "pick", "place", "climb"].includes(
                                 allMotions(scene).find(
                                   (m) => m.id === c.motionId,
                                 )?.kind || "",
@@ -1712,14 +1736,26 @@ export default function App() {
                                     })
                                   }
                                 >
-                                  <option value="">Choose a prop…</option>
+                                  <option value="">
+                                    {allMotions(scene).find(
+                                      (m) => m.id === c.motionId,
+                                    )?.kind === "climb"
+                                      ? "Choose a ladder…"
+                                      : "Choose a prop…"}
+                                  </option>
                                   {scene.entities
-                                    .filter(
-                                      (e) =>
-                                        allAssets(scene).find(
-                                          (a) => a.id === e.assetId,
-                                        )?.category === "props",
-                                    )
+                                    .filter((e) => {
+                                      const asset = allAssets(scene).find(
+                                        (a) => a.id === e.assetId,
+                                      );
+                                      return (
+                                        asset?.category === "props" &&
+                                        (allMotions(scene).find(
+                                          (m) => m.id === c.motionId,
+                                        )?.kind !== "climb" ||
+                                          ladderProfile(asset))
+                                      );
+                                    })
                                     .map((e) => (
                                       <option value={e.id} key={e.id}>
                                         {e.name}

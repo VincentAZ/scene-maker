@@ -35,6 +35,8 @@ For a prop interaction, position the character within reach and ask “Leo pick 
 
 Projects save automatically on the local service with revision checks. A recovery copy is stored in this browser; conflicting remote revisions are never silently overwritten. Undo history lasts for the current session. Switching projects waits for all pending edits to save. Failed operations stop an assistant workflow and identify any steps that already completed.
 
+For a ladder climb, add a ladder and ask “Jack climb the ladder”. Jack approaches its front, alternates hands and feet between rungs, and finishes in an upper-rung stance. Details lets you choose another ladder and adjust duration. The action library selects the nearest visible ladder; the assistant can target one by name. Both hands must be free. A final climb holds its stance, while a following action starts from that height and facing direction. Stage the exit yourself: this action does not navigate around obstacles or step onto a platform. Imported or custom-part ladders need accurate rung metadata; unknown rungs are not inferred from geometry.
+
 ## Connect AI and production tools
 
 Technical controls are **two steps deep: Studio settings → Connections**.
@@ -75,6 +77,8 @@ blender --background --python-exit-code 1 --python tests/verify_blender.py -- sc
 The verification script checks the two starter rigs, 22 bones, and actual pose changes, then creates a character FBX fixture for the conversion path. It is intentionally specific to the starter scene.
 
 For an exported built-in character whose first actions are Pick up → Take a sip → Put down on a reachable coffee cup, `tests/verify_interactions_blender.py` accepts the resulting `scene.blend` and `scene.json`. It measures baked hand/grip and rim/mouth contact, lift, and return to the original transform. Interaction unit tests also cover low reaches, reverse scrubbing, ownership conflicts, unreachable staging, and preservation of imported body animation while carrying.
+
+`tests/verify_ladder_blender.py` checks a built-in ladder climb in the browser-exported Blender file against physical rung positions. It verifies planted hand/foot contact at 24 fps and the final held stance. [Ladder preview](docs/ladder-preview.jpg) shows the browser result.
 
 `tests/create_imported_fixture.py` creates an original weighted T-pose FBX/GLB with namespaced joints, different bone axes, and native translation. After importing it and exporting a native → native → wave → walk sequence, `tests/verify_imported_blender.py` checks the resulting Blender file against the packaged source asset. The animated export includes parent transforms, scale, and morph weights as well as bones. The offline assistant also supports “Focus on Rowan” to frame a named character or object.
 

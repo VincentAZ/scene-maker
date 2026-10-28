@@ -22,13 +22,31 @@ export function interactionSessions(
   motions: Motion[],
 ): HoldSession[] {
   const sessions: HoldSession[] = [];
+  const climbs: {
+    actorId: string;
+    targetId: string;
+    start: number;
+    end: number;
+  }[] = [];
   for (const actor of scene.entities) {
     if (!actor.visible) continue;
     let start = 0,
       held: HoldSession | null = null;
-    for (const clip of actor.clips) {
+    for (const [index, clip] of actor.clips.entries()) {
       const kind = motions.find((m) => m.id === clip.motionId)?.kind;
       const end = start + clip.duration;
+      if (clip.targetId && kind === "climb") {
+        if (held)
+          throw Error(
+            `${actor.name} needs both hands to climb. Add Put down first.`,
+          );
+        climbs.push({
+          actorId: actor.id,
+          targetId: clip.targetId,
+          start,
+          end: index === actor.clips.length - 1 ? Infinity : end,
+        });
+      }
       if (
         clip.targetId &&
         (kind === "pick" || kind === "sip" || kind === "place")
@@ -82,6 +100,27 @@ export function interactionSessions(
           "Two characters cannot hold the same prop at the same time. Put it down before the next character picks it up.",
         );
   }
+  const uses = [
+    ...climbs,
+    ...sessions.map((s) => ({
+      actorId: s.actorId,
+      targetId: s.targetId,
+      start: s.acquire.start,
+      end: s.end,
+    })),
+  ];
+  for (const climb of climbs)
+    for (const use of uses) {
+      if (
+        climb !== use &&
+        climb.targetId === use.targetId &&
+        climb.start < use.end &&
+        use.start < climb.end
+      )
+        throw Error(
+          "Use this ladder with one character at a time, and leave it in place while climbing.",
+        );
+    }
   return sessions.sort((a, b) => a.acquire.start - b.acquire.start);
 }
 export function interactionPhase(session: HoldSession, time: number) {

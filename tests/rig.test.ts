@@ -60,6 +60,71 @@ function native(scene: Scene, name: string, duration = 2) {
   return { id: crypto.randomUUID(), motionId: name, duration };
 }
 describe("imported humanoid calibration", () => {
+  it("leaves an incompatible imported rig at the base instead of attempting a climb", () => {
+    const f = fixture();
+    f.source.scale.y = 1.1;
+    f.scene.entities = [
+      f.entity,
+      {
+        ...f.scene.entities[3],
+        id: "ladder",
+        name: "Ladder",
+        assetId: "ladder",
+        position: [0, 0, 0],
+        clips: [],
+      },
+    ];
+    f.entity.clips = [
+      { id: "climb", motionId: "climb", duration: 6, targetId: "ladder" },
+    ];
+    f.configure();
+    f.sample(4);
+    expect(f.group.position.toArray()).toEqual(f.entity.position);
+    expect(f.group.userData.climb.plan.warning).toContain("recognizable");
+  });
+  it("places all four climbing contacts on an imported T-pose rig with rotated bone axes", () => {
+    const f = fixture(true, true);
+    f.scene.entities = [
+      f.entity,
+      {
+        ...f.scene.entities[3],
+        id: "ladder",
+        name: "Ladder",
+        assetId: "ladder",
+        position: [0, 0, 0],
+        clips: [],
+      },
+    ];
+    f.entity.position = [0.8, 0, 1.5];
+    f.entity.clips = [
+      { id: "climb", motionId: "climb", duration: 6, targetId: "ladder" },
+    ];
+    f.configure();
+    const objects = new Map([
+      [f.entity.id, f.group],
+      ["ladder", createProp("ladder", "#777777")],
+    ]);
+    for (let time = 1.8; time <= 6; time += 0.12) {
+      f.sample(time);
+      expect(applyInteractions(f.scene, time, objects)).toEqual([]);
+      for (const side of ["left", "right"])
+        for (const hand of [true, false]) {
+          const key = side + (hand ? "Hand" : "Foot");
+          const point = f.bones[
+            side + (hand ? "Forearm" : "Shin")
+          ].localToWorld(
+            f.group.userData.contacts[
+              key === "rightHand" ? "hand" : key
+            ].clone(),
+          );
+          expect(
+            point.distanceTo(
+              new T.Vector3(...f.group.userData.climb.contacts[key]),
+            ),
+          ).toBeLessThan(1e-5);
+        }
+    }
+  });
   it("keeps targeted cup contact on a calibrated T-pose rig with rotated axes", () => {
     const f = fixture(true, true),
       cup = f.scene.entities.find((e) => e.assetId === "cup")!;

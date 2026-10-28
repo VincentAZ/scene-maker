@@ -13,7 +13,8 @@ import {
   boneNames,
   allMotions,
 } from "../shared/scene";
-import { entityPose } from "../shared/animation";
+import { entityPose, type Pose } from "../shared/animation";
+import { defaultLadder } from "../shared/ladder";
 const material = (color: string) =>
   new T.MeshStandardMaterial({ color, roughness: 0.85 });
 export function box(
@@ -201,6 +202,7 @@ export function createProp(
   style: string,
   color: string,
   parts?: Asset["parts"],
+  ladder?: Asset["ladder"],
 ) {
   const g = new T.Group();
   const add = (m: T.Object3D) => g.add(m);
@@ -225,6 +227,7 @@ export function createProp(
     }
     return g;
   }
+  if (ladder) style = "ladder";
   if (style === "cup") {
     add(cylinder(0.085, 0.065, 0.15, color, 0, 0.075));
     add(cylinder(0.073, 0.073, 0.005, "#59402d", 0, 0.152));
@@ -255,10 +258,21 @@ export function createProp(
     add(cylinder(0.25, 0.27, 0.05, "#4b5148", 0, 0.03));
     add(cylinder(0.025, 0.025, 1.65, color, 0, 0.85));
     add(cylinder(0.18, 0.4, 0.4, color, 0, 1.7));
-  } else if (style === "ladder") {
-    for (const x of [-0.3, 0.3]) add(box(0.08, 2.5, 0.08, color, x, 1.25));
-    for (let i = 0; i < 7; i++)
-      add(box(0.6, 0.065, 0.065, color, 0, 0.2 + i * 0.35));
+  } else if (style === "ladder" || ladder) {
+    const profile = ladder || defaultLadder;
+    for (const x of [-profile.width / 2, profile.width / 2])
+      add(box(0.08, profile.height, 0.08, color, x, profile.height / 2));
+    for (let i = 0; i < profile.rungs; i++)
+      add(
+        box(
+          profile.width,
+          0.065,
+          0.065,
+          color,
+          0,
+          profile.firstRung + i * profile.spacing,
+        ),
+      );
   } else if (style === "chair" || style === "bench") {
     const w = style === "bench" ? 1.8 : 0.5;
     add(box(w, 0.08, 0.48, color, 0, 0.5));
@@ -369,12 +383,14 @@ export function applyEntityPose(
   scene: Scene,
   time: number,
   native = false,
+  evaluated?: Pose,
 ) {
-  const pose = entityPose(e, scene, time);
+  const pose = evaluated || entityPose(e, scene, time);
   group.position.set(...pose.root);
-  group.rotation.set(0, e.rotation, 0);
+  group.rotation.set(0, pose.heading ?? e.rotation, 0);
   group.scale.setScalar(e.scale);
   group.visible = e.visible;
+  group.userData.climb = pose.climb;
   group.userData.motionWarning =
     e.visible &&
     e.clips.some(
@@ -408,12 +424,38 @@ export function applyAnimatedEntityPose(
 ) {
   const mixer = group.userData.mixer as T.AnimationMixer | undefined;
   mixer?.stopAllAction();
+  const bones = group.userData.bones as Record<string, T.Bone> | undefined;
+  const pose = entityPose(entity, scene, time, {
+    canClimb:
+      !!bones &&
+      !humanoidWarning(group, entity.name, false) &&
+      [
+        "leftArm",
+        "leftForearm",
+        "rightArm",
+        "rightForearm",
+        "leftLeg",
+        "leftShin",
+        "rightLeg",
+        "rightShin",
+      ].every((name) => bones[name]),
+    nativeRoot: (motion) => {
+      if (!mixer || motion.sourceAssetId !== entity.assetId) return;
+      const native = T.AnimationClip.findByName(
+        group.userData.animations,
+        motion.animationName || "",
+      );
+      const root = native && nativeRootMotion(group, native);
+      return root
+        ? { start: root.start.toArray(), delta: root.delta.toArray() }
+        : undefined;
+    },
+  });
   if (!mixer) {
-    applyEntityPose(group, entity, scene, time);
+    applyEntityPose(group, entity, scene, time, false, pose);
     return;
   }
   let start = 0;
-  const offset = new T.Vector3();
   let current: { clip: T.AnimationClip; time: number } | undefined;
   for (const clip of entity.clips) {
     const motion = allMotions(scene).find((m) => m.id === clip.motionId);
@@ -426,11 +468,7 @@ export function applyAnimatedEntityPose(
         motion.animationName || "",
       );
       if (native) {
-        const root = nativeRootMotion(group, native);
-        if (time >= start + clip.duration) {
-          if (root) offset.add(root.delta);
-        } else if (time >= start) {
-          if (root) offset.sub(root.start);
+        if (time >= start && time < start + clip.duration) {
           current = {
             clip: native,
             time: ((time - start) * native.duration) / clip.duration,
@@ -441,12 +479,8 @@ export function applyAnimatedEntityPose(
     if (time < start + clip.duration) break;
     start += clip.duration;
   }
-  applyEntityPose(group, entity, scene, time, !!current);
+  applyEntityPose(group, entity, scene, time, !!current, pose);
   if (current) sampleNativeClip(group, current.clip, current.time);
-  offset
-    .multiplyScalar(entity.scale)
-    .applyAxisAngle(new T.Vector3(0, 1, 0), entity.rotation);
-  group.position.add(offset);
 }
 export function disposeObject(root: T.Object3D) {
   root.traverse((o) => {
