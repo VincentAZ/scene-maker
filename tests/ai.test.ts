@@ -21,14 +21,112 @@ function model(output: unknown) {
   });
 }
 describe("live AI contract with deterministic model responses", () => {
+  it("includes follow-up history and binds opened projects to the revision used for planning", async () => {
+    const current = starterScene(),
+      target = { ...starterScene(), name: "Warehouse story", revision: 7 };
+    const fake = model({
+      response: "Ready",
+      steps: [
+        { type: "openProject", id: target.id },
+        {
+          type: "edit",
+          commands: [
+            {
+              type: "update",
+              id: target.entities[0].id,
+              changes: { scale: 1.2 },
+            },
+          ],
+        },
+        { type: "save" },
+      ],
+    });
+    let reads = 0;
+    const result = await assistant(
+      config,
+      current,
+      "Open Warehouse story and make her taller",
+      undefined,
+      () => fake,
+      {
+        history: [{ role: "user", text: "Mila is our lead" }],
+        projects: [
+          {
+            id: target.id,
+            name: target.name,
+            revision: target.revision,
+            environment: target.environment,
+            updated: 1,
+          },
+        ],
+        readProject: () => {
+          reads++;
+          return { ...target, revision: reads === 1 ? 7 : 8 };
+        },
+      },
+    );
+    expect(result.reads[target.id]).toBe(7);
+    expect(reads).toBe(1);
+    expect(JSON.stringify(fake.doGenerateCalls[0].prompt)).toContain(
+      "Mila is our lead",
+    );
+    expect(JSON.stringify(fake.doGenerateCalls[0].prompt)).toContain(
+      target.entities[0].id,
+    );
+  });
+  it("creates and opens named projects through the labeled offline helper", async () => {
+    const current = starterScene(),
+      target = { ...starterScene(), name: "My story", revision: 3 };
+    const offline = { ...config, assistant: null };
+    const created = await assistant(
+      offline,
+      current,
+      "Create a new scene called My next story",
+    );
+    expect(created.steps).toEqual([
+      { type: "newProject", name: "My next story", template: "empty" },
+      { type: "save" },
+    ]);
+    const opened = await assistant(
+      offline,
+      current,
+      "Open My story",
+      undefined,
+      undefined,
+      {
+        projects: [
+          {
+            id: target.id,
+            name: target.name,
+            revision: 3,
+            environment: target.environment,
+            updated: 1,
+          },
+        ],
+        readProject: () => target,
+      },
+    );
+    expect(opened.steps).toEqual([{ type: "openProject", id: target.id }]);
+    expect(opened.reads[target.id]).toBe(3);
+  });
   it("parses a real SDK structured response and validates commands before editing", async () => {
     const s = starterScene(),
       fake = model({
         response: "A new friend joins your scene.",
-        commands: [
-          { type: "add", assetId: "ava", name: "Alex", position: [2, 0, 1] },
+        steps: [
+          {
+            type: "edit",
+            commands: [
+              {
+                type: "add",
+                assetId: "ava",
+                name: "Alex",
+                position: [2, 0, 1],
+              },
+            ],
+          },
+          { type: "playback", mode: "play" },
         ],
-        activity: "play",
       });
     const result = await assistant(
       config,
@@ -38,17 +136,16 @@ describe("live AI contract with deterministic model responses", () => {
       () => fake,
     );
     expect(result.mode).toBe("live");
-    expect(result.activity).toBe("play");
-    expect(applyCommands(s, result.commands).entities.at(-1)?.name).toBe(
-      "Alex",
-    );
+    expect(result.steps[1]).toEqual({ type: "playback", mode: "play" });
+    const edit = result.steps[0];
+    if (edit.type !== "edit") throw Error("Expected an edit");
+    expect(applyCommands(s, edit.commands).entities.at(-1)?.name).toBe("Alex");
     expect(fake.doGenerateCalls[0].responseFormat?.type).toBe("json");
   });
   it("rejects hallucinated object IDs before returning a successful assistant response", async () => {
     const fake = model({
       response: "Done.",
-      commands: [{ type: "remove", id: "missing" }],
-      activity: "none",
+      steps: [{ type: "edit", commands: [{ type: "remove", id: "missing" }] }],
     });
     await expect(
       assistant(config, starterScene(), "remove one", undefined, () => fake),

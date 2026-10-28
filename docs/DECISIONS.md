@@ -23,3 +23,12 @@
 - The repository was created as private at `VincentAZ/scene-maker` using the signed-in GitHub UI. Existing SSH authentication is used for the push.
 
 - Generated assets can carry up to 256 validated geometric parts (sphere, box, cylinder, cone, torus), with transforms, colors, and character bone bindings. Blender materializes custom characters; the preview builds custom props from the same declarative schema. This supports new shapes without executing generated code.
+
+## Assistant workflow follow-through
+
+- Assistant requests return ordered, schema-validated studio steps. Scene edits, new/copy/open/save, object selection, camera framing, playback, cast conversation, library search, exports, history, and tool navigation share a single executor. Credentials remain outside chat in Connections.
+- A workflow stops on its first failed operation and reports the steps that completed. Its success response appears only after execution. Completed edits remain available for undo; exports and conversation requests are not silently retried.
+- Project switches wait for a serialized save queue to drain, including edits made during an in-flight save. Opening a saved project verifies the revision used for planning. Reopening the current project retains its current content; revisiting an earlier project in the same workflow uses the revision saved by that workflow.
+- The live planner receives up to 20 recent chat messages, project summaries, and up to three explicitly named saved project definitions. Snapshot caching binds validation to the same project data the planner saw. Undo/redo must be isolated from further plan steps because their resulting state belongs to the browser's session history.
+- Exports wait for the requested scene and its imported assets to render, then bake animation against an isolated copy of the skeletons, geometry, and materials. Editing or switching scenes cannot mutate an export in progress.
+- File imports remain an explicit local file-selection flow. The offline helper offers named project operations and a documented fixed command vocabulary; open-ended planning still requires a provider.

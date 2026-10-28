@@ -36,3 +36,25 @@ export function saveProject(input: unknown): Scene {
   atomicWrite(file, saved);
   return saved;
 }
+
+export function readProject(id: string): Scene {
+  const found = readJSON<Scene | null>(projectPath(id), null);
+  if (!found) throw Object.assign(Error("Project not found."), { status: 404 });
+  return validateScene(found);
+}
+export function listProjects() {
+  return fs
+    .readdirSync(path.join(dataDir, "projects"))
+    .filter((f) => f.endsWith(".json"))
+    .map((file) => {
+      const s = readProject(file.slice(0, -5));
+      return {
+        id: s.id,
+        name: s.name,
+        revision: s.revision,
+        environment: s.environment,
+        updated: fs.statSync(projectPath(s.id)).mtimeMs,
+      };
+    })
+    .sort((a, b) => b.updated - a.updated);
+}

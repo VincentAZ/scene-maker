@@ -5,6 +5,7 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import { exportSnapshot } from "./exportSnapshot";
 import {
   type Scene,
   allAssets,
@@ -24,6 +25,8 @@ export type ViewportHandle = {
   screenshot: () => void;
   exportGLB: () => Promise<ArrayBuffer>;
   reset: () => void;
+  frame: (view: "default" | "front" | "side" | "top", focusId?: string) => void;
+  waitForScene: (scene: Scene) => Promise<void>;
 };
 type Props = {
   scene: Scene;
@@ -36,11 +39,25 @@ type Props = {
   onError: (text: string) => void;
   move: boolean;
 };
+const modelKey = (scene: Scene) =>
+  JSON.stringify([
+    scene.environment,
+    scene.lighting,
+    scene.entities.map((e) => [
+      e.id,
+      e.assetId,
+      e.color,
+      allAssets(scene).find((a) => a.id === e.assetId),
+    ]),
+  ]);
+const stateKey = (scene: Scene) => JSON.stringify({ ...scene, revision: 0 });
 export const Viewport = forwardRef<ViewportHandle, Props>(
   function Viewport(props, ref) {
     const host = useRef<HTMLDivElement>(null),
       live = useRef(props);
     live.current = props;
+    const readyKey = useRef("");
+    const requestedModelKey = modelKey(props.scene);
     const context = useRef<{
       renderer: T.WebGLRenderer;
       world: T.Scene;
@@ -257,6 +274,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       const ctx = context.current;
       if (!ctx) return;
       let cancelled = false;
+      readyKey.current = "";
       ctx.transform.detach();
       for (const c of [...ctx.content.children]) {
         ctx.content.remove(c);
@@ -298,6 +316,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         });
         ctx.objects.set(id, obj);
         ctx.content.add(obj);
+        if (ctx.objects.size === props.scene.entities.length)
+          readyKey.current = requestedModelKey;
         if (live.current.move && live.current.selected === id)
           ctx.transform.attach(obj);
       };
@@ -366,16 +386,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             e.id,
           );
       }
+      if (!props.scene.entities.length) readyKey.current = requestedModelKey;
       return () => {
         cancelled = true;
       };
-    }, [
-      props.scene.environment,
-      props.scene.lighting,
-      props.scene.entities
-        .map((e) => `${e.id}:${e.assetId}:${e.color}`)
-        .join("|"),
-    ]);
+    }, [requestedModelKey]);
     useEffect(() => {
       const c = context.current;
       if (!c) return;
@@ -386,6 +401,58 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        async waitForScene(scene) {
+          const desired = stateKey(scene),
+            models = modelKey(scene),
+            start = performance.now();
+          while (performance.now() - start < 30000) {
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            );
+            if (
+              context.current &&
+              readyKey.current === models &&
+              stateKey(live.current.scene) === desired
+            )
+              return;
+          }
+          throw Error(
+            "The requested scene is not ready to export. Wait for imported assets or retry after finishing your edits.",
+          );
+        },
+        frame(view, focusId) {
+          const c = context.current;
+          if (!c) throw Error("The view is not ready.");
+          c.renderAt(live.current.time);
+          const object = focusId ? c.objects.get(focusId) : undefined;
+          if (focusId && !object)
+            throw Error("The selected object is not loaded.");
+          const target = object
+            ? new T.Box3().setFromObject(object).getCenter(new T.Vector3())
+            : new T.Vector3(0, 0.85, -0.5);
+          const distance = object
+            ? Math.max(
+                2,
+                new T.Box3()
+                  .setFromObject(object)
+                  .getSize(new T.Vector3())
+                  .length() * 1.5,
+              )
+            : 12;
+          const direction = new T.Vector3(
+            ...((view === "front"
+              ? [0, 0.12, 1]
+              : view === "side"
+                ? [1, 0.12, 0]
+                : view === "top"
+                  ? [0.001, 1, 0.001]
+                  : [0.8, 0.65, 1]) as [number, number, number]),
+          ).normalize();
+          c.controls.target.copy(target);
+          c.camera.position.copy(target).addScaledVector(direction, distance);
+          c.controls.update();
+          c.renderer.render(c.world, c.camera);
+        },
         reset() {
           const c = context.current;
           if (c) {
@@ -396,6 +463,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         screenshot() {
           const c = context.current;
           if (!c) return;
+          c.renderAt(live.current.time);
+          c.controls.update();
+          c.renderer.render(c.world, c.camera);
           const a = document.createElement("a");
           a.href = c.renderer.domElement.toDataURL("image/png");
           a.download = "scene-maker.png";
@@ -417,8 +487,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           >();
           for (const obj of c.objects.values()) {
             sampled.set(obj, { positions: [], rotations: [] });
-            const bones = obj.userData.bones as
-              Record<string, T.Bone> | undefined;
             obj.traverse((b) => {
               if (b instanceof T.Bone)
                 sampled.set(b, { positions: [], rotations: [] });
@@ -448,12 +516,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             );
           }
           c.renderAt(0);
-          const saved = [...c.objects.values()].map(
-            (o) => [o, o.userData] as const,
-          );
-          for (const [o] of saved) o.userData = {};
+          const snapshot = exportSnapshot(c.content);
+          c.renderAt(live.current.time);
           try {
-            return (await new GLTFExporter().parseAsync(c.content, {
+            return (await new GLTFExporter().parseAsync(snapshot, {
               binary: true,
               animations: [
                 new T.AnimationClip("Scene Maker sequence", total, tracks),
@@ -461,8 +527,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               onlyVisible: true,
             })) as ArrayBuffer;
           } finally {
-            for (const [o, data] of saved) o.userData = data;
-            c.renderAt(live.current.time);
+            disposeObject(snapshot);
           }
         },
       }),

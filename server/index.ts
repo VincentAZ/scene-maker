@@ -11,9 +11,12 @@ import {
   readJSON,
   projectPath,
   saveProject,
+  readProject,
+  listProjects,
 } from "./storage";
 import { assistant, conversation, type Config } from "./ai";
 import { validateScene, providers, type Scene } from "../shared/scene";
+import { conversationHistorySchema } from "../shared/studio";
 const run = promisify(execFile);
 const configFile = path.join(dataDir, "connections.json");
 const config = () =>
@@ -66,33 +69,10 @@ app.use(
   }),
 );
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
-app.get("/api/projects", (_req, res) => {
-  const projects = fs
-    .readdirSync(path.join(dataDir, "projects"))
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => {
-      const s = readJSON<Scene | null>(path.join(dataDir, "projects", f), null);
-      return s
-        ? {
-            id: s.id,
-            name: s.name,
-            revision: s.revision,
-            environment: s.environment,
-            updated: fs.statSync(path.join(dataDir, "projects", f)).mtimeMs,
-          }
-        : null;
-    })
-    .filter(Boolean);
-  res.json(projects.sort((a, b) => b!.updated - a!.updated));
-});
-app.get("/api/projects/:id", (req, res) => {
-  const scene = readJSON(projectPath(String(req.params.id)), null);
-  if (!scene) {
-    res.status(404).json({ error: "Project not found." });
-    return;
-  }
-  res.json(scene);
-});
+app.get("/api/projects", (_req, res) => res.json(listProjects()));
+app.get("/api/projects/:id", (req, res) =>
+  res.json(readProject(String(req.params.id))),
+);
 app.put("/api/projects/:id", (req, res) => {
   if (req.body.id !== req.params.id) throw Error("Project ID mismatch.");
   res.json(saveProject(req.body));
@@ -139,8 +119,21 @@ app.put("/api/connections", (req, res) => {
 app.post("/api/assistant", async (req, res) => {
   const scene = validateScene(req.body.scene),
     prompt = z.string().min(1).max(8000).parse(req.body.prompt);
-  const result = await assistant(config(), scene, prompt, req.body.selected);
-  for (const command of result.commands) {
+  const result = await assistant(
+    config(),
+    scene,
+    prompt,
+    req.body.selected,
+    undefined,
+    {
+      projects: listProjects(),
+      readProject,
+      history: conversationHistorySchema.parse(req.body.history || []),
+    },
+  );
+  for (const command of result.steps.flatMap((step) =>
+    step.type === "edit" ? step.commands : [],
+  )) {
     if (
       command.type === "createAsset" &&
       command.asset.category === "characters" &&

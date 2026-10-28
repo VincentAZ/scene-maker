@@ -42,6 +42,9 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import JSZip from "jszip";
+import { type AssistantReply, type StudioStep } from "../shared/studio";
+import { runStudioPlan, StudioPlanError } from "./studioRunner";
+import { ProjectSaveQueue } from "./projectSave";
 import {
   type Scene,
   type Entity,
@@ -118,7 +121,6 @@ export default function App() {
       past: [],
       future: [],
     }),
-    saving = useRef(false),
     saveBlocked = useRef(false),
     saveRetries = useRef(0),
     readyRef = useRef(false),
@@ -133,31 +135,30 @@ export default function App() {
     setNotice(text);
     setTimeout(() => setNotice(""), 4000);
   };
-  const save = useCallback(async () => {
-    if (!readyRef.current || saving.current || saveBlocked.current) return;
-    saving.current = true;
-    const snapshot = sceneRef.current;
-    setSaveState("Saving…");
-    try {
-      const saved = await api<Scene>(`/api/projects/${snapshot.id}`, {
-        method: "PUT",
-        body: JSON.stringify(snapshot),
-      });
-      if (sceneRef.current.id === saved.id) {
-        const current = sceneRef.current;
-        const next = { ...current, revision: saved.revision };
+  const saveQueue = useRef<ProjectSaveQueue | null>(null);
+  if (!saveQueue.current)
+    saveQueue.current = new ProjectSaveQueue(
+      () => sceneRef.current,
+      (next) => {
         sceneRef.current = next;
         setScene(next);
-        localStorage.setItem("scene-maker-last", saved.id);
+        localStorage.setItem("scene-maker-last", next.id);
         localStorage.setItem("scene-maker-recovery", JSON.stringify(next));
-        setSaveState("All changes saved");
-        saveRetries.current = 0;
-        if (sameContent(snapshot) !== sameContent(current)) {
-          saving.current = false;
-          void save();
-          return;
-        }
-      }
+      },
+      (snapshot) =>
+        api<Scene>(`/api/projects/${snapshot.id}`, {
+          method: "PUT",
+          body: JSON.stringify(snapshot),
+        }),
+    );
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!readyRef.current || saveBlocked.current) return false;
+    setSaveState("Saving…");
+    try {
+      await saveQueue.current!.flush();
+      setSaveState("All changes saved");
+      saveRetries.current = 0;
+      return true;
     } catch (e) {
       setSaveState("Changes not saved");
       if (
@@ -170,10 +171,15 @@ export default function App() {
         saveBlocked.current = true;
         report((e as Error).message);
       }
-    } finally {
-      saving.current = false;
+      return false;
     }
   }, [report]);
+  async function saveOrThrow() {
+    if (!(await save()))
+      throw Error(
+        "Your current project could not be saved. Your changes are still here; the requested operation has stopped.",
+      );
+  }
   useEffect(() => {
     let active = true;
     (async () => {
@@ -244,6 +250,7 @@ export default function App() {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy]);
   const change = (next: Scene) => {
+    next = validateScene(next);
     history.current.past.push(structuredClone(sceneRef.current));
     if (history.current.past.length > 60) history.current.past.shift();
     history.current.future = [];
@@ -331,14 +338,17 @@ export default function App() {
     setBusy(true);
     const starting = sceneRef.current;
     try {
-      const result = await api<{
-        response: string;
-        commands: Command[];
-        mode: string;
-        activity?: string;
-      }>("/api/assistant", {
+      const result = await api<AssistantReply>("/api/assistant", {
         method: "POST",
-        body: JSON.stringify({ scene: starting, prompt: text, selected }),
+        body: JSON.stringify({
+          scene: starting,
+          prompt: text,
+          selected,
+          history: messages
+            .filter((m) => m.mode !== "welcome" && m.mode !== "error")
+            .slice(-20)
+            .map(({ role, text }) => ({ role, text })),
+        }),
       });
       if (
         sceneRef.current.id !== starting.id ||
@@ -347,38 +357,126 @@ export default function App() {
         throw Error(
           "The scene changed while the assistant was thinking. Please ask again with the latest scene.",
         );
-      if (result.commands.length) execute(result.commands);
+      const completed = await runStudioPlan(result, {
+        getScene: () => sceneRef.current,
+        save: saveOrThrow,
+        load: loadScene,
+        read: (id) => api<Scene>("/api/projects/" + id),
+        edit: (commands) => change(applyCommands(sceneRef.current, commands)),
+        perform: performStudioStep,
+      });
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: result.response, mode: result.mode },
+        {
+          role: "assistant",
+          text:
+            result.response +
+            (completed.length ? "\n\n" + completed.join(" · ") : ""),
+          mode: result.mode,
+        },
       ]);
-      if (result.activity === "play") setPlaying(true);
-      if (result.activity === "pause") setPlaying(false);
-      if (result.activity === "conversation") setModal("conversation");
-      if (result.activity === "export") void exportScene("package");
-      if (result.activity === "screenshot") viewport.current?.screenshot();
-      if (result.activity === "projects") void openProjects();
-      if (result.activity === "settings") setModal("settings");
-      if (result.activity === "undo") undo();
-      if (result.activity === "redo") redo();
     } catch (e) {
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: (e as Error).message, mode: "error" },
+        {
+          role: "assistant",
+          text:
+            (e instanceof StudioPlanError && e.completed.length
+              ? `Completed: ${e.completed.join(" · ")}.\n\n`
+              : "") + (e as Error).message,
+          mode: "error",
+        },
       ]);
     } finally {
       setBusy(false);
     }
   }
-  async function runConversation() {
-    if (busy) return;
-    setBusy(true);
+  async function performStudioStep(
+    step: Exclude<
+      StudioStep,
+      { type: "edit" | "newProject" | "copyProject" | "openProject" | "save" }
+    >,
+  ) {
+    if (step.type === "select") {
+      setSelected(step.id);
+      return;
+    }
+    if (step.type === "playback") {
+      if (step.mode === "play") setPlaying(true);
+      else {
+        setPlaying(false);
+        if (step.mode === "rewind") setTime(0);
+        if (step.mode === "seek") setTime(step.time!);
+      }
+      return;
+    }
+    if (step.type === "camera") {
+      await viewport.current!.waitForScene(sceneRef.current);
+      viewport.current!.frame(step.view, step.focusId);
+      return;
+    }
+    if (step.type === "conversation") {
+      await runConversation(step.rounds, true);
+      return;
+    }
+    if (step.type === "export") {
+      if (step.format === "dialogue") {
+        if (!sceneRef.current.transcript.length)
+          throw Error("There is no dialogue to export yet.");
+        download(
+          sceneRef.current.transcript
+            .map((t) => `${t.name}: ${t.text}`)
+            .join("\n\n"),
+          "scene-dialogue.txt",
+          "text/plain",
+        );
+      } else if (step.format === "image") {
+        await viewport.current!.waitForScene(sceneRef.current);
+        viewport.current!.screenshot();
+      } else await exportScene(step.format, true);
+      return;
+    }
+    if (step.type === "library") {
+      setTab(step.category);
+      setFilter("All");
+      setSearch(step.search);
+      return;
+    }
+    if (step.type === "history") {
+      if (step.direction === "undo") {
+        if (!history.current.past.length)
+          throw Error("There are no edits to undo.");
+        undo();
+      } else {
+        if (!history.current.future.length)
+          throw Error("There are no edits to redo.");
+        redo();
+      }
+      return;
+    }
+    if (step.type === "show") {
+      if (step.panel === "projects" || step.panel === "importProject") {
+        await saveOrThrow();
+        setProjects(await api("/api/projects"));
+        setModal("projects");
+      } else if (step.panel === "importAsset") {
+        setImportCategory(step.category || "characters");
+        setModal("import");
+      } else if (step.panel === "settings") setModal("settings");
+      else {
+        setRightTab(step.panel);
+        setPanel(true);
+      }
+    }
+  }
+  async function runConversation(roundCount = rounds, propagate = false) {
+    if (!propagate) setBusy(true);
     setPlaying(false);
     const starting = sceneRef.current;
     try {
       const next = await api<Scene>("/api/conversation", {
         method: "POST",
-        body: JSON.stringify({ scene: starting, rounds }),
+        body: JSON.stringify({ scene: starting, rounds: roundCount }),
       });
       if (
         sceneRef.current.id !== starting.id ||
@@ -390,22 +488,15 @@ export default function App() {
       change(validateScene(next));
       toast("Your cast has a new conversation");
     } catch (e) {
+      if (propagate) throw e;
       report((e as Error).message);
     } finally {
-      setBusy(false);
+      if (!propagate) setBusy(false);
     }
   }
   async function openProjects() {
-    if (saving.current) {
-      toast("Finishing your save. Try again in a moment.");
-      return;
-    }
-    await save();
-    if (saveBlocked.current) {
-      report("Save or export your current changes before switching projects.");
-      return;
-    }
     try {
+      await saveOrThrow();
       setProjects(await api("/api/projects"));
       setModal("projects");
     } catch (e) {
@@ -452,6 +543,7 @@ export default function App() {
       } else next = validateScene(JSON.parse(await file.text()));
       next.id = uid();
       next.revision = 0;
+      await saveOrThrow();
       loadScene(next);
       toast("Project imported");
     } catch (e) {
@@ -507,13 +599,18 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function exportScene(kind: "project" | "package" | "blender") {
+  async function exportScene(
+    kind: "project" | "package" | "blender",
+    propagate = false,
+  ) {
+    const snapshot = structuredClone(sceneRef.current);
     setExporting(true);
     setPlaying(false);
     try {
       if (kind === "project") {
-        download(JSON.stringify(sceneRef.current, null, 2), "scene-maker.json");
+        download(JSON.stringify(snapshot, null, 2), "scene-maker.json");
       } else {
+        await viewport.current!.waitForScene(snapshot);
         const glb = await viewport.current!.exportGLB();
         if (kind === "blender") {
           const form = new FormData();
@@ -532,9 +629,9 @@ export default function App() {
           );
         } else {
           const zip = new JSZip();
-          zip.file("scene.json", JSON.stringify(sceneRef.current, null, 2));
+          zip.file("scene.json", JSON.stringify(snapshot, null, 2));
           zip.file("scene.glb", glb);
-          for (const a of sceneRef.current.customAssets) {
+          for (const a of snapshot.customAssets) {
             if (a.url) {
               const res = await fetch(a.url);
               if (!res.ok)
@@ -576,6 +673,7 @@ export default function App() {
       toast("Your scene is ready to download");
       setModal(null);
     } catch (e) {
+      if (propagate) throw e;
       report((e as Error).message);
     } finally {
       setExporting(false);
@@ -1666,10 +1764,15 @@ export default function App() {
           <div className="projects">
             <button
               className="dashed-button"
-              onClick={() => {
-                const next = starterScene();
-                next.name = "Untitled story";
-                loadScene(next);
+              onClick={async () => {
+                try {
+                  await saveOrThrow();
+                  const next = starterScene();
+                  next.name = "Untitled story";
+                  loadScene(next);
+                } catch (e) {
+                  report((e as Error).message);
+                }
               }}
             >
               <Plus size={18} /> Start a new scene
@@ -1680,6 +1783,7 @@ export default function App() {
                 key={p.id}
                 onClick={async () => {
                   try {
+                    await saveOrThrow();
                     loadScene(
                       validateScene(await api("/api/projects/" + p.id)),
                     );
@@ -1867,7 +1971,7 @@ export default function App() {
               <button
                 className="primary"
                 disabled={busy || cast.length < 2}
-                onClick={runConversation}
+                onClick={() => runConversation()}
               >
                 {busy ? (
                   <LoaderCircle className="spin" size={16} />

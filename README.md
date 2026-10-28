@@ -29,7 +29,9 @@ Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback.
 5. Use **Direct the cast** to give multiple characters a mission or topic. With connected providers, characters take turns responding to the conversation and adding physical actions. Save their dialogue as text.
 6. Export an editable project, an animated production package, a Blender file, or a still image. Open a package again from the project browser to restore the scene and imported assets.
 
-Projects save automatically on the local service with revision checks. A recovery copy is stored in this browser; conflicting remote revisions are never silently overwritten. Undo history lasts for the current session.
+The assistant can also manage your workspace. Try “Create a new scene called Moonwalk”, “Copy this project as Second take”, “Open Moonwalk”, “Save”, “Export scene”, or “Reset camera” with the offline helper. With a connected model, one request can create a project, add and direct its cast, save, and export in order. The assistant receives recent chat context for follow-up requests. “Let them talk” runs the cast with its assigned models; file imports open the appropriate file-selection flow.
+
+Projects save automatically on the local service with revision checks. A recovery copy is stored in this browser; conflicting remote revisions are never silently overwritten. Undo history lasts for the current session. Switching projects waits for all pending edits to save. Failed operations stop an assistant workflow and identify any steps that already completed.
 
 ## Connect AI and production tools
 
@@ -59,7 +61,7 @@ npm run build
 npm audit
 ```
 
-Tests cover scene invariants, motion chaining, skeletal weights, custom paths, assistant structured-output contracts, per-character provider routing, ordered conversation context, on-disk persistence, revision conflicts, credential redaction, origin checks, and invalid imports. Provider tests use deterministic model responses, not paid live API calls.
+Tests cover ordered assistant workflows, project switches and failed saves, edits made during saving, isolated export snapshots, scene invariants, motion chaining, skeletal weights, custom paths, assistant structured-output contracts, per-character provider routing, ordered conversation context, on-disk persistence, revision conflicts, credential redaction, origin checks, and invalid imports. Provider tests use deterministic model responses, not paid live API calls.
 
 For a browser-exported starter scene, extract the ZIP and run:
 
@@ -74,4 +76,4 @@ See [decisions](docs/DECISIONS.md), [verification evidence and remaining work](d
 
 ## Current scope limits
 
-This is an implemented studio foundation, not proof of the entire original product vision. The brief's “Mixxar” is assumed to mean Mixamo; automatic creation/rigging through that service is not implemented. AI-created characters currently use a stylized Blender generator with preset outfits and custom compositions of validated geometric shapes. High-fidelity textured geometry generation, universal motion retargeting, live Unreal round-trip editing, and provider credentials/live-service validation remain outstanding. The assistant can edit the scene, generate supported assets/actions, start preview, export, and open studio tools; it does not automate external logins or every external-engine operation.
+This is an implemented studio foundation, not proof of the entire original product vision. The brief's “Mixxar” is assumed to mean Mixamo; automatic creation/rigging through that service is not implemented. AI-created characters currently use a stylized Blender generator with preset outfits and custom compositions of validated geometric shapes. High-fidelity textured geometry generation, universal motion retargeting, live Unreal round-trip editing, and provider credentials/live-service validation remain outstanding. The assistant can edit scenes, generate supported assets/actions, create/copy/open/save projects, control the view and playback, run cast conversations, export, and open studio tools. It does not automate external logins or arbitrary external-engine operations. Its live planning and conversation contracts are tested with deterministic responses; real provider calls still require account credentials.
