@@ -9,6 +9,7 @@ import { bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
 import { configureImportedRig } from "./rig";
+import type { PathFrame } from "../shared/path";
 import { interactionSessions, type HoldSession } from "../shared/interactions";
 import { type Scene, allAssets, allMotions, duration } from "../shared/scene";
 import {
@@ -24,6 +25,7 @@ export type ViewportHandle = {
   reset: () => void;
   frame: (view: "default" | "front" | "side" | "top", focusId?: string) => void;
   waitForScene: (scene: Scene) => Promise<void>;
+  sequenceOrigin: (actorId: string, beforeClipId?: string) => PathFrame;
 };
 type Props = {
   scene: Scene;
@@ -360,6 +362,33 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        sequenceOrigin(actorId, beforeClipId) {
+          const c = context.current,
+            scene = live.current.scene;
+          const actor = scene.entities.find((e) => e.id === actorId),
+            object = c?.objects.get(actorId);
+          if (!c || !actor || !object)
+            throw Error("Wait for this character to finish loading.");
+          const index = beforeClipId
+            ? actor.clips.findIndex((clip) => clip.id === beforeClipId)
+            : actor.clips.length;
+          if (index < 0)
+            throw Error("This action is no longer in the sequence.");
+          const prefix = { ...actor, clips: actor.clips.slice(0, index) };
+          applyAnimatedEntityPose(
+            object,
+            prefix,
+            scene,
+            prefix.clips.reduce((sum, clip) => sum + clip.duration, 0),
+          );
+          const frame = {
+            position: object.position.toArray(),
+            heading: object.rotation.y,
+            scale: actor.scale,
+          };
+          c.renderAt(live.current.time);
+          return frame;
+        },
         async waitForScene(scene) {
           const desired = stateKey(scene),
             models = modelKey(scene),

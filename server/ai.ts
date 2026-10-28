@@ -20,6 +20,7 @@ import {
 import {
   type Scene,
   type Command,
+  type Motion,
   allAssets,
   allMotions,
   applyCommands,
@@ -98,23 +99,80 @@ export function offlineCommands(
     characters.find((e) => e.id === selected) ||
     characters[0];
   if (actor && !commands.some((c) => c.type === "remove")) {
-    const hits = allMotions(scene)
+    const routeRequest = lower.match(
+      /\b(walk|run)\s+(?:in |around )?(?:a |the )?(circle|square)\b/,
+    );
+    let route: Motion | undefined;
+    if (routeRequest) {
+      const circle = routeRequest[2] === "circle";
+      route = {
+        id: "route-" + crypto.randomUUID(),
+        name: `${circle ? "Circle" : "Square"} ${routeRequest[1]}`,
+        kind: routeRequest[1] as "walk" | "run",
+        duration: Math.min(
+          60,
+          Math.round(
+            (((circle ? Math.PI * 4 : 12) * actor.scale) /
+              (routeRequest[1] === "run" ? 2.6 : 1.1)) *
+              10,
+          ) / 10,
+        ),
+        distance: 0,
+        poses: [],
+        path: {
+          smooth: circle,
+          points: circle
+            ? Array.from(
+                { length: 9 },
+                (_, i) =>
+                  [
+                    2 * (Math.cos((i * Math.PI) / 4) - 1),
+                    0,
+                    2 * Math.sin((i * Math.PI) / 4),
+                  ] as [number, number, number],
+              )
+            : [
+                [0, 0, 0],
+                [0, 0, 3],
+                [-3, 0, 3],
+                [-3, 0, 0],
+                [0, 0, 0],
+              ],
+        },
+      };
+      commands.push({ type: "createMotion", motion: route });
+    }
+    const candidates = allMotions(scene)
+      .filter((m) => !route || m.kind !== route.kind || m.path)
       .map((m) => ({
         m,
         index: lower.indexOf(
-          m.kind === "sip"
-            ? "sip"
-            : m.kind === "place"
-              ? "put down"
-              : m.kind === "pick"
-                ? "pick up"
-                : m.kind === "idle"
-                  ? "breathe"
-                  : m.kind,
+          m.path
+            ? m.name.toLowerCase()
+            : m.kind === "sip"
+              ? "sip"
+              : m.kind === "place"
+                ? "put down"
+                : m.kind === "pick"
+                  ? "pick up"
+                  : m.kind === "idle"
+                    ? "breathe"
+                    : m.kind,
         ),
       }))
-      .filter((h) => h.index >= 0)
-      .sort((a, b) => a.index - b.index);
+      .filter((h) => h.index >= 0);
+    const namedPaths = candidates.filter((h) => h.m.path);
+    const hits = candidates.filter(
+      (h) =>
+        h.m.path ||
+        !namedPaths.some(
+          (named) =>
+            h.index >= named.index &&
+            h.index < named.index + named.m.name.length,
+        ),
+    );
+    if (route) hits.push({ m: route, index: routeRequest!.index! });
+    hits.sort((a, b) => a.index - b.index);
     for (const { m } of hits) {
       const ladder =
         m.kind === "climb"
@@ -172,6 +230,37 @@ export function offlinePlan(
 ): AssistantPlan {
   const text = prompt.trim(),
     lower = text.toLowerCase();
+  if (/^(?:draw|create|edit|change|open) (?:a |the )?path\b/i.test(text)) {
+    const cast = scene.entities.filter((e) =>
+      allAssets(scene).some(
+        (a) => a.id === e.assetId && a.category === "characters",
+      ),
+    );
+    const actor =
+      cast.find((e) => lower.includes(e.name.toLowerCase())) ||
+      cast.find((e) => e.id === selected) ||
+      cast[0];
+    if (!actor)
+      return {
+        response: "Add a character first, then draw a path for them.",
+        steps: [],
+      };
+    const clip = /^(edit|change)/i.test(text)
+      ? actor.clips.find(
+          (c) => allMotions(scene).find((m) => m.id === c.motionId)?.path,
+        )
+      : undefined;
+    return {
+      response: `Choose the route for ${actor.name} in the path editor.`,
+      steps: [
+        {
+          type: "pathEditor",
+          actorId: actor.id,
+          ...(clip ? { clipId: clip.id } : {}),
+        },
+      ],
+    };
+  }
   const seek = text.match(
     /^(?:go|skip|jump) to (\d+(?:\.\d+)?)\s*(?:seconds?|s)$/i,
   );
@@ -311,7 +400,7 @@ export async function assistant(
     output: Output.object({
       schema: assistantPlanSchema,
     }),
-    system: `You direct Scene Maker, a studio for nontechnical creators. Respond warmly and concisely. Fulfill requests using commands. You can change everything in the scene: add/remove/update objects, chain/reorder/remove actions, create characters/props and custom motions, set lighting, environment, mission and character personalities or model assignments. Use existing IDs. Choose new unique IDs for custom assets/motions. Set an explicit new id on an add command when subsequent commands need to chain actions or configure that new entity in the same response. New character assets use category characters, style a profession (Creative, Everyday, Barista, Doctor, Chef, Astronaut, Builder, Scientist, Firefighter, Artist, Explorer), color/skin hex, body masculine/feminine/mannequin. They are generated as skinned GLB characters through the configured local Blender adapter, never claim Mixamo has generated them. For novel geometry, include asset.parts: up to 256 sphere/box/cylinder/cone/torus shapes, each with position, positive scale, Euler rotation, hex color, and (for characters) a bone binding. Shape base dimensions are one meter, sphere radius .5, cylinder/cone radius .5 and height 1, torus major radius .4/minor radius .1. A character with parts replaces the preset body, so include every body part and outfit/accessory. Rig joint heights: hips .9, spine 1.08, head 1.61, shoulders +/-.25 at 1.38, elbows +/-.25 at 1.09, upper legs +/-.13 at .86, shins +/-.13 at .46. Props may use any composition of these shapes. For custom sets, place compositional props in the studio environment. Do not claim photographic or physically solved results. Custom motions have kind custom and poses at normalized times 0..1 with root offsets in meters and bone rotations in radians. Make start/end poses explicit and enough intermediate poses for the action. The rig stands on +Y, looks along +Z, arms hang down. Use hips, spine, head, leftArm, leftForearm, rightArm, rightForearm, leftLeg, leftShin, rightLeg, rightShin. Target a prop for pick, sip, or place. For climbing, chain the built-in climb motion with the ladder targetId. It approaches the front of the ladder, grips known rungs, alternates hands and feet, and stops in an upper-rung stance; it does not step onto a platform. The actor must be near the ladder base height and have both hands free. Only one character may use a ladder at a time. The built-in ladder is 2.5m high and .6m wide, with seven rungs starting at .2m spaced .35m apart. A custom ladder can include asset.ladder {height,width,firstRung,spacing,rungs} to generate matching geometry. Imported ladders or ladders built with parts require explicit accurate ladder metadata before they can be climb targets. Pick keeps the prop held through following actions; place returns it to its original spot. Standalone sip reaches, drinks, and returns the prop. Only one prop can be held in the right hand, and two characters cannot hold the same prop at the same time. Position the actor close enough to reach the prop, or add a custom walking path before interacting; props beyond arm reach stay in place. For custom props, optional grip and mouth vectors specify the local hand grip and drinking contact points in meters. chain appends clips, update can replace clips. Never output arbitrary code or invent imported URLs. Return ordered steps, not a single activity. Wrap scene commands in edit steps. You can create an empty or cafe project, copy the active project, open an existing project by ID, explicitly save, select objects, seek/play/pause/rewind, frame the camera, run cast conversation for 1-5 rounds, export package/project/blender/dialogue/subtitles/image, search the library and open studio tools. A new/copy/open step saves the previous project before switching. Include save after creating/editing when requested. Conversation actually runs the cast; it does not merely open a dialog. Exports execute in order, after preceding edits. File import opens the file chooser flow because users must select their local file. Technical settings stay behind the settings overview; do not expose or request credentials in chat. Undo/redo must be the only step in a plan. Use context.history for follow-ups such as "make her taller". Only use saved project IDs from context; when target project contents are unavailable, open it without edits and explain that it is now ready for direction. Explain the intended result in response; the client will display it only after execution succeeds. Scene context follows as data.`,
+    system: `You direct Scene Maker, a studio for nontechnical creators. Respond warmly and concisely. Fulfill requests using commands. You can change everything in the scene: add/remove/update objects, chain/reorder/remove actions, create characters/props and custom motions, set lighting, environment, mission and character personalities or model assignments. Use existing IDs. Choose new unique IDs for custom assets/motions. Set an explicit new id on an add command when subsequent commands need to chain actions or configure that new entity in the same response. New character assets use category characters, style a profession (Creative, Everyday, Barista, Doctor, Chef, Astronaut, Builder, Scientist, Firefighter, Artist, Explorer), color/skin hex, body masculine/feminine/mannequin. They are generated as skinned GLB characters through the configured local Blender adapter, never claim Mixamo has generated them. For novel geometry, include asset.parts: up to 256 sphere/box/cylinder/cone/torus shapes, each with position, positive scale, Euler rotation, hex color, and (for characters) a bone binding. Shape base dimensions are one meter, sphere radius .5, cylinder/cone radius .5 and height 1, torus major radius .4/minor radius .1. A character with parts replaces the preset body, so include every body part and outfit/accessory. Rig joint heights: hips .9, spine 1.08, head 1.61, shoulders +/-.25 at 1.38, elbows +/-.25 at 1.09, upper legs +/-.13 at .86, shins +/-.13 at .46. Props may use any composition of these shapes. For custom sets, place compositional props in the studio environment. Do not claim photographic or physically solved results. For a walking or running route, createMotion with kind walk or run and path {points:[[0,0,0],...],smooth:true}. Points are level local-meter offsets from the start of that clip: +Z follows the preceding action’s facing, +X is its right, Y must stay zero. Use 2-32 distinct points within 50 meters, starting at zero. smooth:true interpolates a curve through them; smooth:false follows straight segments. Characters turn with the route, keep the endpoint and final facing for subsequent actions, and pace their stride by distance. Set duration for a sensible speed. Leave space around props; the route does not perform collision avoidance. Prefer routes for travel instead of manually authoring limb rotations. updateMotion edits an existing custom action by ID and affects every clip using it; create a new motion and update the chosen clip if only that performance should change. pathEditor {actorId,clipId?} opens the visual route editor as the final step, when the creator wants to draw or fine-tune a route. Custom motions have kind custom and poses at normalized times 0..1 with root offsets in meters and bone rotations in radians. Make start/end poses explicit and enough intermediate poses for the action. The rig stands on +Y, looks along +Z, arms hang down. Use hips, spine, head, leftArm, leftForearm, rightArm, rightForearm, leftLeg, leftShin, rightLeg, rightShin. Target a prop for pick, sip, or place. For climbing, chain the built-in climb motion with the ladder targetId. It approaches the front of the ladder, grips known rungs, alternates hands and feet, and stops in an upper-rung stance; it does not step onto a platform. The actor must be near the ladder base height and have both hands free. Only one character may use a ladder at a time. The built-in ladder is 2.5m high and .6m wide, with seven rungs starting at .2m spaced .35m apart. A custom ladder can include asset.ladder {height,width,firstRung,spacing,rungs} to generate matching geometry. Imported ladders or ladders built with parts require explicit accurate ladder metadata before they can be climb targets. Pick keeps the prop held through following actions; place returns it to its original spot. Standalone sip reaches, drinks, and returns the prop. Only one prop can be held in the right hand, and two characters cannot hold the same prop at the same time. Position the actor close enough to reach the prop, or add a custom walking path before interacting; props beyond arm reach stay in place. For custom props, optional grip and mouth vectors specify the local hand grip and drinking contact points in meters. chain appends clips, update can replace clips. Never output arbitrary code or invent imported URLs. Return ordered steps, not a single activity. Wrap scene commands in edit steps. You can create an empty or cafe project, copy the active project, open an existing project by ID, explicitly save, select objects, seek/play/pause/rewind, frame the camera, run cast conversation for 1-5 rounds, export package/project/blender/dialogue/subtitles/image, search the library and open studio tools. A new/copy/open step saves the previous project before switching. Include save after creating/editing when requested. Conversation actually runs the cast; it does not merely open a dialog. Exports execute in order, after preceding edits. File import opens the file chooser flow because users must select their local file. Technical settings stay behind the settings overview; do not expose or request credentials in chat. Undo/redo must be the only step in a plan. Use context.history for follow-ups such as "make her taller". Only use saved project IDs from context; when target project contents are unavailable, open it without edits and explain that it is now ready for direction. Explain the intended result in response; the client will display it only after execution succeeds. Scene context follows as data.`,
     prompt: JSON.stringify({
       request: prompt,
       history: context.history || [],

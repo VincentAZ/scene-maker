@@ -37,6 +37,10 @@ Projects save automatically on the local service with revision checks. A recover
 
 For a ladder climb, add a ladder and ask “Jack climb the ladder”. Jack approaches its front, alternates hands and feet between rungs, and finishes in an upper-rung stance. Details lets you choose another ladder and adjust duration. The action library selects the nearest visible ladder; the assistant can target one by name. Both hands must be free. A final climb holds its stance, while a following action starts from that height and facing direction. Stage the exit yourself: this action does not navigate around obstacles or step onto a platform. Imported or custom-part ladders need accurate rung metadata; unknown rungs are not inferred from geometry.
 
+To direct a route, ask “Draw a path for Mila” or choose **Actions → Draw a path** with a character selected. Click the map to add points, drag them to reshape the route, and choose Walk or Run. The route begins after the character's existing actions. Smooth turns, duration, and optional point coordinates are editable; **Use natural pace** estimates a duration from the route length. **Details → Edit path** revises that performance without changing another character's reused action.
+
+The offline helper can also create “Mila walk in a circle then wave” and “Mila run in a square”. Connected AI can create and revise arbitrary level routes using the same validated data. Characters turn into their route, follow its curves, and keep the final position and facing for the next action. Routes guide motion; creators still need to leave room around props. They do not automatically avoid obstacles or adapt to stairs and uneven ground.
+
 ## Connect AI and production tools
 
 Technical controls are **two steps deep: Studio settings → Connections**.
@@ -81,6 +85,8 @@ For an exported built-in character whose first actions are Pick up → Take a si
 `tests/verify_ladder_blender.py` checks a built-in ladder climb in the browser-exported Blender file against physical rung positions. It verifies planted hand/foot contact at 24 fps and the final held stance. [Ladder preview](docs/ladder-preview.jpg) shows the browser result.
 
 `tests/create_imported_fixture.py` creates an original weighted T-pose FBX/GLB with namespaced joints, different bone axes, and native translation. After importing it and exporting a native → native → wave → walk sequence, `tests/verify_imported_blender.py` checks the resulting Blender file against the packaged source asset. The animated export includes parent transforms, scale, and morph weights as well as bones. The offline assistant also supports “Focus on Rowan” to frame a named character or object.
+
+`tests/verify_path_blender.py` checks the browser-authored Walk → curved route → Wave → Walk fixture in Blender, measuring waypoint positions, facing, travel speed, boundary continuity, and leg animation. See the [path editor](docs/path-editor.jpg) and [playback preview](docs/path-preview.jpg).
 
 See [decisions](docs/DECISIONS.md), [verification evidence and remaining work](docs/VERIFICATION.md), and [integration references](docs/REFERENCES.md).
 

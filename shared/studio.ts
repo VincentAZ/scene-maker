@@ -7,6 +7,8 @@ import {
   uid,
   duration,
   type Scene,
+  allAssets,
+  allMotions,
 } from "./scene";
 export const studioStepSchema = z.discriminatedUnion("type", [
   z.object({
@@ -28,6 +30,11 @@ export const studioStepSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("save") }),
   z.object({ type: z.literal("select"), id: z.string().nullable() }),
+  z.object({
+    type: z.literal("pathEditor"),
+    actorId: z.string(),
+    clipId: z.string().optional(),
+  }),
   z.object({
     type: z.literal("playback"),
     mode: z.enum(["play", "pause", "rewind", "seek"]),
@@ -130,6 +137,21 @@ export function validatePlan(
     if (["newProject", "copyProject", "openProject"].includes(step.type))
       visited.set(current.id, structuredClone(current));
     if (step.type === "edit") current = applyCommands(current, step.commands);
+    if (step.type === "pathEditor") {
+      const actor = current.entities.find((e) => e.id === step.actorId);
+      if (
+        !actor ||
+        allAssets(current).find((a) => a.id === actor.assetId)?.category !==
+          "characters" ||
+        (step.clipId &&
+          !actor.clips.some(
+            (c) =>
+              c.id === step.clipId &&
+              allMotions(current).find((m) => m.id === c.motionId)?.path,
+          ))
+      )
+        throw Error("The path's character or action no longer exists.");
+    }
     if (step.type === "newProject")
       current = newProject(step.name, step.template);
     if (step.type === "copyProject") current = copyProject(current, step.name);
@@ -157,5 +179,9 @@ export function validatePlan(
   // isolated, rather than claiming that subsequent edits were validated correctly.
   if (plan.steps.some((s) => s.type === "history") && plan.steps.length !== 1)
     throw Error("Undo or redo must be a separate request.");
+  if (plan.steps.slice(0, -1).some((s) => s.type === "pathEditor"))
+    throw Error(
+      "Open the path editor as the final step so the creator can finish drawing.",
+    );
   return { plan, reads };
 }

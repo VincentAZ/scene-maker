@@ -2436,3 +2436,151 @@ label > span {
   flex-shrink: 0;
   margin-top: 2px;
 }
+
+.path-editor {
+  padding: 22px 26px 26px;
+}
+.path-editor > .muted {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+.path-map-heading,
+.path-map-actions,
+.path-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.path-map-heading {
+  color: #68765b;
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+.path-map {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  background: #f3f5ec;
+  border: 1px solid #dce4d1;
+  border-radius: 12px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.path-map text {
+  font-family: inherit;
+  font-size: 11px;
+  fill: #35472d;
+  font-weight: 600;
+  pointer-events: none;
+}
+.path-map .map-prop {
+  opacity: 0.8;
+  pointer-events: none;
+}
+.path-map .map-prop text {
+  font-size: 10px;
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: #f3f5ec;
+  stroke-width: 3px;
+}
+.path-point {
+  cursor: grab;
+}
+.path-point:active {
+  cursor: grabbing;
+}
+.path-map-actions {
+  margin: 12px 0 18px;
+  flex-wrap: wrap;
+}
+.path-options {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 12px;
+}
+.path-options label,
+.path-coordinate label {
+  display: grid;
+  gap: 7px;
+  color: #56634d;
+  font-size: 11px;
+  margin: 0;
+}
+.path-options input,
+.path-options select,
+.path-coordinate input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #d9e1cf;
+  border-radius: 7px;
+  color: #35452c;
+  background: white;
+}
+.path-smooth {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: #56634d;
+  margin: 0;
+  white-space: nowrap;
+}
+.path-smooth > input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #6b8053;
+}
+.path-coordinates {
+  border-top: 1px solid #e2e7da;
+  padding-top: 14px;
+}
+.path-coordinates summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #526743;
+}
+.path-coordinates .muted {
+  margin: 12px 0;
+}
+.path-coordinate {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr 28px;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+.path-coordinate > span {
+  color: #71875d;
+  font-size: 12px;
+}
+.path-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #737e68;
+  margin: 20px 0;
+}
+.path-footer {
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+@media (max-width: 600px) {
+  .path-editor {
+    padding: 18px;
+  }
+  .path-options {
+    grid-template-columns: 1fr 1fr;
+  }
+  .path-options label:first-child {
+    grid-column: 1 / -1;
+  }
+  .path-map-heading {
+    letter-spacing: 0;
+    font-size: 9px;
+  }
+}

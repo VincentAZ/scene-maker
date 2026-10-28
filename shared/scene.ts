@@ -59,8 +59,36 @@ export const motionSchema = z
     poses: z.array(poseSchema).max(100).default([]),
     sourceAssetId: z.string().optional(),
     animationName: z.string().optional(),
+    path: z
+      .object({
+        points: z.array(vec3).min(2).max(32),
+        smooth: z.boolean().default(true),
+      })
+      .optional(),
   })
   .superRefine((motion, context) => {
+    if (motion.path) {
+      const points = motion.path.points;
+      if (
+        !["walk", "run"].includes(motion.kind) ||
+        !points.length ||
+        points[0].some((n) => Math.abs(n) > 1e-6) ||
+        points.some(
+          (p, i) =>
+            Math.abs(p[1]) > 1e-6 ||
+            p.some((n) => Math.abs(n) > 50) ||
+            (i > 0 &&
+              Math.hypot(...p.map((n, axis) => n - points[i - 1][axis])) <
+                0.05),
+        )
+      )
+        context.addIssue({
+          code: "custom",
+          message:
+            "Walking and running paths must start at zero, stay level, and have distinct points within 50 meters.",
+          path: ["path"],
+        });
+    }
     if (motion.kind === "custom") {
       const times = motion.poses.map((pose) => pose.at);
       if (
@@ -224,6 +252,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("createAsset"), asset: assetSchema }),
   z.object({ type: z.literal("createMotion"), motion: motionSchema }),
+  z.object({ type: z.literal("updateMotion"), motion: motionSchema }),
   z.object({ type: z.literal("clear") }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
@@ -419,6 +448,11 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
       if (allMotions(s).some((m) => m.id === cmd.motion.id))
         throw Error("Choose a unique motion ID.");
       s.customMotions.push(cmd.motion);
+    }
+    if (cmd.type === "updateMotion") {
+      const index = s.customMotions.findIndex((m) => m.id === cmd.motion.id);
+      if (index < 0) throw Error("Only your own actions can be edited.");
+      s.customMotions[index] = cmd.motion;
     }
     if (cmd.type === "clear") {
       s.entities = [];

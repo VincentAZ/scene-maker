@@ -57,6 +57,8 @@ export function describeStep(step: StudioStep): string {
       return "Opened the studio tool";
     case "library":
       return "Updated the library";
+    case "pathEditor":
+      return "Opened the path editor";
   }
 }
 export async function runStudioPlan(reply: AssistantReply, ports: StudioPorts) {

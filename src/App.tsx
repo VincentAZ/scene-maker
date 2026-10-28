@@ -43,6 +43,8 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
+import { savePathCommands, type PathFrame } from "../shared/path";
+import { PathEditor } from "./PathEditor";
 import { dialogueSubtitles } from "../shared/conversation";
 import {
   readConversationStream,
@@ -62,6 +64,7 @@ import {
   type Entity,
   type Asset,
   type Command,
+  type Motion,
   starterScene,
   allAssets,
   allMotions,
@@ -104,8 +107,17 @@ export default function App() {
       | "export"
       | "import"
       | "conversation"
+      | "path"
       | null
     >(null),
+    [pathEdit, setPathEdit] = useState<{
+      actorId: string;
+      actor: Entity;
+      clipId?: string;
+      frame: PathFrame;
+      motion?: Motion;
+      content: string;
+    } | null>(null),
     [error, setError] = useState(""),
     [interactionWarning, setInteractionWarning] = useState(""),
     [notice, setNotice] = useState(""),
@@ -331,6 +343,34 @@ export default function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [selected, modal, historyVersion]);
+  async function openPathEditor(actorId: string, clipId?: string) {
+    setPlaying(false);
+    cancelConversationForEdit();
+    const snapshot = sceneRef.current;
+    const actor = snapshot.entities.find((e) => e.id === actorId);
+    if (
+      !actor ||
+      allAssets(snapshot).find((a) => a.id === actor.assetId)?.category !==
+        "characters"
+    )
+      throw Error("Choose a character before creating a path.");
+    await viewport.current!.waitForScene(snapshot);
+    const clip = clipId ? actor.clips.find((c) => c.id === clipId) : undefined;
+    const motion =
+      clip && allMotions(snapshot).find((m) => m.id === clip.motionId);
+    if (clipId && !motion?.path)
+      throw Error("This action does not have an editable path.");
+    setPathEdit({
+      actorId,
+      actor,
+      clipId,
+      frame: viewport.current!.sequenceOrigin(actorId, clipId),
+      motion: motion ? { ...motion, duration: clip!.duration } : undefined,
+      content: sameContent(snapshot),
+    });
+    setError("");
+    setModal("path");
+  }
   const entity = scene.entities.find((e) => e.id === selected);
   const isCharacter =
     entity &&
@@ -432,6 +472,10 @@ export default function App() {
       { type: "edit" | "newProject" | "copyProject" | "openProject" | "save" }
     >,
   ) {
+    if (step.type === "pathEditor") {
+      await openPathEditor(step.actorId, step.clipId);
+      return;
+    }
     if (step.type === "select") {
       setSelected(step.id);
       return;
@@ -1005,6 +1049,26 @@ export default function App() {
                   </div>
                 )}
               </div>
+            )}
+            {tab === "motions" && (
+              <button
+                className="create-asset"
+                onClick={() => {
+                  if (!entity || !isCharacter) {
+                    report("Choose a character in your scene first.");
+                    return;
+                  }
+                  void openPathEditor(entity.id).catch((e) =>
+                    report(e.message),
+                  );
+                }}
+              >
+                <Footprints size={16} />
+                <span>
+                  Draw a path<small>Choose where your character goes</small>
+                </span>
+                <Plus size={14} />
+              </button>
             )}
             <button
               className="create-asset"
@@ -1714,6 +1778,20 @@ export default function App() {
                                 />
                                 <span>sec</span>
                               </div>
+                              {allMotions(scene).find(
+                                (m) => m.id === c.motionId,
+                              )?.path && (
+                                <button
+                                  className="text-button"
+                                  onClick={() =>
+                                    void openPathEditor(entity.id, c.id).catch(
+                                      (e) => report(e.message),
+                                    )
+                                  }
+                                >
+                                  <Footprints size={13} /> Edit path
+                                </button>
+                              )}
                               {["sip", "pick", "place", "climb"].includes(
                                 allMotions(scene).find(
                                   (m) => m.id === c.motionId,
@@ -1830,6 +1908,39 @@ export default function App() {
           e.target.value = "";
         }}
       />
+      {modal === "path" && pathEdit && (
+        <PathEditor
+          scene={scene}
+          actor={pathEdit.actor}
+          frame={pathEdit.frame}
+          motion={pathEdit.motion}
+          onClose={() => setModal(null)}
+          onSave={(motion) => {
+            if (sameContent(sceneRef.current) !== pathEdit.content)
+              throw Error(
+                "The scene changed while you were drawing. Close this path and open it again.",
+              );
+            const next = applyCommands(
+              sceneRef.current,
+              savePathCommands(
+                sceneRef.current,
+                pathEdit.actorId,
+                motion,
+                pathEdit.clipId,
+              ),
+            );
+            change(next);
+            setSelected(pathEdit.actorId);
+            setTime(0);
+            setRightTab("details");
+            setPanel(true);
+            setModal(null);
+            toast(
+              pathEdit.clipId ? "Path updated" : "Path added to the sequence",
+            );
+          }}
+        />
+      )}
       {modal === "settings" && (
         <Modal
           error={error}

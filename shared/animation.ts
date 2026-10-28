@@ -14,6 +14,7 @@ import {
   type LadderSample,
   type Point,
 } from "./ladder";
+import { samplePath } from "./path";
 export type Pose = {
   root: [number, number, number];
   rotations: Record<string, [number, number, number]>;
@@ -137,6 +138,30 @@ export function entityPose(
     const m = library.find((m) => m.id === clip.motionId);
     if (!m) continue;
     const end = start + clip.duration;
+    if (m.path) {
+      p.climb = undefined;
+      const u = Math.max(0, Math.min(1, (time - start) / clip.duration));
+      const path = samplePath(m.path, u);
+      addRoot(path.point);
+      p.heading! += path.heading;
+      p.rotations = Object.fromEntries(boneNames.map((n) => [n, [0, 0, 0]]));
+      if (time < end) {
+        const stride = m.kind === "run" ? 1.8 : 1.25;
+        const gait = motionPose(
+          { ...m, distance: 0 },
+          ((path.travelled / stride) % 1) / 4,
+        );
+        const fade = Math.min(1, u / 0.06, (1 - u) / 0.06);
+        for (const name of boneNames)
+          p.rotations[name] = gait.rotations[name].map(
+            (n) => n * fade,
+          ) as Point;
+        p.root[1] += gait.root[1] * e.scale * fade;
+        return p;
+      }
+      start = end;
+      continue;
+    }
     const target =
       clip.targetId &&
       scene.entities.find((entity) => entity.id === clip.targetId);
