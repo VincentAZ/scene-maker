@@ -102,6 +102,12 @@ import {
 import { ConversationAside } from "./ConversationAside";
 import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
+import {
+  useBrowserVoices,
+  useVoiceCatalog,
+  effectiveVoiceChoices,
+  previewVoice,
+} from "./voiceCatalog";
 import { Viewport, type ViewportHandle } from "./Viewport";
 import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
@@ -226,16 +232,28 @@ export default function App() {
     setMove(id !== null);
   }, []);
   useEffect(() => {
-    saveConversationPreferences({
-      choices: voiceChoices,
-      rate: conversationRate,
-    });
-  }, [voiceChoices, conversationRate]);
+    saveConversationPreferences({ rate: conversationRate });
+  }, [conversationRate]);
+  // Voices: browser engine + local Piper + cloud, resolved per character.
+  // Explicit choices live on the entity; older localStorage choices still
+  // apply until a character gets an explicit one.
+  const browserVoices = useBrowserVoices();
+  const voiceCatalog = useVoiceCatalog(connectionsRevision, browserVoices);
+  const speakers = useMemo(() => {
+    const assets = allAssets(scene);
+    return scene.entities.filter(
+      (e) => assets.find((a) => a.id === e.assetId)?.category === "characters",
+    );
+  }, [scene]);
+  const effectiveVoices = useMemo(
+    () => effectiveVoiceChoices(speakers, voiceChoices, voiceCatalog.all),
+    [speakers, voiceChoices, voiceCatalog.all],
+  );
   const voice = useConversationVoice(
     scene,
     playing,
     voiceEnabled,
-    voiceChoices,
+    effectiveVoices,
     conversationRate,
     setError,
   );
@@ -1908,10 +1926,28 @@ export default function App() {
           }}
           voiceEnabled={voiceEnabled}
           onVoiceEnabled={setVoiceEnabled}
-          voices={voice.voices}
+          groups={voiceCatalog.groups}
+          catalogErrors={voiceCatalog.errors}
+          catalogLoading={voiceCatalog.loading}
           cast={cast}
-          choices={voiceChoices}
-          onChoices={setVoiceChoices}
+          choices={effectiveVoices}
+          onChoice={(id, value) => {
+            setVoiceChoices((previous) => {
+              const next = { ...previous };
+              delete next[id];
+              return next;
+            });
+            update(id, { voice: value || undefined });
+          }}
+          onPreview={(id) => {
+            const actor = cast.find((e) => e.id === id);
+            previewVoice(
+              effectiveVoices[id],
+              actor?.name || "your character",
+              conversationRate,
+            ).catch((e) => report((e as Error).message));
+          }}
+          onMoreVoices={() => setModal("connections")}
           rate={conversationRate}
           onRate={setConversationRate}
         >

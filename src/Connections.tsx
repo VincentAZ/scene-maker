@@ -6,6 +6,7 @@ import { api } from "./api";
 import { ProviderConnection } from "./ProviderConnection";
 import { CharacterModelPicker } from "./CharacterModelPicker";
 import { primeCatalog } from "./connectionsStore";
+import { VoicesSettings } from "./VoicesSettings";
 export type Provider = (typeof providers)[number];
 export type ProviderModel = { id: string; name: string };
 export type ConnectionsData = {
@@ -15,6 +16,11 @@ export type ConnectionsData = {
     string,
     { connected: boolean; model: string; thinking?: ThinkingLevel }
   >;
+  speech?: {
+    openai: boolean;
+    elevenlabs: boolean;
+    piper: { engine: boolean; voices: number };
+  };
 };
 export const providerNames: Record<Provider, string> = {
   openai: "OpenAI",
@@ -184,6 +190,15 @@ export function Connections({
           The same choices are available in each character’s Details panel and
           in the conversation panel.
         </p>
+      </details>
+      <details className="connection-details">
+        <summary>Voices</summary>
+        <VoicesSettings
+          data={data}
+          onSave={save}
+          onChanged={onChanged}
+          onError={onError}
+        />
       </details>
       <details className="connection-details">
         <summary>Production tools</summary>

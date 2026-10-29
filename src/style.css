@@ -4119,3 +4119,71 @@ label > span {
   flex: 1;
   margin: 0;
 }
+
+/* Voices: per-character selection and the local/cloud voice settings */
+.voice-choice-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+.voice-choice-row label {
+  min-width: 0;
+}
+.voice-choice-row select {
+  width: 100%;
+}
+.voices-settings h4 {
+  margin: 18px 0 6px;
+  font-size: 13px;
+}
+.voices-settings h4:first-child {
+  margin-top: 0;
+}
+.voices-settings input[type="password"],
+.voices-settings input[type="search"] {
+  width: 100%;
+}
+.voice-filters {
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+}
+.voice-filters input[type="search"] {
+  flex: 1;
+  min-width: 160px;
+}
+.voice-catalog {
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #e2e9d8;
+  border-radius: 10px;
+}
+.voice-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #edf1e6;
+}
+.voice-row:last-child {
+  border-bottom: 0;
+}
+.voice-row > span:first-child {
+  display: grid;
+  min-width: 0;
+}
+.voice-row strong {
+  font-size: 12px;
+}
+.voice-row small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.voice-row .secondary {
+  white-space: nowrap;
+}
+.voice-filters select {
+  min-width: 150px;
+}

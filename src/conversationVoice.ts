@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Scene } from "../shared/scene";
 import { SpeechTransport } from "./speechTransport";
+import { AudioLineTransport, type SynthesisResult } from "./audioTransport";
+import { VoiceTransport } from "./voiceTransport";
+import { api } from "./api";
 
 export function useConversationVoice(
   scene: Scene,
@@ -13,15 +16,44 @@ export function useConversationVoice(
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const current = useRef({ scene, enabled, choices, rate, onError });
   current.current = { scene, enabled, choices, rate, onError };
-  const transport = useRef<SpeechTransport | null>(null);
+  const transport = useRef<VoiceTransport | null>(null);
   useEffect(() => {
     const synth = window.speechSynthesis;
-    if (!synth) return;
-    transport.current = new SpeechTransport(
-      synth,
-      (text) => new SpeechSynthesisUtterance(text),
-      (text) => current.current.onError(text),
+    const report = (text: string) => current.current.onError(text);
+    const speech = synth
+      ? new SpeechTransport(
+          synth,
+          (text) => new SpeechSynthesisUtterance(text),
+          report,
+        )
+      : null;
+    const audio = new AudioLineTransport(
+      (request) =>
+        api<SynthesisResult>("/api/speech", {
+          method: "POST",
+          body: JSON.stringify(request),
+        }),
+      (url) => new Audio(url),
+      report,
     );
+    // Without browser speech synthesis, synthesized voices still work and
+    // browser-voice lines simply keep scene time.
+    transport.current = new VoiceTransport(
+      speech ??
+        ({
+          stop() {},
+          pause() {},
+          resume() {},
+          advance: (
+            _scene: Scene,
+            time: number,
+            delta: number,
+            options: { rate: number },
+          ) => time + delta * options.rate,
+        } as unknown as SpeechTransport),
+      audio,
+    );
+    if (!synth) return () => transport.current?.stop();
     const update = () => setVoices(synth.getVoices());
     update();
     synth.addEventListener("voiceschanged", update);

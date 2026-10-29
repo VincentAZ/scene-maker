@@ -458,6 +458,7 @@ export function createSpeechService(options: {
       });
       child.stdin.end(request.text.replace(/\s+/g, " ") + "\n");
     });
+    fs.chmodSync(file, 0o600);
     atomicWrite(path.join(speechDir, key + ".json"), { provider: "piper" });
     return { url: `/speech/${key}.wav`, mime: "audio/wav", cached: false };
   }
