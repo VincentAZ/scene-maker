@@ -129,6 +129,14 @@ const tabs = [
   { id: "motions", label: "Actions", icon: Footprints },
 ] as const;
 const sameContent = (s: Scene) => JSON.stringify({ ...s, revision: 0 });
+const versionSummary = (s: Scene) => {
+  const assets = allAssets(s);
+  const cast = s.entities.filter(
+    (e) => assets.find((a) => a.id === e.assetId)?.category === "characters",
+  ).length;
+  const actions = s.entities.reduce((n, e) => n + e.clips.length, 0);
+  return `Revision ${s.revision} · ${s.entities.length} objects (${cast} characters) · ${actions} actions · ${s.transcript.length} dialogue lines`;
+};
 export default function App() {
   const [scene, setScene] = useState<Scene>(starterScene),
     [ready, setReady] = useState(false),
@@ -160,6 +168,8 @@ export default function App() {
       | "conversation"
       | "path"
       | "character"
+      | "clearScene"
+      | "conflict"
       | null
     >(null),
     [previewAction, setPreviewAction] = useState<{
@@ -180,6 +190,7 @@ export default function App() {
     [error, setError] = useState(""),
     [interactionWarning, setInteractionWarning] = useState(""),
     [notice, setNotice] = useState(""),
+    [conflict, setConflict] = useState<Scene | null>(null),
     [saveState, setSaveState] = useState("Opening studio…"),
     [messages, setMessages] = useState<Message[]>([welcomeMessage]),
     [clearedMessages, setClearedMessages] = useState<Message[] | null>(null),
@@ -244,10 +255,19 @@ export default function App() {
   useEffect(() => () => conversationController.current?.abort(), []);
   const viewport = useRef<ViewportHandle>(null),
     sceneRef = useRef(scene),
-    history = useRef<{ past: Scene[]; future: Scene[] }>({
+    // lastCoalesce/lastAt let continuous typing share one undo entry.
+    history = useRef<{
+      past: Scene[];
+      future: Scene[];
+      lastCoalesce: string | null;
+      lastAt: number;
+    }>({
       past: [],
       future: [],
+      lastCoalesce: null,
+      lastAt: 0,
     }),
+    conflictRef = useRef<Scene | null>(null),
     saveBlocked = useRef(false),
     saveRetries = useRef(0),
     saveFailure = useRef(""),
@@ -300,10 +320,44 @@ export default function App() {
       } else {
         saveBlocked.current = true;
         report((e as Error).message);
+        if ((e as { status?: number }).status === 409) void showConflict();
       }
       return false;
     }
   }, [report]);
+  // Another window saved a newer revision. Show both versions and let the
+  // creator choose, instead of leaving a banner and a dead save button.
+  async function showConflict() {
+    try {
+      conflictRef.current = validateScene(
+        await api(`/api/projects/${sceneRef.current.id}`),
+      );
+    } catch {
+      conflictRef.current = null;
+    }
+    setConflict(conflictRef.current);
+    setModal("conflict");
+  }
+  function keepMineAsCopy() {
+    const copy = structuredClone(sceneRef.current);
+    copy.id = uid();
+    copy.revision = 0;
+    copy.name = `${copy.name} (my version)`;
+    conflictRef.current = null;
+    setConflict(null);
+    loadScene(copy);
+    toast("Saved your version as a separate project.");
+  }
+  function reloadSaved() {
+    const remote = conflictRef.current;
+    if (!remote) return;
+    conflictRef.current = null;
+    setConflict(null);
+    loadScene(remote);
+    toast(
+      "Reloaded the saved version. Earlier saves stay in Previous versions.",
+    );
+  }
   async function saveOrThrow() {
     if (!(await save()))
       throw Error(
@@ -395,19 +449,27 @@ export default function App() {
       "The scene changed, so the conversation stopped. Completed turns and your edits are kept.",
     );
   }
-  const change = (next: Scene, fromConversation = false) => {
+  // coalesce: edits with the same key within two seconds (typing in one
+  // field) extend the previous undo entry instead of adding one per keystroke.
+  const change = (next: Scene, fromConversation = false, coalesce?: string) => {
     next = validateScene(next);
     if (!fromConversation) cancelConversationForEdit();
-    history.current.past.push(structuredClone(sceneRef.current));
-    if (history.current.past.length > 60) history.current.past.shift();
-    history.current.future = [];
+    const h = history.current,
+      now = Date.now();
+    if (!(coalesce && coalesce === h.lastCoalesce && now - h.lastAt < 2000)) {
+      h.past.push(structuredClone(sceneRef.current));
+      if (h.past.length > 60) h.past.shift();
+    }
+    h.lastCoalesce = coalesce ?? null;
+    h.lastAt = now;
+    h.future = [];
     sceneRef.current = next;
     setScene(next);
     setHistoryVersion((v) => v + 1);
   };
-  const execute = (commands: Command[]) => {
+  const execute = (commands: Command[], coalesce?: string) => {
     try {
-      change(applyCommands(sceneRef.current, commands));
+      change(applyCommands(sceneRef.current, commands), false, coalesce);
       return true;
     } catch (e) {
       report((e as Error).message);
@@ -419,12 +481,14 @@ export default function App() {
     if (!old) return;
     cancelConversationForEdit();
     history.current.future.push(sceneRef.current);
+    history.current.lastCoalesce = null;
     const next = { ...old, revision: sceneRef.current.revision };
     sceneRef.current = next;
     setScene(next);
     setHistoryVersion((v) => v + 1);
   };
   const clearScene = () => {
+    setModal(null);
     change({
       ...sceneRef.current,
       environment: "studio",
@@ -446,6 +510,7 @@ export default function App() {
     if (!next) return;
     cancelConversationForEdit();
     history.current.past.push(sceneRef.current);
+    history.current.lastCoalesce = null;
     next.revision = sceneRef.current.revision;
     sceneRef.current = next;
     setScene(next);
@@ -461,12 +526,19 @@ export default function App() {
         previewAction
       )
         return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+      // Space must still activate focused buttons, links, sliders and the
+      // panel resize handle; only play/pause when nothing interactive has focus.
+      const interactive =
+        e.target instanceof HTMLElement &&
+        e.target.closest(
+          "button, a, summary, [contenteditable], [role=button], [role=slider], [role=separator], [role=tab], [role=menuitem], [role=option]",
+        );
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
       }
-      if (e.code === "Space") {
+      if (e.code === "Space" && !interactive) {
         e.preventDefault();
         setPlaying((v) => !v);
       }
@@ -535,8 +607,8 @@ export default function App() {
       ),
     [scene.transcript],
   );
-  const update = (id: string, changes: Partial<Entity>) =>
-    execute([{ type: "update", id, changes }]);
+  const update = (id: string, changes: Partial<Entity>, coalesce?: string) =>
+    execute([{ type: "update", id, changes }], coalesce);
   function add(asset: Asset, position?: [number, number, number]) {
     const before = sceneRef.current.entities.length;
     if (
@@ -890,6 +962,16 @@ export default function App() {
       if (!propagate) setBusy(false);
     }
   }
+  function retrySave() {
+    if (!saveBlocked.current) return;
+    if (conflictRef.current) {
+      setConflict(conflictRef.current);
+      setModal("conflict");
+      return;
+    }
+    saveBlocked.current = false;
+    void save();
+  }
   async function openProjects() {
     try {
       await saveOrThrow();
@@ -904,8 +986,9 @@ export default function App() {
     setPlaying(false);
     setTime(0);
     setSelected(next.entities[0]?.id || null);
-    history.current = { past: [], future: [] };
+    history.current = { past: [], future: [], lastCoalesce: null, lastAt: 0 };
     saveBlocked.current = false;
+    conflictRef.current = null;
     sceneRef.current = next;
     setScene(next);
     setModal(null);
@@ -1148,17 +1231,11 @@ export default function App() {
             role="button"
             tabIndex={0}
             title="Click to retry saving"
-            onClick={() => {
-              if (saveBlocked.current) {
-                saveBlocked.current = false;
-                void save();
-              }
-            }}
+            onClick={retrySave}
             onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && saveBlocked.current) {
+              if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                saveBlocked.current = false;
-                void save();
+                retrySave();
               }
             }}
           >
@@ -1473,12 +1550,15 @@ export default function App() {
                 aria-label="Scene name"
                 value={scene.name}
                 onChange={(e) =>
-                  execute([
-                    {
-                      type: "scene",
-                      changes: { name: e.target.value || "Untitled scene" },
-                    },
-                  ])
+                  execute(
+                    [
+                      {
+                        type: "scene",
+                        changes: { name: e.target.value || "Untitled scene" },
+                      },
+                    ],
+                    "scene-name",
+                  )
                 }
               />
               <span className="draft-label">DRAFT</span>
@@ -1486,7 +1566,7 @@ export default function App() {
             <div className="row">
               <button
                 className="text-button"
-                onClick={clearScene}
+                onClick={() => setModal("clearScene")}
                 disabled={!ready || busy || !!castProgress}
                 title="Remove all scene objects, actions and dialogue. Undo restores them. Your library assets are kept."
               >
@@ -1834,9 +1914,10 @@ export default function App() {
                 value={scene.mission}
                 disabled={!!castProgress}
                 onChange={(e) =>
-                  execute([
-                    { type: "scene", changes: { mission: e.target.value } },
-                  ])
+                  execute(
+                    [{ type: "scene", changes: { mission: e.target.value } }],
+                    "scene-mission",
+                  )
                 }
                 placeholder="A mission, a question, a secret to uncover…"
               />
@@ -2114,9 +2195,11 @@ export default function App() {
                       aria-label="Object name"
                       value={entity.name}
                       onChange={(e) =>
-                        update(entity.id, {
-                          name: e.target.value || "Untitled",
-                        })
+                        update(
+                          entity.id,
+                          { name: e.target.value || "Untitled" },
+                          `name:${entity.id}`,
+                        )
                       }
                     />
                     <button
@@ -2259,7 +2342,11 @@ export default function App() {
                         rows={4}
                         value={entity.personality}
                         onChange={(e) =>
-                          update(entity.id, { personality: e.target.value })
+                          update(
+                            entity.id,
+                            { personality: e.target.value },
+                            `personality:${entity.id}`,
+                          )
                         }
                       />
                       <button
@@ -2774,6 +2861,79 @@ export default function App() {
             >
               <Upload size={15} /> Open a scene file or package
             </button>
+          </div>
+        </Modal>
+      )}
+      {modal === "clearScene" && (
+        <Modal title="Clear this scene?" onClose={() => setModal(null)}>
+          <div className="confirm-body">
+            <p>
+              This removes every character, prop, action and dialogue line from{" "}
+              <strong>{scene.name}</strong> and resets the set and lighting.
+              Your library assets are kept.
+            </p>
+            <p className="muted">
+              Undo (Ctrl/Cmd+Z) brings the scene back during this session, and
+              the last 20 saves stay available as previous versions.
+            </p>
+            <div className="row confirm-actions">
+              <button className="secondary" onClick={() => setModal(null)}>
+                Keep the scene
+              </button>
+              <button className="danger-button" onClick={clearScene} autoFocus>
+                <Trash2 size={15} /> Clear scene
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {modal === "conflict" && (
+        <Modal
+          title="This project changed in another window"
+          onClose={() => setModal(null)}
+        >
+          <div className="confirm-body">
+            <p>
+              Another window saved a newer version of{" "}
+              <strong>{scene.name}</strong>, so the changes here could not be
+              saved on top of it. Choose which version to continue with; nothing
+              is discarded until you pick.
+            </p>
+            <div className="conflict-versions">
+              <div>
+                <h4>This window</h4>
+                <small>{versionSummary(scene)}</small>
+              </div>
+              <div>
+                <h4>Saved version</h4>
+                <small>
+                  {conflict ? versionSummary(conflict) : "Could not be read."}
+                </small>
+              </div>
+            </div>
+            <div className="row confirm-actions">
+              <button
+                className="secondary"
+                onClick={() =>
+                  download(
+                    JSON.stringify(scene, null, 2),
+                    `${scene.name}.scene.json`,
+                  )
+                }
+              >
+                <Download size={15} /> Download my version
+              </button>
+              <button
+                className="secondary"
+                disabled={!conflict}
+                onClick={reloadSaved}
+              >
+                Reload saved version
+              </button>
+              <button className="primary" onClick={keepMineAsCopy} autoFocus>
+                Keep mine as a copy
+              </button>
+            </div>
           </div>
         </Modal>
       )}

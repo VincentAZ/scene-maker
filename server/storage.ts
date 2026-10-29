@@ -21,6 +21,53 @@ export function projectPath(id: string) {
   if (!/^[a-zA-Z0-9-]+$/.test(id)) throw Error("Invalid project ID.");
   return path.join(dataDir, "projects", id + ".json");
 }
+// Every save keeps the replaced file as a previous version, so an unwanted
+// change (a cleared scene, a lost conflict) can be brought back later.
+export const HISTORY_LIMIT = 20;
+function historyDir(id: string) {
+  projectPath(id);
+  return path.join(dataDir, "projects", "history", id);
+}
+function keepHistory(existing: Scene) {
+  const dir = historyDir(existing.id);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  atomicWrite(path.join(dir, existing.revision + ".json"), existing);
+  const revisions = historyRevisions(existing.id);
+  for (const revision of revisions.slice(HISTORY_LIMIT))
+    fs.rmSync(path.join(dir, revision + ".json"), { force: true });
+}
+function historyRevisions(id: string): number[] {
+  const dir = historyDir(id);
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .flatMap((file) => {
+      const match = /^(\d+)\.json$/.exec(file);
+      return match ? [Number(match[1])] : [];
+    })
+    .sort((a, b) => b - a);
+}
+export function listHistory(id: string) {
+  const dir = historyDir(id);
+  return historyRevisions(id).map((revision) => ({
+    revision,
+    saved: fs.statSync(path.join(dir, revision + ".json")).mtimeMs,
+  }));
+}
+export function readHistory(id: string, revision: number): Scene {
+  if (!Number.isInteger(revision) || revision < 0)
+    throw Object.assign(Error("Invalid revision."), { status: 400 });
+  const found = readJSON<Scene | null>(
+    path.join(historyDir(id), revision + ".json"),
+    null,
+  );
+  if (!found)
+    throw Object.assign(Error("That previous version is no longer kept."), {
+      status: 404,
+    });
+  return validateScene(found);
+}
+
 export function saveProject(input: unknown): Scene {
   const scene = validateScene(input),
     file = projectPath(scene.id),
@@ -33,6 +80,7 @@ export function saveProject(input: unknown): Scene {
       { status: 409 },
     );
   const saved = { ...scene, revision: scene.revision + 1 };
+  if (existing) keepHistory(existing);
   atomicWrite(file, saved);
   return saved;
 }

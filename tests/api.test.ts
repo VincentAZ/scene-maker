@@ -205,6 +205,37 @@ describe("local service boundaries", () => {
       "Connect an AI provider",
     );
   });
+  it("keeps the last twenty replaced versions of a project and serves them back", async () => {
+    let s = { ...starterScene(), name: "Versioned" };
+    const id = s.id;
+    for (let i = 0; i < 25; i++) {
+      s = { ...s, mission: `take ${i}` };
+      const res = await req("/api/projects/" + id, s, "PUT");
+      expect(res.status).toBe(200);
+      s = await res.json();
+    }
+    const history = (await (
+      await fetch(base + `/api/projects/${id}/history`)
+    ).json()) as { revision: number; saved: number }[];
+    expect(history).toHaveLength(20);
+    expect(history[0].revision).toBe(24);
+    expect(history.at(-1)!.revision).toBe(5);
+    const earlier = await (
+      await fetch(base + `/api/projects/${id}/history/24`)
+    ).json();
+    expect(earlier.mission).toBe("take 23");
+    expect(earlier.revision).toBe(24);
+    expect((await fetch(base + `/api/projects/${id}/history/1`)).status).toBe(
+      404,
+    );
+    expect((await fetch(base + `/api/projects/${id}/history/abc`)).status).toBe(
+      400,
+    );
+    const listed = (await (await fetch(base + "/api/projects")).json()) as {
+      id: string;
+    }[];
+    expect(listed.filter((p) => p.id === id)).toHaveLength(1);
+  });
   it("lists readable projects even when one saved file is corrupt or outdated", async () => {
     const good = { ...starterScene(), name: "Still listed" };
     await req("/api/projects/" + good.id, good, "PUT");

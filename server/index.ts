@@ -16,6 +16,8 @@ import {
   saveProject,
   readProject,
   listProjects,
+  listHistory,
+  readHistory,
 } from "./storage";
 import { assistant, type Config } from "./ai";
 import { providerErrorMessage } from "./providerErrors";
@@ -103,6 +105,12 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/projects", (_req, res) => res.json(listProjects()));
 app.get("/api/projects/:id", (req, res) =>
   res.json(readProject(String(req.params.id))),
+);
+app.get("/api/projects/:id/history", (req, res) =>
+  res.json(listHistory(String(req.params.id))),
+);
+app.get("/api/projects/:id/history/:revision", (req, res) =>
+  res.json(readHistory(String(req.params.id), Number(req.params.revision))),
 );
 app.put("/api/projects/:id", (req, res) => {
   if (req.body.id !== req.params.id) throw Error("Project ID mismatch.");
