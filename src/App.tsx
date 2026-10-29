@@ -44,6 +44,9 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { AssistantModelMenu } from "./AssistantModelMenu";
+import { AttachmentChips, AttachmentPicker } from "./Attachments";
+import { describeAttachments, type Attachment } from "../shared/attachments";
+import type { Provider as AssistantProvider } from "../shared/modelChoices";
 import { productionPackage } from "./productionPackage";
 import { ActionPreview } from "./ActionPreview";
 import { motionCollections, motionDetails } from "../shared/motionLibrary";
@@ -125,7 +128,12 @@ const characterFilters = [
   "Mannequins",
   "My assets",
 ];
-type Message = { role: "user" | "assistant"; text: string; mode?: string };
+type Message = {
+  role: "user" | "assistant";
+  text: string;
+  mode?: string;
+  attachments?: Attachment[];
+};
 const welcomeMessage: Message = {
   role: "assistant",
   text: "Every great scene starts with a little “what if”. Tell me what you have in mind, and let’s make it happen.",
@@ -204,6 +212,9 @@ export default function App() {
     [messages, setMessages] = useState<Message[]>([welcomeMessage]),
     [clearedMessages, setClearedMessages] = useState<Message[] | null>(null),
     [prompt, setPrompt] = useState(""),
+    [attachments, setAttachments] = useState<Attachment[]>([]),
+    [assistantProvider, setAssistantProvider] =
+      useState<AssistantProvider | null>(null),
     [busy, setBusy] = useState(false),
     [modelSwitchBusy, setModelSwitchBusy] = useState(false),
     [connectionsRevision, setConnectionsRevision] = useState(0),
@@ -295,7 +306,8 @@ export default function App() {
     readyRef = useRef(false),
     fileInput = useRef<HTMLInputElement>(null),
     assetInput = useRef<HTMLInputElement>(null),
-    chatEnd = useRef<HTMLDivElement>(null);
+    chatEnd = useRef<HTMLDivElement>(null),
+    promptBox = useRef<HTMLFormElement>(null);
   sceneRef.current = scene;
   const report = useCallback((text: string) => {
     setError(text);
@@ -648,11 +660,23 @@ export default function App() {
       }
     } else toast(`${asset.name} is ready`);
   }
-  async function ask(text = prompt) {
-    if (!text.trim() || busy || modelSwitchBusy) return;
+  async function ask(text = prompt, files = attachments) {
+    if (busy || modelSwitchBusy) return;
+    if (!text.trim()) {
+      if (!files.length) return;
+      text = "Please look at the attached files.";
+    }
     setPrompt("");
+    setAttachments([]);
     setClearedMessages(null);
-    setMessages((m) => [...m, { role: "user", text }]);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        text,
+        ...(files.length ? { attachments: files } : {}),
+      },
+    ]);
     setBusy(true);
     const starting = sceneRef.current;
     try {
@@ -661,13 +685,19 @@ export default function App() {
         body: JSON.stringify({
           scene: starting,
           prompt: text,
+          attachments: files.map((a) => a.id),
           selected,
           playhead: time,
           stagingFeedback: interactionWarning,
           history: messages
             .filter((m) => m.mode !== "welcome" && m.mode !== "error")
             .slice(-20)
-            .map(({ role, text }) => ({ role, text })),
+            .map(({ role, text, attachments: attached }) => ({
+              role,
+              text: attached?.length
+                ? `${text}\n${describeAttachments(attached)}`
+                : text,
+            })),
         }),
       });
       if (
@@ -696,6 +726,9 @@ export default function App() {
         },
       ]);
     } catch (e) {
+      // Keep the files ready to send again unless new ones were attached.
+      if (files.length)
+        setAttachments((current) => (current.length ? current : files));
       setMessages((m) => [
         ...m,
         {
@@ -1262,6 +1295,7 @@ export default function App() {
           revision={connectionsRevision}
           onBusyChange={setModelSwitchBusy}
           onConnections={() => setModal("connections")}
+          onProviderChange={setAssistantProvider}
         />
         <div className="top-actions">
           <span
@@ -2194,6 +2228,9 @@ export default function App() {
                       {m.mode === "offline" && <span>OFFLINE HELPER</span>}
                     </div>
                     <p>{m.text}</p>
+                    {m.attachments && (
+                      <AttachmentChips attachments={m.attachments} />
+                    )}
                   </div>
                 ))}
                 {messages.length === 1 && (
@@ -2227,6 +2264,7 @@ export default function App() {
                 <div ref={chatEnd} />
               </div>
               <form
+                ref={promptBox}
                 className="prompt-box"
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -2246,13 +2284,25 @@ export default function App() {
                     }
                   }}
                 />
+                <AttachmentPicker
+                  attachments={attachments}
+                  onChange={setAttachments}
+                  provider={assistantProvider}
+                  disabled={busy}
+                  dropZone={promptBox}
+                  label="Attach files to your message"
+                />
                 <div>
                   <span>
                     <Sparkles size={12} /> Imagine. Ask. Create.
                   </span>
                   <button
                     aria-label="Send message"
-                    disabled={busy || modelSwitchBusy || !prompt.trim()}
+                    disabled={
+                      busy ||
+                      modelSwitchBusy ||
+                      (!prompt.trim() && !attachments.length)
+                    }
                   >
                     <ArrowUp size={17} />
                   </button>

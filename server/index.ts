@@ -34,6 +34,8 @@ import {
 } from "../shared/scene";
 import { generateCharacter } from "./characters";
 import { conversationHistorySchema } from "../shared/studio";
+import { AttachmentStore } from "./attachments";
+import { attachmentIdsSchema, attachmentLimits } from "../shared/attachments";
 const run = promisify(execFile);
 const configFile = path.join(dataDir, "connections.json");
 const config = () =>
@@ -107,7 +109,30 @@ app.use(
     },
   }),
 );
-const coding = createCodingService(config);
+// Reference files for assistant and coding requests. Previews are served
+// inline with sniffing disabled; old uploads are pruned at startup.
+const attachments = new AttachmentStore(path.join(dataDir, "attachments"));
+attachments.prune(30 * 24 * 60 * 60 * 1000);
+app.use(
+  "/attachments",
+  (req, res, next) => {
+    // Only the uploaded bytes are public; metadata files stay internal.
+    if (!/^\/[a-f0-9-]{36}\.(?!json$)[a-z0-9]+$/.test(req.path)) {
+      res.status(404).json({ error: "Attachment not found." });
+      return;
+    }
+    next();
+  },
+  express.static(attachments.dir, {
+    fallthrough: false,
+    index: false,
+    setHeaders: (r) => {
+      r.setHeader("X-Content-Type-Options", "nosniff");
+      r.setHeader("Cache-Control", "private, no-store");
+    },
+  }),
+);
+const coding = createCodingService(config, attachments);
 const speech = createSpeechService({ config });
 const codePreview = codingPreview(coding);
 app.use(
@@ -295,7 +320,10 @@ app.post("/api/assistant", async (req, res) => {
   const generated: Asset[] = [];
   try {
     const scene = validateScene(req.body.scene),
-      prompt = z.string().min(1).max(8000).parse(req.body.prompt);
+      prompt = z.string().min(1).max(8000).parse(req.body.prompt),
+      attached = attachments.load([
+        ...new Set(attachmentIdsSchema.parse(req.body.attachments)),
+      ]);
     const result = await assistant(
       config(),
       scene,
@@ -303,6 +331,7 @@ app.post("/api/assistant", async (req, res) => {
       req.body.selected,
       undefined,
       {
+        attachments: attached,
         projects: listProjects(),
         readProject,
         history: conversationHistorySchema.parse(req.body.history || []),
@@ -402,6 +431,43 @@ app.post(
     }
   },
 );
+// Reference files for the assistant and coding tasks. Content is identified
+// from its bytes; per-kind size limits are enforced after upload.
+const attachmentUpload = multer({
+  dest: path.join(dataDir, "uploads"),
+  limits: {
+    fileSize: Math.max(...Object.values(attachmentLimits)),
+    files: 1,
+  },
+}).single("file");
+app.post("/api/attachments", (req, res, next) => {
+  attachmentUpload(req, res, (error?: unknown) => {
+    if (error) {
+      next(
+        Error(
+          (error as { code?: string }).code === "LIMIT_FILE_SIZE"
+            ? `Attachments must be ${Math.round(Math.max(...Object.values(attachmentLimits)) / 1024 / 1024)} MB or smaller.`
+            : "The file could not be uploaded.",
+        ),
+      );
+      return;
+    }
+    const file = req.file;
+    if (!file) {
+      next(Error("Choose a file to attach."));
+      return;
+    }
+    try {
+      res.json(attachments.save(file.path, file.originalname));
+    } catch (e) {
+      next(e);
+    }
+  });
+});
+app.delete("/api/attachments/:id", (req, res) => {
+  attachments.remove(String(req.params.id));
+  res.json({ ok: true });
+});
 app.post("/api/exports", upload.single("file"), (req, res) => {
   const f = req.file;
   if (!f) throw Error("No package was supplied.");

@@ -67,6 +67,12 @@ The offline helper can also create “Mila walk in a circle then wave” and “
 
 Imported humanoid actions can be shared across the cast. Select a different character and choose the imported action in **Actions**; its label reads **Adapt to [character]**. Or ask “Mila Turn and greet then walk”, using your imported action's name. The studio adapts recognized body joints and scales travel to the receiving body. Its final position and facing carry into the next action. The original file remains unchanged, and the original character does not need to stay in the scene. Production ZIPs retain the source asset so the editable project remains portable.
 
+### Attach reference files
+
+Both the scene assistant and the coding assistant accept reference files with a request: **PDF**, **images** (PNG, JPEG, GIF, WebP), **video** (MP4, WebM, MOV) and **Markdown**. Use the paperclip, drop files onto the message box, or paste a screenshot. Up to six files per message; PDFs up to 20 MB, images 10 MB, videos 50 MB and Markdown 100 KB. Files are identified by their contents, stored locally under `.data/attachments/` and pruned after 30 days.
+
+Markdown is inlined as text for every provider. Images reach every provider. PDFs need an OpenAI, Anthropic, Google or OpenRouter model, and video needs a Google model; the studio warns in advance and refuses to send a request the selected model cannot read. The offline helper cannot read files. Attached material is reference data for the request: a storyboard, floor plan, script, mockup or bug screenshot. Coding tasks remember their attachments for **Refine this task**.
+
 ## Connect AI and production tools
 
 Technical controls are **two steps deep: Studio settings → Connections**.

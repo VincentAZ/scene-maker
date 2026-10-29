@@ -7,9 +7,12 @@ export type CodingStatus =
   | "cancelled"
   | "publishing"
   | "pushed";
+import type { Attachment } from "./attachments";
 export type CodingTask = {
   id: string;
   prompt: string;
+  /** Reference files sent with the request (metadata only). */
+  attachments?: Attachment[];
   branch: string;
   base: string;
   baseline: string;

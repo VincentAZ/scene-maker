@@ -24,11 +24,14 @@ export function AssistantModelMenu({
   revision,
   onBusyChange,
   onConnections,
+  onProviderChange,
 }: {
   disabled: boolean;
   revision: number;
   onBusyChange: (busy: boolean) => void;
   onConnections: () => void;
+  /** Reports the assistant provider whenever it is loaded or switched. */
+  onProviderChange?: (provider: Provider | null) => void;
 }) {
   const [data, setData] = useState<ConnectionsData | null>(null);
   const [open, setOpen] = useState(false);
@@ -48,6 +51,9 @@ export function AssistantModelMenu({
   const catalogs = useRef(new Map<Provider, ProviderModel[]>());
   const provider = data?.assistant ?? null;
   const model = provider ? data?.providers[provider]?.model || "" : "";
+  useEffect(() => {
+    if (data) onProviderChange?.(provider);
+  }, [data, provider, onProviderChange]);
 
   useEffect(() => {
     catalogs.current.clear();
