@@ -42,6 +42,7 @@ export function describeStep(step: StudioStep): string {
     case "conversation":
       return "Directed the cast";
     case "export":
+      if (step.format === "unreal") return "Exported Unreal project";
       return `Exported ${step.format}`;
     case "history":
       return step.direction === "undo"

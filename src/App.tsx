@@ -42,6 +42,7 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import JSZip from "jszip";
+import { productionPackage } from "./productionPackage";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
@@ -741,7 +742,7 @@ export default function App() {
     }
   }
   async function exportScene(
-    kind: "project" | "package" | "blender",
+    kind: "project" | "package" | "blender" | "unreal",
     propagate = false,
   ) {
     const snapshot = structuredClone(sceneRef.current);
@@ -769,39 +770,16 @@ export default function App() {
             "application/octet-stream",
           );
         } else {
-          const zip = new JSZip();
-          zip.file("scene.json", JSON.stringify(snapshot, null, 2));
-          zip.file("scene.glb", glb);
-          const subtitles = dialogueSubtitles(snapshot);
-          if (subtitles) zip.file("dialogue.srt", subtitles);
-          for (const a of snapshot.customAssets) {
-            if (a.url) {
-              const res = await fetch(a.url);
-              if (!res.ok)
-                throw Error(
-                  `Cannot package ${a.name}. Reimport the missing asset.`,
-                );
-              zip.file(
-                "assets/" + a.url.split("/").pop(),
-                await res.arrayBuffer(),
-              );
-            }
-          }
-          for (const name of ["blender_import.py", "unreal_import.py"]) {
-            const r = await fetch("/engine/" + name);
-            if (!r.ok) throw Error("The engine adapter could not be loaded.");
-            zip.file(name, await r.text());
-          }
-          zip.file(
-            "README.txt",
-            "Scene Maker portable scene\n\nOpen scene.glb in a compatible 3D application. It includes skeletal animation, materials and scene transforms at 24 fps.\n\nBlender: blender --background --python blender_import.py -- scene.glb scene.blend\nUnreal: enable Python Editor Script and Interchange, then run unreal_import.py from this folder using Execute Python Script. Save the imported level.\n\nReopen this ZIP in Scene Maker to restore the editable project and original assets.\n",
-          );
-          const packageData = await zip.generateAsync({ type: "arraybuffer" });
+          const packageData = await productionPackage(snapshot, glb);
+          const filename =
+            kind === "unreal"
+              ? "scene-maker-unreal.zip"
+              : "scene-maker-package.zip";
           const form = new FormData();
           form.append(
             "file",
             new Blob([packageData], { type: "application/zip" }),
-            "scene-maker-package.zip",
+            filename,
           );
           const saved = await api<{ url: string }>("/api/exports", {
             method: "POST",
@@ -809,7 +787,7 @@ export default function App() {
           });
           const link = document.createElement("a");
           link.href = saved.url;
-          link.download = "scene-maker-package.zip";
+          link.download = filename;
           link.click();
         }
       }
@@ -2153,8 +2131,7 @@ export default function App() {
                 </strong>
                 <small>
                   Animated 3D scene, editable project, and original assets.
-                  <br />
-                  Ready for Blender and Unreal Engine.
+                  Includes Blender and Unreal project setup.
                 </small>
               </span>
               <Download size={17} />
@@ -2166,9 +2143,8 @@ export default function App() {
               <span>
                 <strong>Editable scene</strong>
                 <small>
-                  A lightweight project file. Imported assets remain
-                  <br />
-                  on this computer; use a package to move them.
+                  A lightweight project file. Imported assets remain on this
+                  computer; use a package to move them.
                 </small>
               </span>
               <Download size={17} />
@@ -2180,9 +2156,21 @@ export default function App() {
               <span>
                 <strong>Blender project</strong>
                 <small>
-                  Create a ready-to-open project with your local
-                  <br />
-                  Blender connection.
+                  Create a ready-to-open project with your local Blender
+                  connection.
+                </small>
+              </span>
+              <Download size={17} />
+            </button>
+            <button disabled={exporting} onClick={() => exportScene("unreal")}>
+              <span className="export-icon">
+                <Film size={23} />
+              </span>
+              <span>
+                <strong>Unreal project</strong>
+                <small>
+                  Unpack and open in Unreal Engine. Scene setup runs on first
+                  launch.
                 </small>
               </span>
               <Download size={17} />

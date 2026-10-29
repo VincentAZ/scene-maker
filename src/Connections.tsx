@@ -243,9 +243,10 @@ export function Connections({
         )}
       </div>
       <p className="integration-note">
-        Unreal Engine uses the animated scene package and included import
-        script. For Mixamo, download your character as FBX and choose “Import
-        asset” in the library. Blender converts it for the studio.
+        Unreal Engine opens the project included in a production package. Unpack
+        it and open SceneMaker.uproject; setup runs on first launch. For Mixamo,
+        download your character as FBX and choose “Import asset” in the library.
+        Blender converts it for the studio.
       </p>
       <a
         className="text-link"

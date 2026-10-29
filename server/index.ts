@@ -55,14 +55,19 @@ app.use(express.json({ limit: "8mb" }));
 app.use(
   "/uploads",
   express.static(path.join(dataDir, "uploads"), {
+    fallthrough: false,
     setHeaders: (r) => r.setHeader("X-Content-Type-Options", "nosniff"),
   }),
 );
-app.use("/engine", express.static(path.resolve("engine")));
+app.use(
+  "/engine",
+  express.static(path.resolve("engine"), { fallthrough: false }),
+);
 fs.mkdirSync(path.join(dataDir, "exports"), { recursive: true, mode: 0o700 });
 app.use(
   "/exports",
   express.static(path.join(dataDir, "exports"), {
+    fallthrough: false,
     setHeaders: (r) => {
       r.setHeader("Content-Disposition", "attachment");
       r.setHeader("X-Content-Type-Options", "nosniff");
@@ -307,13 +312,15 @@ app.use(
   ) => {
     const error = err as Error & { status?: number; code?: string };
     const safe =
-      error.code === "ENOENT"
-        ? "Blender was not found. Set its path in Studio settings → Connections."
-        : error.name.includes("API")
-          ? "The AI provider could not complete this request. Check your connection, model, quota, and try again."
-          : error instanceof z.ZodError
-            ? "The supplied data is invalid. Check your file or request."
-            : error.message?.slice(0, 400) || "Something went wrong.";
+      error.status === 404
+        ? "That file is no longer available. Export again or reimport the missing asset."
+        : error.code === "ENOENT"
+          ? "Blender was not found. Set its path in Studio settings → Connections."
+          : error.name.includes("API")
+            ? "The AI provider could not complete this request. Check your connection, model, quota, and try again."
+            : error instanceof z.ZodError
+              ? "The supplied data is invalid. Check your file or request."
+              : error.message?.slice(0, 400) || "Something went wrong.";
     res.status(error.status || 400).json({ error: safe });
   },
 );

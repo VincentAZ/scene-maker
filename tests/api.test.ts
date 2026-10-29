@@ -25,6 +25,19 @@ const req = (url: string, body?: unknown, method = "POST") =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 describe("local service boundaries", () => {
+  it("returns a missing-file response instead of the app page for unavailable package dependencies", async () => {
+    for (const url of [
+      "/engine/unreal/missing.py",
+      "/uploads/missing.glb",
+      "/exports/missing.zip",
+    ]) {
+      const response = await fetch(base + url);
+      expect(response.status).toBe(404);
+      expect((await response.json()).error).toContain(
+        "file is no longer available",
+      );
+    }
+  });
   it("persists project revisions and rejects conflicting writes", async () => {
     const s = starterScene();
     let res = await req("/api/projects/" + s.id, s, "PUT");

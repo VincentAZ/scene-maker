@@ -1,0 +1,12 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "",
+  "Category": "Scene Maker",
+  "Description": "An editable scene exported from Scene Maker.",
+  "Plugins": [
+    { "Name": "PythonScriptPlugin", "Enabled": true },
+    { "Name": "EditorScriptingUtilities", "Enabled": true },
+    { "Name": "Interchange", "Enabled": true },
+    { "Name": "SequencerScripting", "Enabled": true }
+  ]
+}

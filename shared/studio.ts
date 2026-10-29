@@ -55,6 +55,7 @@ export const studioStepSchema = z.discriminatedUnion("type", [
       "package",
       "project",
       "blender",
+      "unreal",
       "dialogue",
       "subtitles",
       "image",
