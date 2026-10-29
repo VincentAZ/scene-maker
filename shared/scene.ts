@@ -168,6 +168,7 @@ export const clipSchema = z.object({
   motionId: z.string(),
   duration: z.number().min(0.2).max(60),
   targetId: z.string().optional(),
+  transition: z.enum(["smooth", "cut"]).optional(),
 });
 export const entitySchema = z.object({
   id: z.string().min(1),
@@ -182,6 +183,7 @@ export const entitySchema = z.object({
   provider: z.enum(providers).nullable(),
   model: z.string().max(200),
   clips: z.array(clipSchema).max(100),
+  ending: z.enum(["hold", "rest"]).optional(),
 });
 export type Entity = z.infer<typeof entitySchema>;
 export const dialogueLineSchema = z.object({
@@ -232,6 +234,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     motionId: z.string(),
     duration: z.number().min(0.2).max(60).optional(),
     targetId: z.string().optional(),
+    transition: z.enum(["smooth", "cut"]).optional(),
   }),
   z.object({
     type: z.literal("removeClip"),
@@ -397,6 +400,7 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
         provider: null,
         model: "",
         clips: [],
+        ending: "hold",
       });
     }
     if (cmd.type === "update") Object.assign(find(cmd.id), cmd.changes);
@@ -423,6 +427,7 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
         motionId: m.id,
         duration: cmd.duration || m.duration,
         targetId: cmd.targetId,
+        transition: cmd.transition || "smooth",
       });
     }
     if (cmd.type === "removeClip") {

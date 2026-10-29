@@ -9,13 +9,19 @@ type Transform = {
   rotation: T.Quaternion;
   scale: T.Vector3;
 };
-type RootMotion = { start: T.Vector3; delta: T.Vector3 };
+type RootMotion = {
+  start: T.Vector3;
+  delta: T.Vector3;
+  startHeading: number;
+  heading: number;
+};
 type HumanoidRig = {
   bind: Transform[];
   neutralWorld: Partial<Record<BoneName, T.Quaternion>>;
   compatible: boolean;
   bindRoot: T.Vector3;
   bindHips: T.Vector3;
+  bindFacing: T.Quaternion;
   roots: Map<T.AnimationClip, RootMotion>;
 };
 const rigs = new WeakMap<T.Group, HumanoidRig>();
@@ -170,6 +176,12 @@ export function configureImportedRig(
     bind,
     neutralWorld: {},
     compatible,
+    bindFacing: bones.hips
+      ? group
+          .getWorldQuaternion(new T.Quaternion())
+          .invert()
+          .multiply(bones.hips.getWorldQuaternion(new T.Quaternion()))
+      : new T.Quaternion(),
     bindRoot: bones.hips ? rootPoint(group) : new T.Vector3(),
     bindHips: bones.hips
       ? group.worldToLocal(position(bones.hips))
@@ -270,11 +282,34 @@ export function nativeRootMotion(
     group.updateWorldMatrix(true, true);
     return rootPoint(group);
   };
+  const facing = () => {
+    const rotation = group
+      .getWorldQuaternion(new T.Quaternion())
+      .invert()
+      .multiply(
+        group.userData.bones.hips.getWorldQuaternion(new T.Quaternion()),
+      )
+      .multiply(data.bindFacing.clone().invert());
+    const forward = new T.Vector3(0, 0, 1).applyQuaternion(rotation);
+    return Math.hypot(forward.x, forward.z) > 1e-6
+      ? Math.atan2(forward.x, forward.z)
+      : undefined;
+  };
   const start = sample(0),
-    end = sample(clip.duration);
+    startHeading = facing() ?? 0;
+  let heading = startHeading,
+    end = start.clone();
+  const frames = Math.max(1, Math.ceil(clip.duration * 24));
+  for (let frame = 1; frame <= frames; frame++) {
+    end = sample((clip.duration * frame) / frames);
+    const angle = facing() ?? heading;
+    heading += Math.atan2(Math.sin(angle - heading), Math.cos(angle - heading));
+  }
   const result = {
     start: start.clone().sub(data.bindRoot),
     delta: end.sub(start),
+    startHeading,
+    heading: heading - startHeading,
   };
   mixer.stopAllAction();
   restore(data);
@@ -402,35 +437,15 @@ function transferProfile(source: T.Group, clip: T.AnimationClip) {
   if (!cache) transfers.set(source, (cache = new Map()));
   const known = cache.get(clip);
   if (known) return known;
-  const data = rigs.get(source)!;
-  const headingAt = () => {
-    const forward = new T.Vector3(0, 0, 1).applyQuaternion(
-      canonicalRotations(source).hips!,
-    );
-    return Math.atan2(forward.x, forward.z);
-  };
-  sampleOriginal(source, clip, 0);
-  const start = rootPoint(source),
-    startHeading = headingAt();
-  let heading = startHeading;
-  // Unwrap complete turns instead of losing them at the +/- pi boundary.
-  const frames = Math.max(1, Math.ceil(clip.duration * 24));
-  for (let frame = 1; frame <= frames; frame++) {
-    sampleOriginal(source, clip, (clip.duration * frame) / frames);
-    const angle = headingAt();
-    heading += Math.atan2(Math.sin(angle - heading), Math.cos(angle - heading));
-  }
+  const original = nativeRootMotion(source, clip)!;
   const result = {
-    start: start.clone().sub(data.bindRoot),
-    delta: rootPoint(source)
-      .sub(start)
-      .applyAxisAngle(new T.Vector3(0, 1, 0), -startHeading),
-    startHeading,
-    heading: heading - startHeading,
+    start: original.start,
+    delta: original.delta
+      .clone()
+      .applyAxisAngle(new T.Vector3(0, 1, 0), -original.startHeading),
+    startHeading: original.startHeading,
+    heading: original.heading,
   };
-  (source.userData.mixer as T.AnimationMixer).stopAllAction();
-  restore(data);
-  source.updateWorldMatrix(true, true);
   cache.set(clip, result);
   return result;
 }

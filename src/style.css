@@ -2584,3 +2584,22 @@ label > span {
     font-size: 9px;
   }
 }
+
+.clip-transition {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.clip-transition select {
+  width: 100px;
+  margin: 0;
+  padding: 6px 8px;
+}
+.sequence-ending {
+  margin: 16px 0;
+  font-size: 12px;
+}

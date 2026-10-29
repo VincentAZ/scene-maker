@@ -18,6 +18,7 @@ import {
 } from "../shared/scene";
 import { entityPose, type Pose } from "../shared/animation";
 import { defaultLadder } from "../shared/ladder";
+import { sampleWithTransitions } from "./transitions";
 const material = (color: string) =>
   new T.MeshStandardMaterial({ color, roughness: 0.85 });
 export function box(
@@ -193,6 +194,12 @@ export function createCharacter(a: Asset, color = a.color) {
   group.updateMatrixWorld(true);
   mesh.bind(new T.Skeleton(boneNames.map((n) => bones[n])));
   group.userData.bones = bones;
+  group.userData.bindPositions = Object.fromEntries(
+    Object.entries(bones).map(([name, bone]) => [name, bone.position.clone()]),
+  );
+  group.userData.bindScales = Object.fromEntries(
+    Object.entries(bones).map(([name, bone]) => [name, bone.scale.clone()]),
+  );
   group.userData.rest = Object.fromEntries(
     Object.entries(bones).map(([name, bone]) => [
       name,
@@ -409,6 +416,11 @@ export function applyEntityPose(
     for (const [name, rot] of Object.entries(pose.rotations)) {
       const bone = bones[name];
       if (!bone) continue;
+      const position = group.userData.bindPositions?.[name] as
+        T.Vector3 | undefined;
+      const scale = group.userData.bindScales?.[name] as T.Vector3 | undefined;
+      if (position) bone.position.copy(position);
+      if (scale) bone.scale.copy(scale);
       const rest = group.userData.rest?.[name] as T.Quaternion | undefined;
       if (rest)
         bone.quaternion
@@ -420,6 +432,16 @@ export function applyEntityPose(
 // Use one sampler for preview, interaction contact checks and export. Stopping a
 // native clip first restores its animated translations as well as rotations.
 export function applyAnimatedEntityPose(
+  group: T.Group,
+  entity: Entity,
+  scene: Scene,
+  time: number,
+) {
+  sampleWithTransitions(group, entity, scene, time, (sampleTime) =>
+    applyUnblendedEntityPose(group, entity, scene, sampleTime),
+  );
+}
+function applyUnblendedEntityPose(
   group: T.Group,
   entity: Entity,
   scene: Scene,
@@ -462,7 +484,18 @@ export function applyAnimatedEntityPose(
       );
       const root = native && nativeRootMotion(group, native);
       return root
-        ? { start: root.start.toArray(), delta: root.delta.toArray() }
+        ? {
+            start: root.start
+              .clone()
+              .applyAxisAngle(new T.Vector3(0, 1, 0), -root.startHeading)
+              .toArray(),
+            delta: root.delta
+              .clone()
+              .applyAxisAngle(new T.Vector3(0, 1, 0), -root.startHeading)
+              .toArray(),
+            startHeading: root.startHeading,
+            heading: root.heading,
+          }
         : undefined;
     },
   });

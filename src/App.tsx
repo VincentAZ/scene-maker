@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
+import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
 import { PathEditor } from "./PathEditor";
 import { dialogueSubtitles } from "../shared/conversation";
@@ -1784,6 +1785,33 @@ export default function App() {
                                 />
                                 <span>sec</span>
                               </div>
+                              {i > 0 &&
+                                !contactAction(scene, c) &&
+                                !contactAction(scene, entity.clips[i - 1]) && (
+                                  <label className="clip-transition">
+                                    Into this action
+                                    <select
+                                      aria-label={`Action ${i + 1} transition`}
+                                      value={c.transition || "cut"}
+                                      onChange={(event) =>
+                                        update(entity.id, {
+                                          clips: entity.clips.map((clip) =>
+                                            clip.id === c.id
+                                              ? {
+                                                  ...clip,
+                                                  transition: event.target
+                                                    .value as "smooth" | "cut",
+                                                }
+                                              : clip,
+                                          ),
+                                        })
+                                      }
+                                    >
+                                      <option value="smooth">Smooth</option>
+                                      <option value="cut">Cut</option>
+                                    </select>
+                                  </label>
+                                )}
                               {allMotions(scene).find(
                                 (m) => m.id === c.motionId,
                               )?.path && (
@@ -1850,6 +1878,27 @@ export default function App() {
                             </div>
                           ))}
                         </div>
+                        {entity.clips.length > 0 &&
+                          !contactAction(scene, entity.clips.at(-1)!) && (
+                            <label className="sequence-ending">
+                              After the last action
+                              <select
+                                aria-label="After the last action"
+                                value={entity.ending || "rest"}
+                                onChange={(event) =>
+                                  update(entity.id, {
+                                    ending: event.target.value as
+                                      "hold" | "rest",
+                                  })
+                                }
+                              >
+                                <option value="hold">
+                                  Hold the final pose
+                                </option>
+                                <option value="rest">Return to neutral</option>
+                              </select>
+                            </label>
+                          )}
                         <button
                           className="dashed-button"
                           onClick={() => setTab("motions")}

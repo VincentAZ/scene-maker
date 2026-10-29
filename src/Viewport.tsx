@@ -484,6 +484,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             c.objects.values(),
             duration(live.current.scene),
             c.renderAt,
+            live.current.scene.entities.flatMap((entity) => {
+              let time = 0;
+              return entity.clips.map((clip) => (time += clip.duration));
+            }),
           );
           c.renderAt(0);
           const snapshot = exportSnapshot(c.content);

@@ -118,7 +118,9 @@ export function entityPose(
   options: {
     nativeRoot?: (
       motion: Motion,
-    ) => { start: Point; delta: Point; heading?: number } | undefined;
+    ) =>
+      | { start: Point; delta: Point; heading?: number; startHeading?: number }
+      | undefined;
     canClimb?: boolean;
   } = {},
 ): Pose {
@@ -206,6 +208,7 @@ export function entityPose(
       for (const bone of ["spine", "head", "rightArm", "rightForearm"])
         local.rotations[bone] = [0, 0, 0];
     addRoot(native ? (native.start.map((n) => -n) as Point) : local.root);
+    p.heading! -= native?.startHeading || 0;
     p.rotations = local.rotations;
     return p;
   }
