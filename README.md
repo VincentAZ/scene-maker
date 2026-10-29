@@ -18,7 +18,7 @@ npm run build
 npm start
 ```
 
-Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback. This is a single-user local studio, not a publicly hosted multi-user service.
+Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback. The version and build appear in the footer; click them (or open **Studio settings**) for **Check for updates**, which compares your checkout with GitHub and shows the update commands. Nothing is downloaded or applied automatically. This is a single-user local studio, not a publicly hosted multi-user service.
 
 ## Create a scene
 

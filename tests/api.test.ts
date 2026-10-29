@@ -264,6 +264,16 @@ describe("local service boundaries", () => {
       fs.rmSync(path.join(projects, "outdated-schema.json"), { force: true });
     }
   });
+  it("reports the running version and checks GitHub for updates without applying anything", async () => {
+    const version = await (await fetch(base + "/api/version")).json();
+    expect(version.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(typeof version.started).toBe("string");
+    const check = await (await req("/api/update/check", {})).json();
+    expect(check.version).toBe(version.version);
+    expect(typeof check.available).toBe("boolean");
+    expect(typeof check.checked).toBe("string");
+    if (check.git) expect(check.repoUrl ?? check.reason).toBeTruthy();
+  });
   it("exposes speech routes with validation and a saved ElevenLabs key", async () => {
     const voices = await (await fetch(base + "/api/speech/voices")).json();
     expect(voices).toMatchObject({

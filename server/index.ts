@@ -2,6 +2,7 @@ import { thinkingLevels, thinkingChoices } from "../shared/thinking";
 import { createCodingService, codingRouter } from "./coding";
 import { codingPreview } from "./codingPreview";
 import { createSpeechService } from "./speech";
+import { checkForUpdates, versionInfo } from "./updates";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -114,6 +115,14 @@ app.use(
   codingRouter(coding, (task) => codePreview.open(task)),
 );
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/version", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(await versionInfo());
+});
+app.post("/api/update/check", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(await checkForUpdates({ fetch: process.env.NODE_ENV !== "test" }));
+});
 app.get("/api/projects", (_req, res) => res.json(listProjects()));
 app.get("/api/projects/:id", (req, res) =>
   res.json(readProject(String(req.params.id))),

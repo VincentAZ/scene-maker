@@ -113,6 +113,7 @@ import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
 import { Connections } from "./Connections";
 import { CharacterModelPicker } from "./CharacterModelPicker";
+import { UpdateCheck } from "./UpdateCheck";
 import { api, download } from "./api";
 type Tab = "characters" | "props" | "environments" | "motions";
 const characterFilters = [
@@ -2679,13 +2680,14 @@ export default function App() {
       <footer className="statusbar">
         <span>
           <span className="status-dot" />
-          <span
+          <button
             className="studio-version"
-            aria-label="App version"
-            title="Build timestamp in UTC"
+            aria-label={`App version ${studioVersion}. Open version and updates`}
+            title="Version and updates"
+            onClick={() => setModal("settings")}
           >
             v{studioVersion} · build {studioBuild}
-          </span>
+          </button>
         </span>
         <span>Made for the stories only you can tell.</span>
         <button onClick={() => setModal("settings")}>
@@ -2824,6 +2826,7 @@ export default function App() {
               Your ideas belong here. Everything you need to get your story
               moving is just a few clicks away.
             </p>
+            <UpdateCheck />
             <button
               className="settings-card"
               onClick={() => setModal("connections")}

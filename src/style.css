@@ -4187,3 +4187,61 @@ label > span {
 .voice-filters select {
   min-width: 150px;
 }
+
+/* Version and update check (settings) + visible footer version */
+.statusbar .studio-version {
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4c5e40;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.update-check {
+  border: 1px solid #dfe6d4;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  display: grid;
+  gap: 10px;
+}
+.update-version {
+  display: grid;
+  gap: 2px;
+}
+.update-version small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.update-actions {
+  align-items: center;
+  gap: 14px;
+}
+.update-status {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.update-status p {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.update-status.warning,
+.update-status.warning p {
+  color: #8a4a1f;
+}
+.update-status pre {
+  margin: 0;
+  padding: 10px 12px;
+  background: #eef2e6;
+  border-radius: 8px;
+  font-size: 11px;
+  overflow-x: auto;
+}
