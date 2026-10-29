@@ -567,13 +567,23 @@ function applyUnblendedEntityPose(
   if (missing)
     group.userData.motionWarning = `The original file for ${entity.name}'s action is unavailable. Reimport it to use this motion.`;
 }
-export function disposeObject(root: T.Object3D) {
+// Frees GPU resources of every mesh under root. Material.dispose() does not
+// release the textures a material references, so they are released here too;
+// pass textures:false for clones that still share textures with a live object.
+export function disposeObject(
+  root: T.Object3D,
+  options: { textures?: boolean } = {},
+) {
+  const textures = options.textures ?? true;
   root.traverse((o) => {
     if (o instanceof T.Mesh) {
       o.geometry.dispose();
-      (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) =>
-        m.dispose(),
-      );
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (textures)
+          for (const value of Object.values(m))
+            if (value instanceof T.Texture) value.dispose();
+        m.dispose();
+      }
     }
   });
 }

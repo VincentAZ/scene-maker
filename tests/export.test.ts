@@ -128,3 +128,16 @@ it("replays imported parent motion, scale and morph weights in the baked snapsho
     );
   }
 });
+it("releases material textures on dispose unless the object shares them with a live model", () => {
+  const texture = new T.Texture(),
+    material = new T.MeshStandardMaterial({ map: texture }),
+    mesh = new T.Mesh(new T.BoxGeometry(), material),
+    root = new T.Group();
+  root.add(mesh);
+  let released = 0;
+  texture.addEventListener("dispose", () => released++);
+  disposeObject(root, { textures: false });
+  expect(released).toBe(0);
+  disposeObject(root);
+  expect(released).toBe(1);
+});

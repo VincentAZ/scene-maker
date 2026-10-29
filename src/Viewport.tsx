@@ -4,7 +4,7 @@ import { applyConversationPerformance } from "./conversationPerformance";
 import { dialogueAt } from "../shared/conversation";
 import { sceneDragging } from "./sceneDragging";
 import { movedBasePosition, visibleEntity, type Position } from "./placement";
-import type { Asset } from "../shared/scene";
+import type { Asset, Entity } from "../shared/scene";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
@@ -74,18 +74,32 @@ type Props = {
   stopAtEnd?: boolean;
   onEnded?: () => void;
 };
-const modelKey = (scene: Scene) =>
-  JSON.stringify([
+// Identity of one entity's 3D model. Only these inputs rebuild its object;
+// imported files ignore color because their materials come from the file.
+const entityModelKey = (
+  scene: Scene,
+  entity: Entity,
+  assets: Map<string, Asset>,
+) => {
+  const asset = assets.get(entity.assetId);
+  return JSON.stringify([
+    entity.assetId,
+    asset?.url ? null : entity.color,
+    asset,
+    requiredMotionSources(scene, entity),
+  ]);
+};
+const assetIndex = (scene: Scene) =>
+  new Map(allAssets(scene).map((a) => [a.id, a]));
+const modelKey = (scene: Scene) => {
+  const assets = assetIndex(scene);
+  return JSON.stringify([
     scene.environment,
     scene.lighting,
-    scene.entities.map((e) => [
-      e.id,
-      e.assetId,
-      e.color,
-      allAssets(scene).find((a) => a.id === e.assetId),
-      requiredMotionSources(scene, e),
-    ]),
+    scene.entities.map((e) => [e.id, entityModelKey(scene, e, assets)]),
   ]);
+};
+type PendingModel = { key: string };
 const stateKey = (scene: Scene) => JSON.stringify({ ...scene, revision: 0 });
 export const Viewport = forwardRef<ViewportHandle, Props>(
   function Viewport(props, ref) {
@@ -104,6 +118,14 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       transform: TransformControls;
       renderAt: (t: number) => void;
       dragging: ReturnType<typeof sceneDragging>;
+      // Incremental model state: what is placed, what is loading, and the
+      // original imported files shared as motion sources.
+      environment: T.Object3D | null;
+      environmentKey: string;
+      placedKeys: Map<string, string>;
+      pending: Map<string, PendingModel>;
+      sources: Map<string, Promise<T.Group>>;
+      currentKey: string;
     } | null>(null);
     useEffect(() => {
       if (!host.current) return;
@@ -353,6 +375,12 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         transform,
         renderAt,
         dragging,
+        environment: null,
+        environmentKey: "",
+        placedKeys: new Map(),
+        pending: new Map(),
+        sources: new Map(),
+        currentKey: "",
       };
       const resize = new ResizeObserver(() => {
         if (!host.current) return;
@@ -472,6 +500,13 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         selection.material.dispose();
         transform.dispose();
         controls.dispose();
+        const ctx = context.current;
+        if (ctx) {
+          ctx.pending.clear();
+          for (const source of ctx.sources.values())
+            source.then(disposeObject, () => {});
+          ctx.sources.clear();
+        }
         disposeObject(content);
         renderer.dispose();
         renderer.domElement.remove();
@@ -481,29 +516,36 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useEffect(() => {
       const ctx = context.current;
       if (!ctx) return;
-      let cancelled = false;
-      const originals = new Map<string, Promise<T.Group>>();
-      const loadedOriginals = new Set<T.Group>();
-      const original = (asset: ReturnType<typeof allAssets>[number]) => {
-        let pending = originals.get(asset.id);
+      const scene = props.scene;
+      const assets = assetIndex(scene);
+      const wanted = new Map(
+        scene.entities.map((e) => [e.id, entityModelKey(scene, e, assets)]),
+      );
+      ctx.currentKey = requestedModelKey;
+      readyKey.current = "";
+      // Original imported files used as shared motion sources live for the
+      // viewport's lifetime; a failed load is forgotten so it can be retried.
+      const original = (asset: Asset) => {
+        const key = `${asset.id}\u0000${asset.url}`;
+        let pending = ctx.sources.get(key);
         if (!pending) {
-          pending = loadImportedAsset(asset).then((group) => {
-            if (cancelled) disposeObject(group);
-            else loadedOriginals.add(group);
-            return group;
+          pending = loadImportedAsset(asset);
+          pending.catch(() => {
+            if (ctx.sources.get(key) === pending) ctx.sources.delete(key);
           });
-          originals.set(asset.id, pending);
+          ctx.sources.set(key, pending);
         }
         return pending;
       };
-      readyKey.current = "";
-      ctx.transform.detach();
-      for (const c of [...ctx.content.children]) {
-        ctx.content.remove(c);
-        disposeObject(c);
+      if (ctx.environmentKey !== scene.environment) {
+        if (ctx.environment) {
+          ctx.content.remove(ctx.environment);
+          disposeObject(ctx.environment);
+        }
+        ctx.environment = createEnvironment(scene.environment);
+        ctx.environmentKey = scene.environment;
+        ctx.content.add(ctx.environment);
       }
-      ctx.objects.clear();
-      ctx.content.add(createEnvironment(props.scene.environment));
       const color =
         props.scene.lighting === "moonlight"
           ? "#8c9eae"
@@ -523,74 +565,94 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             : "#fff0ce",
       );
       sun.intensity = props.scene.lighting === "moonlight" ? 1.2 : 4;
-      const setup = async (obj: T.Group, id: string) => {
+      // Remove objects whose entity left or whose model inputs changed; keep
+      // the rest so a color or asset edit never rebuilds the whole cast.
+      for (const [id, obj] of [...ctx.objects]) {
+        if (wanted.get(id) === ctx.placedKeys.get(id)) continue;
+        if (ctx.transform.object === obj) ctx.transform.detach();
+        ctx.content.remove(obj);
+        disposeObject(obj);
+        ctx.objects.delete(id);
+        ctx.placedKeys.delete(id);
+      }
+      for (const [id, job] of [...ctx.pending])
+        if (wanted.get(id) !== job.key) ctx.pending.delete(id);
+      const settle = () => {
+        if (!ctx.pending.size) readyKey.current = ctx.currentKey;
+      };
+      const setup = async (obj: T.Group, entity: Entity, job: PendingModel) => {
+        const stale = () => ctx.pending.get(entity.id) !== job;
         try {
-          const actor = props.scene.entities.find(
-            (entity) => entity.id === id,
-          )!;
           const loaded = await Promise.all(
-            requiredMotionSources(props.scene, actor).map(
+            requiredMotionSources(scene, entity).map(
               async (asset) => [asset.id, await original(asset)] as const,
             ),
           );
           setMotionSources(obj, new Map(loaded));
         } catch (error) {
           disposeObject(obj);
-          if (!cancelled)
+          if (!stale()) {
+            ctx.pending.delete(entity.id);
             live.current.onError(
               error instanceof Error
                 ? error.message
                 : "Could not load the original action.",
             );
+            settle();
+          }
           return;
         }
-        if (cancelled) {
+        if (stale()) {
           disposeObject(obj);
           return;
         }
-        obj.name = "entity_" + id;
+        ctx.pending.delete(entity.id);
+        obj.name = "entity_" + entity.id;
         configureRigContacts(obj);
-        obj.userData.entityId = id;
+        obj.userData.entityId = entity.id;
         obj.traverse((o) => {
           if (o instanceof T.Mesh) {
             o.castShadow = true;
             o.receiveShadow = true;
           }
         });
-        ctx.objects.set(id, obj);
+        ctx.objects.set(entity.id, obj);
+        ctx.placedKeys.set(entity.id, job.key);
         ctx.content.add(obj);
-        if (ctx.objects.size === props.scene.entities.length)
-          readyKey.current = requestedModelKey;
-        if (live.current.move && live.current.selected === id)
+        if (live.current.move && live.current.selected === entity.id)
           ctx.transform.attach(obj);
+        settle();
       };
-      for (const e of props.scene.entities) {
-        const a = allAssets(props.scene).find((a) => a.id === e.assetId);
+      for (const e of scene.entities) {
+        if (ctx.objects.has(e.id) || ctx.pending.has(e.id)) continue;
+        const a = assets.get(e.assetId);
         if (!a) continue;
+        const job: PendingModel = { key: wanted.get(e.id)! };
+        ctx.pending.set(e.id, job);
         if (a.url) {
-          void loadImportedAsset(a)
-            .then((obj) => setup(obj, e.id))
-            .catch(() => {
-              if (!cancelled)
-                live.current.onError(
-                  libraryEntry(a)
-                    ? `Could not load ${e.name}. Try reloading the studio.`
-                    : `Could not load ${e.name}. Reload the studio or reimport the asset.`,
-                );
-            });
+          loadImportedAsset(a).then(
+            (obj) => setup(obj, e, job),
+            () => {
+              if (ctx.pending.get(e.id) !== job) return;
+              ctx.pending.delete(e.id);
+              live.current.onError(
+                libraryEntry(a)
+                  ? `Could not load ${e.name}. Try reloading the studio.`
+                  : `Could not load ${e.name}. Reload the studio or reimport the asset.`,
+              );
+              settle();
+            },
+          );
         } else
-          setup(
+          void setup(
             a.category === "characters"
               ? createCharacter(a, e.color)
               : createProp(a.style, e.color, a.parts, a.ladder),
-            e.id,
+            e,
+            job,
           );
       }
-      if (!props.scene.entities.length) readyKey.current = requestedModelKey;
-      return () => {
-        cancelled = true;
-        for (const source of loadedOriginals) disposeObject(source);
-      };
+      settle();
     }, [requestedModelKey]);
     useEffect(() => {
       const c = context.current;
@@ -799,7 +861,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               onlyVisible: true,
             })) as ArrayBuffer;
           } finally {
-            disposeObject(snapshot);
+            // Cloned materials still reference the live objects' textures.
+            disposeObject(snapshot, { textures: false });
           }
         },
       }),

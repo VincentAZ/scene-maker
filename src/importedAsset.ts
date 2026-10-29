@@ -9,10 +9,40 @@ import {
 } from "../shared/scene";
 import { configureImportedRig } from "./rig";
 
+// Imported files are immutable per URL, so the bytes are downloaded once and
+// kept for the session. Each use is parsed separately: original animation
+// tracks may bind to unnamed nodes by UUID, so copies cannot share one parse.
+const downloads = new Map<string, Promise<ArrayBuffer>>();
+const DOWNLOAD_CACHE_LIMIT = 24;
+let loader: GLTFLoader | undefined;
+function downloadModel(url: string): Promise<ArrayBuffer> {
+  let pending = downloads.get(url);
+  if (!pending) {
+    pending = fetch(url).then((response) => {
+      if (!response.ok)
+        throw Error(`Could not download the model file (${response.status}).`);
+      return response.arrayBuffer();
+    });
+    pending.catch(() => {
+      if (downloads.get(url) === pending) downloads.delete(url);
+    });
+    downloads.set(url, pending);
+    while (downloads.size > DOWNLOAD_CACHE_LIMIT)
+      downloads.delete(downloads.keys().next().value!);
+  }
+  return pending;
+}
+
 export async function loadImportedAsset(asset: Asset): Promise<T.Group> {
   if (!asset.url)
     throw Error(`Reimport ${asset.name} to use its original motions.`);
-  const gltf = await new GLTFLoader().loadAsync(asset.url);
+  const bytes = await downloadModel(asset.url);
+  loader ??= new GLTFLoader();
+  // Parse from a copy: geometry attributes keep views into the parsed buffer.
+  const gltf = await loader.parseAsync(
+    bytes.slice(0),
+    T.LoaderUtils.extractUrlBase(asset.url),
+  );
   return prepareImportedAsset(asset, gltf);
 }
 

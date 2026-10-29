@@ -331,6 +331,9 @@ export default function App() {
             const draft = validateScene(JSON.parse(recovery));
             if (draft.id === loaded.id && draft.revision === loaded.revision)
               loaded = draft;
+            // Work done while the service was unreachable has no saved file
+            // yet; keep it as a project instead of discarding it.
+            else if (!list.some((p) => p.id === draft.id)) loaded = draft;
           } catch {}
         }
         if (active) {
@@ -355,12 +358,19 @@ export default function App() {
               setReady(true);
               setSaveState("Recovered local changes");
             } catch {
-              setSaveState("Reconnect to open projects");
+              startOffline();
             }
           } else {
-            setSaveState("Reconnect to open projects");
+            startOffline();
           }
         }
+      }
+      // Without a saved project, keep editing persisted: the recovery copy
+      // is written on every change and saving retries when the service is back.
+      function startOffline() {
+        readyRef.current = true;
+        setReady(true);
+        setSaveState("Reconnect to open projects");
       }
     })();
     return () => {
@@ -1135,8 +1145,18 @@ export default function App() {
         <div className="top-actions">
           <span
             className={`save-label ${saveState.includes("not") ? "warning" : ""}`}
+            role="button"
+            tabIndex={0}
+            title="Click to retry saving"
             onClick={() => {
               if (saveBlocked.current) {
+                saveBlocked.current = false;
+                void save();
+              }
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && saveBlocked.current) {
+                e.preventDefault();
                 saveBlocked.current = false;
                 void save();
               }
@@ -1772,7 +1792,11 @@ export default function App() {
               </span>
               <span>
                 24 frames / second <span className="dot-separator">·</span>{" "}
-                Auto-save on
+                {ready &&
+                !saveState.includes("not") &&
+                !saveState.startsWith("Reconnect")
+                  ? "Auto-save on"
+                  : "Auto-save paused"}
               </span>
             </div>
           </section>

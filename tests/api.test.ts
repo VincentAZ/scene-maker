@@ -205,6 +205,34 @@ describe("local service boundaries", () => {
       "Connect an AI provider",
     );
   });
+  it("lists readable projects even when one saved file is corrupt or outdated", async () => {
+    const good = { ...starterScene(), name: "Still listed" };
+    await req("/api/projects/" + good.id, good, "PUT");
+    const projects = path.join(dir, "projects");
+    fs.writeFileSync(path.join(projects, "broken-file.json"), "{not json");
+    fs.writeFileSync(
+      path.join(projects, "outdated-schema.json"),
+      JSON.stringify({ ...starterScene(), id: "outdated-schema", version: 99 }),
+    );
+    try {
+      const response = await fetch(base + "/api/projects");
+      expect(response.status).toBe(200);
+      const ids = ((await response.json()) as { id: string }[]).map(
+        (p) => p.id,
+      );
+      expect(ids).toContain(good.id);
+      expect(ids).not.toContain("broken-file");
+      expect(ids).not.toContain("outdated-schema");
+      const assistant = await req("/api/assistant", {
+        scene: starterScene(),
+        prompt: "Open " + good.name,
+      });
+      expect(assistant.status).toBe(200);
+    } finally {
+      fs.rmSync(path.join(projects, "broken-file.json"), { force: true });
+      fs.rmSync(path.join(projects, "outdated-schema.json"), { force: true });
+    }
+  });
   it("resolves named project requests from saved data and validates chat history", async () => {
     const target = { ...starterScene(), name: "Saved scene for the assistant" };
     const saved = await (

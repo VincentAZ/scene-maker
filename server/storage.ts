@@ -43,18 +43,30 @@ export function readProject(id: string): Scene {
   return validateScene(found);
 }
 export function listProjects() {
-  return fs
-    .readdirSync(path.join(dataDir, "projects"))
-    .filter((f) => f.endsWith(".json"))
-    .map((file) => {
+  const projects: {
+    id: string;
+    name: string;
+    revision: number;
+    environment: Scene["environment"];
+    updated: number;
+  }[] = [];
+  for (const file of fs.readdirSync(path.join(dataDir, "projects"))) {
+    if (!file.endsWith(".json") || file.endsWith(".tmp")) continue;
+    try {
       const s = readProject(file.slice(0, -5));
-      return {
+      projects.push({
         id: s.id,
         name: s.name,
         revision: s.revision,
         environment: s.environment,
         updated: fs.statSync(projectPath(s.id)).mtimeMs,
-      };
-    })
-    .sort((a, b) => b.updated - a.updated);
+      });
+    } catch (error) {
+      // One unreadable or outdated file must not take every other project offline.
+      console.warn(
+        `Skipping project file ${file}: ${(error as Error).message}`,
+      );
+    }
+  }
+  return projects.sort((a, b) => b.updated - a.updated);
 }

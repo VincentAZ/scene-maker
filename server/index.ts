@@ -47,8 +47,11 @@ app.use((req, res, next) => {
     res.status(403).json({ error: "Local access only." });
     return;
   }
+  // Module scripts send an Origin header even for same-origin loads, so a
+  // custom PORT must accept its own origin alongside the default ports.
   if (
     origin &&
+    origin !== `http://${host}` &&
     !/^http:\/\/(127\.0\.0\.1|localhost):(5173|4311)$/.test(origin)
   ) {
     res.status(403).json({ error: "Origin not allowed." });
@@ -92,7 +95,10 @@ app.use(
 );
 const coding = createCodingService(config);
 const codePreview = codingPreview(coding);
-app.use("/api/coding", codingRouter(coding, task => codePreview.open(task)));
+app.use(
+  "/api/coding",
+  codingRouter(coding, (task) => codePreview.open(task)),
+);
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/projects", (_req, res) => res.json(listProjects()));
 app.get("/api/projects/:id", (req, res) =>
@@ -149,11 +155,19 @@ app.put("/api/connections", (req, res) => {
     const prev = c.providers[body.provider];
     const model = body.model ?? prev?.model ?? "";
     const thinking = body.thinking ?? prev?.thinking ?? "default";
-    if (body.thinking && !thinkingChoices(body.provider, model).includes(body.thinking)) throw Error("This thinking effort is not supported by the selected model.");
+    if (
+      body.thinking &&
+      !thinkingChoices(body.provider, model).includes(body.thinking)
+    )
+      throw Error(
+        "This thinking effort is not supported by the selected model.",
+      );
     c.providers[body.provider] = {
       key: body.key === undefined ? prev?.key || "" : body.key,
       model,
-      thinking: thinkingChoices(body.provider, model).includes(thinking) ? thinking : "default",
+      thinking: thinkingChoices(body.provider, model).includes(thinking)
+        ? thinking
+        : "default",
     };
   }
   if (body.assistant) {

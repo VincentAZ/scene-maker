@@ -291,7 +291,7 @@ it("keeps seat support during a sip and returns the cup before standing", async 
   }
   sample(9);
   expect(cup.position.toArray()).toEqual([-0.32, 0.8, 0.28]);
-  [rig, cup, seat].forEach(disposeObject);
+  [rig, cup, seat].forEach((group) => disposeObject(group));
 });
 
 it("detaches a removed seat without shifting later actions, and prevents carrying occupied furniture", () => {
@@ -365,5 +365,5 @@ it("keeps two characters seated through sequential dialogue and waiting", async 
     "actor",
     "other",
   ]);
-  [rig, other].forEach(disposeObject);
+  [rig, other].forEach((group) => disposeObject(group));
 });
