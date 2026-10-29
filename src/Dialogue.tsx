@@ -5,6 +5,7 @@ import { dialogueAt, dialogueTiming } from "../shared/conversation";
 
 export type CastProgressState = {
   name: string;
+  characterId?: string;
   completed: number;
   total: number;
   stopping?: boolean;

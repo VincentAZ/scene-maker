@@ -1,5 +1,10 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import * as T from "three";
+import { applyConversationPerformance } from "./conversationPerformance";
+import { dialogueAt } from "../shared/conversation";
+import { sceneDragging } from "./sceneDragging";
+import { movedBasePosition, visibleEntity, type Position } from "./placement";
+import type { Asset } from "../shared/scene";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
@@ -28,6 +33,8 @@ import {
   disposeObject,
 } from "./world";
 export type ViewportHandle = {
+  startAssetDrag: (asset: Asset, event: PointerEvent) => void;
+  suppressAssetClick: () => boolean;
   seatingBody: (actorId: string) => SeatBody | undefined;
   screenshot: () => void;
   exportGLB: () => Promise<ArrayBuffer>;
@@ -51,10 +58,17 @@ type Props = {
   playing: boolean;
   onTime: (t: number) => void;
   onMove: (id: string, position: [number, number, number]) => void;
+  onAdd?: (assetId: string, position: Position) => void;
+  onEditStart?: () => void;
   onError: (text: string) => void;
   onInteractionWarning: (text: string) => void;
   move: boolean;
   loopDuration?: number;
+  thinkingId?: string;
+  advanceTime?: (time: number, delta: number) => number;
+  onPlaybackState?: (state: "seek" | "pause" | "play") => void;
+  stopAtEnd?: boolean;
+  onEnded?: () => void;
 };
 const modelKey = (scene: Scene) =>
   JSON.stringify([
@@ -85,6 +99,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       content: T.Group;
       transform: TransformControls;
       renderAt: (t: number) => void;
+      dragging: ReturnType<typeof sceneDragging>;
     } | null>(null);
     useEffect(() => {
       if (!host.current) return;
@@ -110,6 +125,38 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       renderer.toneMapping = T.ACESFilmicToneMapping;
       host.current.appendChild(renderer.domElement);
       renderer.domElement.setAttribute("aria-label", "Interactive 3D scene");
+      const bubbleLayer = document.createElement("div");
+      bubbleLayer.className = "scene-bubble-layer";
+      bubbleLayer.setAttribute("aria-label", "In-scene conversation");
+      host.current.appendChild(bubbleLayer);
+      const bubbles = new Map<string, HTMLDivElement>();
+      const projectBubbles = (time: number) => {
+        const lines = dialogueAt(live.current.scene, time).map(l => ({id:l.characterId, name:l.name, text:l.text, thought:false}));
+        const thinker = live.current.scene.entities.find(e => e.id === live.current.thinkingId && e.visible);
+        if (thinker && !lines.some(l => l.id === thinker.id)) lines.push({id:thinker.id, name:thinker.name, text:"Thinking…", thought:true});
+        for (const [id, bubble] of bubbles) if (!lines.some(l => l.id === id)) { bubble.remove(); bubbles.delete(id); }
+        for (const line of lines) {
+          const object = objects.get(line.id);
+          if (!object?.visible) continue;
+          let bubble = bubbles.get(line.id);
+          if (!bubble) { bubble = document.createElement("div"); bubbleLayer.appendChild(bubble); bubbles.set(line.id,bubble); }
+          const key = `${line.name}:${line.text}:${line.thought}`;
+          if (bubble.dataset.content !== key) {
+            bubble.dataset.content = key;
+            bubble.className = `scene-bubble${line.thought ? " thought" : ""}`;
+            const name = document.createElement("strong"); name.textContent = line.name;
+            const words = document.createElement("span"); words.textContent = line.text;
+            bubble.replaceChildren(name,words);
+          }
+          const head = object.userData.bones?.head as T.Object3D | undefined;
+          const anchor = head ? head.getWorldPosition(new T.Vector3()) : object.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,1.8,0));
+          anchor.y += .38; anchor.project(camera);
+          const width = renderer.domElement.clientWidth, height = renderer.domElement.clientHeight;
+          bubble.hidden = anchor.z < -1 || anchor.z > 1 || Math.abs(anchor.x) > 1.2 || Math.abs(anchor.y) > 1.3;
+          bubble.style.left = `${Math.max(bubble.offsetWidth/2+8, Math.min(width-bubble.offsetWidth/2-8,(anchor.x*.5+.5)*width))}px`;
+          bubble.style.top = `${Math.max(bubble.offsetHeight+12, Math.min(height-28,(-anchor.y*.5+.5)*height))}px`;
+        }
+      };
       const camera = new T.PerspectiveCamera(38, 1, 0.1, 100);
       camera.position.set(8, 6.5, 10);
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -140,17 +187,76 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       transform.setMode("translate");
       transform.setSize(0.7);
       world.add(transform.getHelper());
+      // Keep selection visible even when the move tool is hidden.
+      const selection = new T.BoxHelper(new T.Group(), 0xd9f279);
+      selection.material.depthTest = false;
+      selection.material.transparent = true;
+      selection.material.opacity = 0.95;
+      selection.renderOrder = 1000;
+      selection.visible = false;
+      world.add(selection);
+      let gizmoStart: {
+        id: string;
+        base: Position;
+        position: T.Vector3;
+      } | null = null;
       transform.addEventListener("dragging-changed", (e) => {
         controls.enabled = !e.value;
-        if (!e.value && transform.object) {
-          const o = transform.object;
-          live.current.onMove(
-            o.userData.entityId,
-            o.position.toArray() as [number, number, number],
+        const o = transform.object;
+        if (e.value && o) {
+          const entity = live.current.scene.entities.find(
+            (item) => item.id === o.userData.entityId,
           );
+          if (entity)
+            gizmoStart = {
+              id: entity.id,
+              base: [...entity.position],
+              position: o.position.clone(),
+            };
+          live.current.onEditStart?.();
+        } else if (o && gizmoStart) {
+          if (o.position.distanceTo(gizmoStart.position) > 0.0001)
+            live.current.onMove(
+              gizmoStart.id,
+              movedBasePosition(
+                gizmoStart.base,
+                gizmoStart.position,
+                o.position,
+              ),
+            );
+          gizmoStart = null;
         }
       });
+      const cancelGizmo = (event: Event) => {
+        if (
+          transform.dragging &&
+          (event.type !== "keydown" ||
+            (event as KeyboardEvent).key === "Escape")
+        ) {
+          transform.reset();
+          transform.pointerUp(null);
+          gizmoStart = null;
+          controls.enabled = true;
+        }
+      };
+      window.addEventListener("keydown", cancelGizmo);
+      renderer.domElement.addEventListener("pointercancel", cancelGizmo, true);
       const objects = new Map<string, T.Group>();
+      const status = document.createElement("div");
+      status.className = "placement-status";
+      status.setAttribute("role", "status");
+      status.hidden = true;
+      host.current.appendChild(status);
+      const dragging = sceneDragging({
+        canvas: renderer.domElement,
+        camera,
+        world,
+        objects,
+        current: () => live.current,
+        orbit: controls,
+        gizmo: transform,
+        status,
+      });
       let sessionScene: Scene | null = null,
         sessions: HoldSession[] = [],
         interactionWarning = "",
@@ -169,6 +275,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             applyAnimatedEntityPose(obj, e, live.current.scene, time);
           }
         }
+        applyConversationPerformance(live.current.scene, time, objects);
         content.updateMatrixWorld(true);
         const interactionMessages = applyInteractions(
           live.current.scene,
@@ -176,6 +283,16 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           objects,
           sessions,
         ).map((w) => w.message);
+        dragging.render();
+        const selectedObject = live.current.selected
+          ? objects.get(live.current.selected)
+          : undefined;
+        selection.visible = !!selectedObject && selectedObject.visible;
+        if (selection.visible && selectedObject) {
+          selectedObject.updateWorldMatrix(true, true);
+          selection.setFromObject(selectedObject);
+        }
+        transform.getHelper().visible = !!transform.object?.visible;
         interactionWarning = [
           ...interactionMessages,
           ...Array.from(
@@ -196,6 +313,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         content,
         transform,
         renderAt,
+        dragging,
       };
       const resize = new ResizeObserver(() => {
         if (!host.current) return;
@@ -212,7 +330,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       const up = (e: PointerEvent) => {
         if (
           Math.hypot(e.clientX - pointer[0], e.clientY - pointer[1]) > 5 ||
-          transform.axis
+          transform.axis ||
+          dragging.suppressClick()
         )
           return;
         const rect = renderer.domElement.getBoundingClientRect();
@@ -224,7 +343,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           ),
           camera,
         );
-        const hits = ray.intersectObjects([...objects.values()], true);
+        const hits = ray
+          .intersectObjects([...objects.values()], true)
+          .filter((hit) => visibleEntity(hit.object));
         if (hits.length) {
           let o: T.Object3D | null = hits[0].object;
           while (o && !o.userData.entityId) o = o.parent;
@@ -237,18 +358,27 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         previous = performance.now(),
         elapsed = live.current.time,
         wasPlaying = false,
-        lastSent = 0;
+        lastSent = 0, publishedTime = live.current.time, ended = false;
       const loop = (now: number) => {
         frame = requestAnimationFrame(loop);
         const dt = Math.min((now - previous) / 1000, 0.1);
         previous = now;
-        if (live.current.playing) {
+        if (Math.abs(live.current.time - publishedTime) > .001) {
+          elapsed = live.current.time; publishedTime = elapsed; ended = false;
+          live.current.onPlaybackState?.("seek");
+        }
+        if (live.current.playing !== wasPlaying) live.current.onPlaybackState?.(live.current.playing ? "play" : "pause");
+        if (live.current.playing && !dragging.active() && !transform.dragging) {
           if (!wasPlaying) elapsed = live.current.time;
-          elapsed += dt;
+          elapsed = live.current.advanceTime?.(elapsed, dt) ?? elapsed + dt;
           const total =
-            live.current.loopDuration ?? duration(live.current.scene);
-          if (elapsed > total) elapsed = 0;
+            live.current.loopDuration ?? (live.current.stopAtEnd ? Math.max(0, ...live.current.scene.entities.map(e => e.clips.reduce((t,c) => t+c.duration,0))) : duration(live.current.scene));
+          if (elapsed >= total && live.current.stopAtEnd) {
+            elapsed = total;
+            if (!ended) { ended = true; live.current.onEnded?.(); }
+          } else { ended = false; if (elapsed > total) elapsed = 0; }
           if (now - lastSent > 40) {
+            publishedTime = elapsed;
             live.current.onTime(elapsed);
             lastSent = now;
           }
@@ -259,13 +389,27 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           lastWarning = interactionWarning;
           live.current.onInteractionWarning(interactionWarning);
         }
-        controls.update();
+        if (controls.enabled) controls.update();
         renderer.render(world, camera);
+        projectBubbles(elapsed);
       };
       frame = requestAnimationFrame(loop);
       return () => {
         cancelAnimationFrame(frame);
+        bubbleLayer.remove();
         resize.disconnect();
+        window.removeEventListener("keydown", cancelGizmo);
+        renderer.domElement.removeEventListener(
+          "pointercancel",
+          cancelGizmo,
+          true,
+        );
+        dragging.dispose();
+        status.remove();
+        renderer.domElement.removeEventListener("pointerdown", down);
+        renderer.domElement.removeEventListener("pointerup", up);
+        selection.geometry.dispose();
+        selection.material.dispose();
         transform.dispose();
         controls.dispose();
         disposeObject(content);
@@ -398,6 +542,12 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        startAssetDrag(asset, event) {
+          context.current?.dragging.startAsset(asset, event);
+        },
+        suppressAssetClick() {
+          return context.current?.dragging.suppressClick() ?? false;
+        },
         seatingBody(actorId) {
           return context.current?.objects.get(actorId)?.userData.seatBody;
         },

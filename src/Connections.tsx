@@ -2,12 +2,15 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, Check, ExternalLink } from "lucide-react";
 import { providers, allAssets, type Scene, type Entity } from "../shared/scene";
 import { api } from "./api";
+import { ProviderConnection } from "./ProviderConnection";
+export type Provider = (typeof providers)[number];
+export type ProviderModel = { id: string; name: string };
 export type ConnectionsData = {
-  assistant: (typeof providers)[number] | null;
+  assistant: Provider | null;
   blender: string;
   providers: Record<string, { connected: boolean; model: string }>;
 };
-const providerNames: Record<string, string> = {
+export const providerNames: Record<Provider, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   google: "Google",
@@ -19,243 +22,281 @@ export function Connections({
   scene,
   onEntity,
   onBack,
+  onDone,
+  onChanged,
   onError,
 }: {
   scene: Scene;
   onEntity: (id: string, changes: Partial<Entity>) => void;
   onBack: () => void;
+  onDone: () => void;
+  onChanged: () => void;
   onError: (s: string) => void;
 }) {
-  const [data, setData] = useState<ConnectionsData | null>(null),
-    [provider, setProvider] = useState<(typeof providers)[number]>("openai"),
-    [key, setKey] = useState(""),
-    [model, setModel] = useState(""),
-    [blender, setBlender] = useState("blender"),
-    [saved, setSaved] = useState(false),
-    [busy, setBusy] = useState(false),
-    [engine, setEngine] = useState<boolean | null>(null);
-  const load = () =>
-    api<ConnectionsData>("/api/connections")
-      .then((d) => {
-        setData(d);
-        setModel(d.providers[provider]?.model || "");
-        setBlender(d.blender);
-      })
-      .catch((e) => onError(e.message));
+  const [data, setData] = useState<ConnectionsData | null>(null);
+  const [provider, setProvider] = useState<Provider>("openai");
+  const [catalogs, setCatalogs] = useState<
+    Partial<Record<Provider, ProviderModel[]>>
+  >({});
+  const [blender, setBlender] = useState("blender");
+  const [pathStatus, setPathStatus] = useState("");
+  const [pathBusy, setPathBusy] = useState(false);
+  const [engine, setEngine] = useState<boolean | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  async function load() {
+    try {
+      const d = await api<ConnectionsData>("/api/connections");
+      setData(d);
+      setBlender(d.blender);
+      setProvider(d.assistant || "openai");
+      setLoadError("");
+    } catch (e) {
+      setLoadError((e as Error).message);
+    }
+  }
   useEffect(() => {
     void load();
   }, []);
-  useEffect(() => {
-    setKey("");
-    setModel(data?.providers[provider]?.model || "");
-    setSaved(false);
-  }, [provider]);
-  async function save() {
-    setBusy(true);
-    try {
-      await api("/api/connections", {
+  async function save(body: object) {
+    setData(
+      await api<ConnectionsData>("/api/connections", {
         method: "PUT",
-        body: JSON.stringify({
-          provider,
-          ...(key ? { key } : {}),
-          model,
-          blender,
-        }),
-      });
-      await load();
-      setKey("");
-      setSaved(true);
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+        body: JSON.stringify(body),
+      }),
+    );
+    onChanged();
   }
+  if (!data)
+    return (
+      <div className="connections">
+        <p role="status">{loadError || "Loading saved connections…"}</p>
+        {loadError && (
+          <button className="secondary" onClick={() => void load()}>
+            Try again
+          </button>
+        )}
+      </div>
+    );
   return (
     <div className="connections">
-      <button className="text-button" onClick={onBack}>
-        <ArrowLeft size={15} /> Studio settings
-      </button>
+      <div className="row connection-navigation">
+        <button className="text-button" onClick={onBack}>
+          <ArrowLeft size={15} /> Studio settings
+        </button>
+        <button className="text-button" onClick={onDone}>
+          Back to studio
+        </button>
+      </div>
       <p className="muted">
-        Connect your creative tools. Saved keys stay on this computer and are
-        never returned to the browser.
+        Choose the AI behind your studio assistant. Saved keys stay on this
+        computer and are never returned to the browser.
       </p>
-      <div className="provider-tabs">
+      <div className="provider-tabs" role="group" aria-label="AI providers">
         {providers.map((p) => (
           <button
             key={p}
             className={provider === p ? "active" : ""}
+            aria-pressed={provider === p}
             onClick={() => setProvider(p)}
           >
             {providerNames[p]}
-            {data?.providers[p]?.connected && <Check size={12} />}
+            {data.providers[p]?.connected && (
+              <Check size={12} aria-label="Key saved" />
+            )}
           </button>
         ))}
       </div>
-      <label>
-        API key{" "}
-        <span>
-          {data?.providers[provider]?.connected
-            ? "Saved · leave blank to keep"
-            : "Not connected"}
-        </span>
-        <input
-          autoComplete="off"
-          type="password"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          placeholder="Paste a key from your provider"
+      {providers.map((p) => (
+        <ProviderConnection
+          key={p}
+          provider={p}
+          name={providerNames[p]}
+          active={p === provider}
+          data={data}
+          onSave={save}
+          onDone={onDone}
+          onCatalog={(id, models) =>
+            setCatalogs((previous) => ({ ...previous, [id]: models }))
+          }
         />
-      </label>
-      <label>
-        Model identifier
-        <input
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder="Use a model available in your account"
-        />
-      </label>
-      <div className="row">
-        <button className="primary" disabled={busy} onClick={save}>
-          {saved ? (
-            <>
-              <Check size={15} /> Connection saved
-            </>
-          ) : busy ? (
-            "Saving…"
-          ) : (
-            "Save connection"
-          )}
-        </button>
-        {data?.providers[provider]?.connected && (
+      ))}
+      <details className="connection-details">
+        <summary>Assistant & character preferences</summary>
+        <label>
+          Studio assistant
+          <select
+            value={data.assistant || ""}
+            disabled={assistantBusy}
+            onChange={async (e) => {
+              setAssistantBusy(true);
+              try {
+                await save({ assistant: e.target.value || null });
+              } catch (err) {
+                onError((err as Error).message);
+              } finally {
+                setAssistantBusy(false);
+              }
+            }}
+          >
+            <option value="">Offline command helper</option>
+            {providers.map((p) => (
+              <option
+                key={p}
+                value={p}
+                disabled={
+                  !data.providers[p]?.connected || !data.providers[p]?.model
+                }
+              >
+                {providerNames[p]} ·{" "}
+                {data.providers[p]?.model || "setup needed"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted small">
+          Assistant choice saves immediately. Characters use this assistant
+          unless you choose a different provider below. Character choices are
+          saved with your scene.
+        </p>
+        {scene.entities
+          .filter(
+            (e) =>
+              allAssets(scene).find((a) => a.id === e.assetId)?.category ===
+              "characters",
+          )
+          .map((e) => {
+            const selectedProvider = e.provider || data.assistant;
+            const choices = selectedProvider
+              ? catalogs[selectedProvider]
+              : undefined;
+            return (
+              <div className="mind-row" key={e.id}>
+                <strong>{e.name}</strong>
+                <select
+                  aria-label={`${e.name} provider`}
+                  value={e.provider || ""}
+                  onChange={(event) =>
+                    onEntity(e.id, {
+                      provider:
+                        (event.target.value as Entity["provider"]) || null,
+                      model: "",
+                    })
+                  }
+                >
+                  <option value="">Studio default</option>
+                  {providers.map((p) => (
+                    <option
+                      key={p}
+                      value={p}
+                      disabled={
+                        !data.providers[p]?.connected ||
+                        !data.providers[p]?.model
+                      }
+                    >
+                      {providerNames[p]}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label={`${e.name} model`}
+                  value={e.model}
+                  onChange={(event) =>
+                    onEntity(e.id, { model: event.target.value })
+                  }
+                >
+                  <option value="">
+                    {selectedProvider
+                      ? `Default · ${data.providers[selectedProvider]?.model || "choose a model above"}`
+                      : "Studio default"}
+                  </option>
+                  {e.model && !choices?.some((m) => m.id === e.model) && (
+                    <option value={e.model}>{e.model} · saved override</option>
+                  )}
+                  {choices?.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        <p className="muted small">
+          To choose another model for a character, open that provider’s tab and
+          load its models first.
+        </p>
+      </details>
+      <details className="connection-details">
+        <summary>Production tools</summary>
+        <label>
+          Blender executable
+          <input
+            value={blender}
+            onChange={(e) => {
+              setBlender(e.target.value);
+              setPathStatus("Unsaved path");
+              setEngine(null);
+            }}
+            placeholder="blender or full executable path"
+          />
+        </label>
+        <div className="row">
+          <button
+            className="secondary"
+            disabled={pathBusy || !blender.trim() || blender === data.blender}
+            onClick={async () => {
+              setPathBusy(true);
+              try {
+                await save({ blender: blender.trim() });
+                setBlender(blender.trim());
+                setPathStatus("Path saved");
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setPathBusy(false);
+              }
+            }}
+          >
+            {pathBusy ? "Saving…" : "Save path"}
+          </button>
           <button
             className="text-button"
+            disabled={pathBusy || blender !== data.blender}
             onClick={async () => {
               try {
-                await api("/api/connections", {
-                  method: "PUT",
-                  body: JSON.stringify({ provider, key: "" }),
-                });
-                await load();
+                const r = await api<{ blender: boolean }>("/api/engines");
+                setEngine(r.blender);
               } catch (e) {
                 onError((e as Error).message);
               }
             }}
           >
-            Disconnect
+            Check saved path
           </button>
-        )}
-      </div>
-      <label>
-        Studio assistant
-        <select
-          value={data?.assistant || ""}
-          onChange={async (e) => {
-            try {
-              await api("/api/connections", {
-                method: "PUT",
-                body: JSON.stringify({ assistant: e.target.value || null }),
-              });
-              await load();
-            } catch (err) {
-              onError((err as Error).message);
-            }
-          }}
-        >
-          <option value="">Offline command helper</option>
-          {providers.map((p) => (
-            <option key={p} value={p} disabled={!data?.providers[p]?.connected}>
-              {providerNames[p]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <h3>Character minds</h3>
-      <p className="muted small">
-        Use different providers for different points of view. A blank model uses
-        that provider’s saved model.
-      </p>
-      {scene.entities
-        .filter(
-          (e) =>
-            allAssets(scene).find((a) => a.id === e.assetId)?.category ===
-            "characters",
-        )
-        .map((e) => (
-          <div className="mind-row" key={e.id}>
-            <strong>{e.name}</strong>
-            <select
-              aria-label={`${e.name} provider`}
-              value={e.provider || ""}
-              onChange={(event) =>
-                onEntity(e.id, {
-                  provider: (event.target.value as Entity["provider"]) || null,
-                })
-              }
-            >
-              <option value="">Studio default</option>
-              {providers.map((p) => (
-                <option key={p} value={p}>
-                  {providerNames[p]}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label={`${e.name} model`}
-              placeholder="Default model"
-              value={e.model}
-              onChange={(event) =>
-                onEntity(e.id, { model: event.target.value })
-              }
-            />
-          </div>
-        ))}
-      <h3>Production tools</h3>
-      <label>
-        Blender executable
-        <input
-          value={blender}
-          onChange={(e) => setBlender(e.target.value)}
-          placeholder="blender or full executable path"
-        />
-      </label>
-      <div className="row">
-        <button className="secondary" onClick={save}>
-          Save path
-        </button>
-        <button
-          className="text-button"
-          onClick={async () => {
-            try {
-              const r = await api<{ blender: boolean }>("/api/engines");
-              setEngine(r.blender);
-            } catch (e) {
-              onError((e as Error).message);
-            }
-          }}
-        >
-          Check connection
-        </button>
-        {engine !== null && (
-          <span className="small">
-            {engine ? "Blender is ready" : "Blender not found"}
+          <span className="small" role="status">
+            {engine === null
+              ? pathStatus
+              : engine
+                ? "Blender is ready"
+                : "Blender not found"}
           </span>
-        )}
-      </div>
-      <p className="integration-note">
-        Unreal Engine opens the project included in a production package. Unpack
-        it and open SceneMaker.uproject; setup runs on first launch. For Mixamo,
-        download your character as FBX and choose “Import asset” in the library.
-        Blender converts it for the studio.
-      </p>
-      <a
-        className="text-link"
-        href="https://www.mixamo.com/"
-        target="_blank"
-        rel="noreferrer"
-      >
-        Open Mixamo <ExternalLink size={13} />
-      </a>
+        </div>
+        <p className="integration-note">
+          Unreal Engine opens the project included in a production package.
+          Unpack it and open SceneMaker.uproject; setup runs on first launch.
+          For Mixamo, download your character as FBX and choose “Import asset”
+          in the library. Blender converts it for the studio.
+        </p>
+        <a
+          className="text-link"
+          href="https://www.mixamo.com/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open Mixamo <ExternalLink size={13} />
+        </a>
+      </details>
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { studioVersion, studioBuild } from "./version";
+import { CodingAssistant } from "./CodingAssistant";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Clapperboard,
@@ -42,6 +44,7 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import JSZip from "jszip";
+import { AssistantModelMenu } from "./AssistantModelMenu";
 import { productionPackage } from "./productionPackage";
 import { ActionPreview } from "./ActionPreview";
 import { motionCollections, motionDetails } from "../shared/motionLibrary";
@@ -58,14 +61,13 @@ import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
 import { PathEditor } from "./PathEditor";
 import type { Footprint } from "../shared/navigation";
-import { dialogueSubtitles } from "../shared/conversation";
+import { dialogueSubtitles, dialogueTiming } from "../shared/conversation";
 import {
   readConversationStream,
   mergeConversationTurn,
 } from "./conversationStream";
 import {
   CastProgress,
-  DialogueCaptions,
   DialogueTranscript,
   type CastProgressState,
 } from "./Dialogue";
@@ -87,6 +89,8 @@ import {
   uid,
   assets,
 } from "../shared/scene";
+import { ConversationAside } from "./ConversationAside";
+import { useConversationVoice } from "./conversationVoice";
 import { Viewport, type ViewportHandle } from "./Viewport";
 import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
@@ -103,6 +107,11 @@ const characterFilters = [
   "My assets",
 ];
 type Message = { role: "user" | "assistant"; text: string; mode?: string };
+const welcomeMessage: Message = {
+  role: "assistant",
+  text: "Every great scene starts with a little “what if”. Tell me what you have in mind, and let’s make it happen.",
+  mode: "welcome",
+};
 const tabs = [
   { id: "characters", label: "Characters", icon: Users },
   { id: "props", label: "Props", icon: Box },
@@ -113,15 +122,19 @@ const sameContent = (s: Scene) => JSON.stringify({ ...s, revision: 0 });
 export default function App() {
   const [scene, setScene] = useState<Scene>(starterScene),
     [ready, setReady] = useState(false),
-    [selected, setSelected] = useState<string | null>(null),
+    [selected, setSelectedState] = useState<string | null>(null),
     [tab, setTab] = useState<Tab>("characters"),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("All"),
     [playing, setPlaying] = useState(false),
     [time, setTime] = useState(0),
     [move, setMove] = useState(false),
-    [rightTab, setRightTab] = useState<"assistant" | "details">("assistant"),
+    [rightTab, setRightTab] = useState<"assistant" | "details" | "code">("assistant"),
     [panel, setPanel] = useState(true),
+    [conversationOpen, setConversationOpen] = useState(false),
+    [voiceEnabled, setVoiceEnabled] = useState(false),
+    [voiceChoices, setVoiceChoices] = useState<Record<string, string>>({}),
+    [conversationRate, setConversationRate] = useState(1),
     [modal, setModal] = useState<
       | "settings"
       | "connections"
@@ -151,15 +164,12 @@ export default function App() {
     [interactionWarning, setInteractionWarning] = useState(""),
     [notice, setNotice] = useState(""),
     [saveState, setSaveState] = useState("Opening studio…"),
-    [messages, setMessages] = useState<Message[]>([
-      {
-        role: "assistant",
-        text: "Every great scene starts with a little “what if”. Tell me what you have in mind, and let’s make it happen.",
-        mode: "welcome",
-      },
-    ]),
+    [messages, setMessages] = useState<Message[]>([welcomeMessage]),
+    [clearedMessages, setClearedMessages] = useState<Message[] | null>(null),
     [prompt, setPrompt] = useState(""),
     [busy, setBusy] = useState(false),
+    [modelSwitchBusy, setModelSwitchBusy] = useState(false),
+    [connectionsRevision, setConnectionsRevision] = useState(0),
     [castProgress, setCastProgress] = useState<CastProgressState | null>(null),
     [exporting, setExporting] = useState(false),
     [projects, setProjects] = useState<
@@ -170,6 +180,14 @@ export default function App() {
     [importCategory, setImportCategory] = useState<"characters" | "props">(
       "characters",
     );
+  useEffect(() => {
+    if (modal === "conversation") { setConversationOpen(true); setPanel(false); setModal(null); }
+  }, [modal]);
+  const setSelected = useCallback((id: string | null) => {
+    setSelectedState(id);
+    setMove(id !== null);
+  }, []);
+  const voice = useConversationVoice(scene, playing, voiceEnabled, voiceChoices, conversationRate, setError);
   const conversationController = useRef<AbortController | null>(null);
   useEffect(() => () => conversationController.current?.abort(), []);
   const viewport = useRef<ViewportHandle>(null),
@@ -340,6 +358,23 @@ export default function App() {
     setScene(next);
     setHistoryVersion((v) => v + 1);
   };
+  const clearScene = () => {
+    change({
+      ...sceneRef.current,
+      environment: "studio",
+      lighting: "daylight",
+      mission: "",
+      entities: [],
+      transcript: [],
+    });
+    setPlaying(false);
+    setTime(0);
+    setSelected(null);
+    setPreviewAction(null);
+    setPathEdit(null);
+    setInteractionWarning("");
+    toast("Scene cleared. Use Undo (Ctrl/Cmd+Z) to restore it.");
+  };
   const redo = () => {
     const next = history.current.future.pop();
     if (!next) return;
@@ -429,9 +464,9 @@ export default function App() {
   );
   const update = (id: string, changes: Partial<Entity>) =>
     execute([{ type: "update", id, changes }]);
-  function add(asset: Asset) {
+  function add(asset: Asset, position?: [number, number, number]) {
     const before = sceneRef.current.entities.length;
-    execute([{ type: "add", assetId: asset.id }]);
+    if (!execute([{ type: "add", assetId: asset.id, ...(position ? { position } : {}) }])) return;
     if (asset.category !== "environments") {
       const added = sceneRef.current.entities[before];
       if (added) {
@@ -441,8 +476,9 @@ export default function App() {
     } else toast(`${asset.name} is ready`);
   }
   async function ask(text = prompt) {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || modelSwitchBusy) return;
     setPrompt("");
+    setClearedMessages(null);
     setMessages((m) => [...m, { role: "user", text }]);
     setBusy(true);
     const starting = sceneRef.current;
@@ -672,6 +708,8 @@ export default function App() {
   }
   function stopConversation() {
     conversationController.current?.abort();
+    setPlaying(false);
+    voice.stop();
     setCastProgress((progress) =>
       progress ? { ...progress, stopping: true } : null,
     );
@@ -679,15 +717,18 @@ export default function App() {
   async function runConversation(roundCount = rounds, propagate = false) {
     if (conversationController.current)
       throw Error("A cast conversation is already running.");
-    if (!propagate && busy) return;
+    if (!propagate && (busy || modelSwitchBusy)) return;
     if (!propagate) setBusy(true);
     setPlaying(false);
+    setConversationOpen(true);
+    setPanel(false);
     setError("");
     const controller = new AbortController();
     conversationController.current = controller;
     let completed = 0;
     setCastProgress({
       name: "",
+      characterId: "",
       completed: 0,
       total: cast.filter((e) => e.visible).length * roundCount,
     });
@@ -709,6 +750,7 @@ export default function App() {
         if (event.type === "thinking")
           setCastProgress({
             name: event.name,
+            characterId: event.characterId,
             completed,
             total: event.total,
             stopping: controller.signal.aborted,
@@ -720,10 +762,15 @@ export default function App() {
             event.scene,
           );
           change(next, true);
+          if (completed === 0) {
+            setTime(dialogueTiming(next, next.transcript.at(-1)!)?.start || 0);
+            setPlaying(true);
+          }
           expected = structuredClone(next);
           completed = event.completed;
           setCastProgress((progress) => ({
-            name: progress?.name || "",
+            name: "",
+            characterId: "",
             completed,
             total: event.total,
             stopping: controller.signal.aborted,
@@ -996,6 +1043,12 @@ export default function App() {
             <ChevronDown size={14} />
           </button>
         </div>
+        <AssistantModelMenu
+          disabled={busy}
+          revision={connectionsRevision}
+          onBusyChange={setModelSwitchBusy}
+          onConnections={() => setModal("connections")}
+        />
         <div className="top-actions">
           <span
             className={`save-label ${saveState.includes("not") ? "warning" : ""}`}
@@ -1175,7 +1228,11 @@ export default function App() {
                   <button
                     className="asset-card"
                     key={a.id}
-                    onClick={() => add(a)}
+                    data-asset-id={a.id}
+                    title={`Drag ${a.name} into the scene, or click to add`}
+                    onPointerDown={(event) => viewport.current?.startAssetDrag(a, event.nativeEvent)}
+                    onDragStart={(event) => event.preventDefault()}
+                    onClick={() => { if (!viewport.current?.suppressAssetClick()) add(a); }}
                   >
                     <div className={`asset-art ${a.category}`}>
                       <AssetArt asset={a} />
@@ -1322,7 +1379,16 @@ export default function App() {
             <div className="row">
               <button
                 className="text-button"
-                onClick={() => setModal("conversation")}
+                onClick={clearScene}
+                disabled={!ready || busy || !!castProgress}
+                title="Remove all scene objects, actions and dialogue. Undo restores them. Your library assets are kept."
+              >
+                <Trash2 size={15} />
+                <span>Clear scene</span>
+              </button>
+              <button
+                className="text-button"
+                onClick={() => { setConversationOpen(v => !v); setPanel(false); }}
               >
                 <MessageCircle size={15} />
                 <span>Direct the cast</span>
@@ -1345,12 +1411,22 @@ export default function App() {
               time={time}
               playing={playing}
               onTime={setTime}
+              thinkingId={castProgress?.characterId}
+              advanceTime={voice.advance}
+              onPlaybackState={voice.playbackState}
+              stopAtEnd={scene.transcript.length > 0}
+              onEnded={() => { if (!conversationController.current) setPlaying(false); }}
               onMove={(id, position) => update(id, { position })}
+              onAdd={(assetId, position) => {
+                const asset = allAssets(sceneRef.current).find(item => item.id === assetId);
+                if (asset) add(asset, position);
+              }}
+              onEditStart={() => { setPlaying(false); cancelConversationForEdit(); }}
               onError={report}
               onInteractionWarning={setInteractionWarning}
               move={move}
             />
-            <DialogueCaptions scene={scene} time={time} />
+
             {interactionWarning && (
               <div className="interaction-hint" role="status">
                 <Lightbulb size={16} />
@@ -1395,7 +1471,7 @@ export default function App() {
               <button
                 className={!move ? "active" : ""}
                 aria-label="Orbit view"
-                title="Orbit view"
+                title="Drag objects to move; drag empty space to orbit"
                 onClick={() => setMove(false)}
               >
                 <Move size={18} />
@@ -1429,9 +1505,9 @@ export default function App() {
             </div>
             <div className="stage-bottom">
               <span>
-                <span className="kbd">Drag</span> to orbit{" "}
+                <span className="kbd">Drag objects</span> to move{" "}
                 <span className="dot-separator">·</span>
-                <span className="kbd">Scroll</span> to explore
+                <span className="kbd">Empty space</span> to orbit · Shift snaps · Esc cancels
               </span>
               <span>
                 {scene.environment === "room" &&
@@ -1585,6 +1661,117 @@ export default function App() {
             </div>
           </section>
         </main>
+        <ConversationAside open={conversationOpen} onToggle={() => setConversationOpen(v => !v)}
+          voiceEnabled={voiceEnabled} onVoiceEnabled={setVoiceEnabled} voices={voice.voices}
+          cast={cast} choices={voiceChoices} onChoices={setVoiceChoices}
+          rate={conversationRate} onRate={setConversationRate}>
+          <div className="conversation-content">
+            <div className="cast-avatars">
+              {cast.map((e) => (
+                <span key={e.id} style={{ background: e.color }} title={e.name}>
+                  {e.name[0]}
+                </span>
+              ))}
+              <span className="muted small">
+                {cast.map((e) => e.name).join(" + ") || "Add your cast first"}
+              </span>
+            </div>
+            <label>
+              The direction
+              <textarea
+                rows={3}
+                value={scene.mission}
+                disabled={!!castProgress}
+                onChange={(e) =>
+                  execute([
+                    { type: "scene", changes: { mission: e.target.value } },
+                  ])
+                }
+                placeholder="A mission, a question, a secret to uncover…"
+              />
+            </label>
+            <div className="row spread">
+              <label className="inline-label">
+                Rounds
+                <select
+                  value={rounds}
+                  disabled={!!castProgress}
+                  onChange={(e) => setRounds(Number(e.target.value))}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="primary"
+                disabled={
+                  busy ||
+                  modelSwitchBusy ||
+                  cast.filter((e) => e.visible).length < 2
+                }
+                onClick={() => runConversation()}
+              >
+                {busy ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Play size={15} />
+                )}{" "}
+                {busy
+                  ? "Your cast is thinking…"
+                  : scene.transcript.length
+                    ? "Continue the conversation"
+                    : "Let them talk"}
+              </button>
+            </div>
+            {castProgress && (
+              <CastProgress progress={castProgress} onStop={stopConversation} />
+            )}
+            <p className="small muted">
+              Turns play in the scene as they arrive. Collapse this panel to watch, or pause to change the direction.
+            </p>
+            <DialogueTranscript
+              scene={scene}
+              onPreview={(start) => {
+                setTime(start);
+                setPlaying(true);
+
+              }}
+            />
+            {scene.transcript.length > 0 && (
+              <div className="row">
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    download(
+                      scene.transcript
+                        .map((t) => `${t.name}: ${t.text}`)
+                        .join("\n\n"),
+                      "scene-dialogue.txt",
+                      "text/plain",
+                    )
+                  }
+                >
+                  <Download size={14} /> Save dialogue
+                </button>
+                <button
+                  className="text-button"
+                  disabled={!dialogueClips.size}
+                  onClick={() =>
+                    download(
+                      dialogueSubtitles(scene),
+                      "scene-dialogue.srt",
+                      "text/plain",
+                    )
+                  }
+                >
+                  <Download size={14} />
+                  Save subtitles
+                </button>
+              </div>
+            )}
+          </div>
+        </ConversationAside>
         {panel && (
           <aside className="right-panel">
             <div className="right-tabs">
@@ -1600,8 +1787,11 @@ export default function App() {
               >
                 <SlidersHorizontal size={15} /> Details
               </button>
+              <button className={rightTab === "code" ? "active" : ""} onClick={() => setRightTab("code")}>
+                <span aria-hidden="true">&lt;/&gt;</span> Code
+              </button>
             </div>
-            {rightTab === "assistant" ? (
+            {rightTab === "code" ? <CodingAssistant /> : rightTab === "assistant" ? (
               <>
                 <div className="assistant-heading">
                   <span className="assistant-orb">
@@ -1618,6 +1808,45 @@ export default function App() {
                     “what if” and “let’s try”.
                   </p>
                 </div>
+                <div className="chat-toolbar">
+                  <span>Conversation</span>
+                  {clearedMessages ? (
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => {
+                        setMessages(clearedMessages);
+                        setClearedMessages(null);
+                      }}
+                    >
+                      <Undo2 size={13} /> Undo clear
+                    </button>
+                  ) : (
+                    <button
+                      className="text-button"
+                      disabled={busy || messages.length <= 1}
+                      title={
+                        busy
+                          ? "Wait for this request to finish before clearing chat"
+                          : "Clear the conversation history. Scene edits stay saved."
+                      }
+                      onClick={() => {
+                        setClearedMessages(messages);
+                        setMessages([welcomeMessage]);
+                        requestAnimationFrame(() =>
+                          document.getElementById("assistant-prompt")?.focus(),
+                        );
+                      }}
+                    >
+                      <Trash2 size={13} /> Clear chat
+                    </button>
+                  )}
+                </div>
+                {clearedMessages && (
+                  <p className="chat-cleared" role="status">
+                    Chat cleared. Your next message starts a fresh conversation.
+                  </p>
+                )}
                 <div className="chat-messages">
                   {messages.map((m, i) => (
                     <div key={i} className={`message ${m.role}`}>
@@ -1690,7 +1919,7 @@ export default function App() {
                     </span>
                     <button
                       aria-label="Send message"
-                      disabled={busy || !prompt.trim()}
+                      disabled={busy || modelSwitchBusy || !prompt.trim()}
                     >
                       <ArrowUp size={17} />
                     </button>
@@ -1865,7 +2094,7 @@ export default function App() {
                         />
                         <button
                           className="secondary full"
-                          onClick={() => setModal("conversation")}
+                          onClick={() => { setConversationOpen(v => !v); setPanel(false); }}
                         >
                           <MessageCircle size={14} /> Direct the cast
                         </button>
@@ -2112,7 +2341,8 @@ export default function App() {
       </div>
       <footer className="statusbar">
         <span>
-          <span className="status-dot" /> Your studio is ready
+          <span className="status-dot" />
+          <span className="studio-version" aria-label="App version" title="Build timestamp in UTC">v{studioVersion} · build {studioBuild}</span>
         </span>
         <span>Made for the stories only you can tell.</span>
         <button onClick={() => setModal("settings")}>
@@ -2286,9 +2516,18 @@ export default function App() {
           wide
         >
           <Connections
+            onChanged={() => setConnectionsRevision((v) => v + 1)}
             scene={scene}
             onEntity={update}
             onBack={() => setModal("settings")}
+            onDone={() => {
+              setModal(null);
+              setRightTab("assistant");
+              setPanel(true);
+              requestAnimationFrame(() =>
+                document.getElementById("assistant-prompt")?.focus(),
+              );
+            }}
             onError={report}
           />
         </Modal>
@@ -2498,120 +2737,7 @@ export default function App() {
           </div>
         </Modal>
       )}
-      {modal === "conversation" && (
-        <Modal
-          error={error}
-          onDismissError={() => setError("")}
-          title="Give them something to talk about"
-          onClose={() => setModal(null)}
-          wide
-        >
-          <div className="conversation-content">
-            <div className="cast-avatars">
-              {cast.map((e) => (
-                <span key={e.id} style={{ background: e.color }} title={e.name}>
-                  {e.name[0]}
-                </span>
-              ))}
-              <span className="muted small">
-                {cast.map((e) => e.name).join(" + ") || "Add your cast first"}
-              </span>
-            </div>
-            <label>
-              The direction
-              <textarea
-                rows={3}
-                value={scene.mission}
-                disabled={!!castProgress}
-                onChange={(e) =>
-                  execute([
-                    { type: "scene", changes: { mission: e.target.value } },
-                  ])
-                }
-                placeholder="A mission, a question, a secret to uncover…"
-              />
-            </label>
-            <div className="row spread">
-              <label className="inline-label">
-                Rounds
-                <select
-                  value={rounds}
-                  disabled={!!castProgress}
-                  onChange={(e) => setRounds(Number(e.target.value))}
-                >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n}>{n}</option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="primary"
-                disabled={busy || cast.filter((e) => e.visible).length < 2}
-                onClick={() => runConversation()}
-              >
-                {busy ? (
-                  <LoaderCircle className="spin" size={16} />
-                ) : (
-                  <Play size={15} />
-                )}{" "}
-                {busy
-                  ? "Your cast is thinking…"
-                  : scene.transcript.length
-                    ? "Continue the conversation"
-                    : "Let them talk"}
-              </button>
-            </div>
-            {castProgress && (
-              <CastProgress progress={castProgress} onStop={stopConversation} />
-            )}
-            <p className="small muted">
-              Each character uses their assigned AI model. Completed turns save
-              as they arrive. Preview their words as captions alongside their
-              actions; audio is not generated.
-            </p>
-            <DialogueTranscript
-              scene={scene}
-              onPreview={(start) => {
-                setTime(start);
-                setPlaying(true);
-                setModal(null);
-              }}
-            />
-            {scene.transcript.length > 0 && (
-              <div className="row">
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    download(
-                      scene.transcript
-                        .map((t) => `${t.name}: ${t.text}`)
-                        .join("\n\n"),
-                      "scene-dialogue.txt",
-                      "text/plain",
-                    )
-                  }
-                >
-                  <Download size={14} /> Save dialogue
-                </button>
-                <button
-                  className="text-button"
-                  disabled={!dialogueClips.size}
-                  onClick={() =>
-                    download(
-                      dialogueSubtitles(scene),
-                      "scene-dialogue.srt",
-                      "text/plain",
-                    )
-                  }
-                >
-                  <Download size={14} />
-                  Save subtitles
-                </button>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
+
     </div>
   );
 }

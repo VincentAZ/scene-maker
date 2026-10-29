@@ -1,3 +1,5 @@
+import { createCodingService, codingRouter } from "./coding";
+import { codingPreview } from "./codingPreview";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -15,6 +17,8 @@ import {
   listProjects,
 } from "./storage";
 import { assistant, type Config } from "./ai";
+import { providerErrorMessage } from "./providerErrors";
+import { listProviderModels } from "./providerModels";
 import { conversationRoute } from "./conversationRoute";
 import {
   validateScene,
@@ -85,6 +89,9 @@ app.use(
     },
   }),
 );
+const coding = createCodingService(config);
+const codePreview = codingPreview(coding);
+app.use("/api/coding", codingRouter(coding, task => codePreview.open(task)));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/projects", (_req, res) => res.json(listProjects()));
 app.get("/api/projects/:id", (req, res) =>
@@ -94,9 +101,8 @@ app.put("/api/projects/:id", (req, res) => {
   if (req.body.id !== req.params.id) throw Error("Project ID mismatch.");
   res.json(saveProject(req.body));
 });
-app.get("/api/connections", (_req, res) => {
-  const c = config();
-  res.json({
+function connectionSummary(c: Config) {
+  return {
     assistant: c.assistant,
     blender: c.blender,
     providers: Object.fromEntries(
@@ -108,14 +114,29 @@ app.get("/api/connections", (_req, res) => {
         },
       ]),
     ),
-  });
+  };
+}
+app.get("/api/connections", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(connectionSummary(config()));
+});
+app.post("/api/connections/models", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const body = z
+    .object({
+      provider: z.enum(providers),
+      key: z.string().trim().min(1).max(1000).optional(),
+    })
+    .parse(req.body);
+  const key = body.key ?? config().providers[body.provider]?.key ?? "";
+  res.json({ models: await listProviderModels(body.provider, key) });
 });
 app.put("/api/connections", (req, res) => {
   const body = z
       .object({
         provider: z.enum(providers).optional(),
-        key: z.string().max(1000).optional(),
-        model: z.string().max(200).optional(),
+        key: z.string().trim().max(1000).optional(),
+        model: z.string().trim().max(200).optional(),
         assistant: z.enum(providers).nullable().optional(),
         blender: z.string().min(1).max(1000).optional(),
       })
@@ -128,10 +149,18 @@ app.put("/api/connections", (req, res) => {
       model: body.model ?? prev?.model ?? "",
     };
   }
+  if (body.assistant) {
+    const selected = c.providers[body.assistant];
+    if (!selected?.key || !selected.model)
+      throw Error(
+        "Save an API key and choose a model before using this provider.",
+      );
+  }
   if (body.assistant !== undefined) c.assistant = body.assistant;
+  if (c.assistant && !c.providers[c.assistant]?.key) c.assistant = null;
   if (body.blender !== undefined) c.blender = body.blender;
   atomicWrite(configFile, c);
-  res.json({ ok: true });
+  res.json({ ok: true, ...connectionSummary(c) });
 });
 app.post("/api/assistant", async (req, res) => {
   const controller = new AbortController();
@@ -377,15 +406,14 @@ app.use(
   ) => {
     const error = err as Error & { status?: number; code?: string };
     const safe =
-      error.status === 404
+      providerErrorMessage(err) ??
+      (error.status === 404
         ? "That file is no longer available. Export again or reimport the missing asset."
         : error.code === "ENOENT"
           ? "Blender was not found. Set its path in Studio settings → Connections."
-          : error.name.includes("API")
-            ? "The AI provider could not complete this request. Check your connection, model, quota, and try again."
-            : error instanceof z.ZodError
-              ? "The supplied data is invalid. Check your file or request."
-              : error.message?.slice(0, 400) || "Something went wrong.";
+          : error instanceof z.ZodError
+            ? "The supplied data is invalid. Check your file or request."
+            : error.message?.slice(0, 400) || "Something went wrong.");
     res.status(error.status || 400).json({ error: safe });
   },
 );
