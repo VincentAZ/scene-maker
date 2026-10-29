@@ -31,6 +31,12 @@ export const studioStepSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("save") }),
   z.object({ type: z.literal("select"), id: z.string().nullable() }),
   z.object({
+    type: z.literal("walkTo"),
+    actorId: z.string(),
+    targetId: z.string(),
+    movement: z.enum(["walk", "run"]),
+  }),
+  z.object({
     type: z.literal("previewAction"),
     motionId: z.string(),
     actorId: z.string().optional(),
@@ -140,10 +146,35 @@ export function validatePlan(
     reads: Record<string, number> = {};
   let current = structuredClone(scene);
   const visited = new Map<string, Scene>();
+  const pendingRoutes = new Set<string>();
   for (const step of plan.steps) {
     if (["newProject", "copyProject", "openProject"].includes(step.type))
       visited.set(current.id, structuredClone(current));
-    if (step.type === "edit") current = applyCommands(current, step.commands);
+    if (step.type === "edit")
+      current = applyCommands(current, step.commands, {
+        deferInteractionTiming: pendingRoutes.has(current.id),
+      });
+    if (step.type === "walkTo") {
+      const actor = current.entities.find((e) => e.id === step.actorId),
+        target = current.entities.find((e) => e.id === step.targetId);
+      if (
+        !actor ||
+        !target ||
+        actor.id === target.id ||
+        !actor.visible ||
+        !target.visible ||
+        allAssets(current).find((a) => a.id === actor.assetId)?.category !==
+          "characters"
+      )
+        throw Error(
+          "Choose a visible character and another visible destination for the route.",
+        );
+      if (target.clips.length)
+        throw Error("Use a still object as the route destination.");
+      // Geometry and exact native-action endpoints are checked by the loaded
+      // client planner. Each later edit is revalidated against the actual route.
+      pendingRoutes.add(current.id);
+    }
     if (step.type === "previewAction") {
       if (
         !allMotions(current).some((m) => m.id === step.motionId) ||
@@ -174,10 +205,22 @@ export function validatePlan(
     }
     if (step.type === "newProject")
       current = newProject(step.name, step.template);
-    if (step.type === "copyProject") current = copyProject(current, step.name);
+    if (step.type === "copyProject") {
+      const unknown = pendingRoutes.has(current.id);
+      current = {
+        ...structuredClone(current),
+        id: uid(),
+        revision: 0,
+        name: step.name,
+      };
+      current = validateScene(current, { deferInteractionTiming: unknown });
+      if (unknown) pendingRoutes.add(current.id);
+    }
     if (step.type === "openProject") {
       const known = visited.get(step.id);
-      current = validateScene(known || readProject(step.id));
+      current = validateScene(known || readProject(step.id), {
+        deferInteractionTiming: pendingRoutes.has(step.id),
+      });
       if (!known) reads[step.id] = current.revision;
     }
     if (
@@ -191,7 +234,8 @@ export function validatePlan(
     if (
       step.type === "playback" &&
       step.mode === "seek" &&
-      (step.time === undefined || step.time > duration(current))
+      (step.time === undefined ||
+        (!pendingRoutes.has(current.id) && step.time > duration(current)))
     )
       throw Error("Choose a time within this scene’s sequence.");
   }

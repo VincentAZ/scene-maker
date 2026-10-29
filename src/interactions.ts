@@ -51,7 +51,18 @@ function crouch(
 ) {
   const bones = rig.userData.bones as Record<string, T.Bone>;
   const localY = rig.worldToLocal(goal.clone()).y;
-  const amount = smooth((0.7 - localY) / 0.7);
+  const shoulder = worldPoint(bones.rightArm),
+    elbow = worldPoint(bones.rightForearm);
+  const hand = bones.rightForearm.localToWorld(contacts.hand.clone());
+  const reach =
+    (shoulder.distanceTo(elbow) + elbow.distanceTo(hand)) / actor.scale;
+  // A tall/short-armed body may need a shallow crouch even for a tabletop.
+  // Leave some arm span available horizontally rather than exhausting it vertically.
+  const drop = rig.worldToLocal(shoulder.clone()).y - localY - reach * 0.65;
+  const amount = Math.max(
+    smooth((0.7 - localY) / 0.7),
+    Math.min(1, Math.max(0, drop / 0.65)),
+  );
   if (!amount || !bones.spine || !contacts.leftFoot || !contacts.rightFoot)
     return;
   const feet = ["left", "right"].map((side) =>
@@ -99,6 +110,17 @@ function handTarget(
     contacts.hand,
     goal,
     pole,
+  );
+}
+// Uses the same crouch and arm solver as actual acquisition. Callers restore
+// the sampled rig afterward; this probe never edits scene data or a prop.
+export function reachableGrip(rig: T.Group, actor: Entity, goal: T.Vector3) {
+  const contacts =
+    (rig.userData.contacts as RigContacts | undefined) ||
+    configureRigContacts(rig);
+  return (
+    !!contacts &&
+    handTarget(rig, actor, goal, contacts).error <= 0.025 * actor.scale
   );
 }
 export function applyInteractions(

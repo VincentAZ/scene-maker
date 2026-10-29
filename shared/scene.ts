@@ -68,6 +68,7 @@ export const motionSchema = z
       .object({
         points: z.array(vec3).min(2).max(32),
         smooth: z.boolean().default(true),
+        endHeading: z.number().finite().min(-100).max(100).optional(),
       })
       .optional(),
   })
@@ -418,7 +419,11 @@ export const allMotions = (s: Scene) => [
 ];
 export const resolveMotionSource = (s: Scene, id: string | undefined) =>
   id === motionSource.id ? motionSource : allAssets(s).find((a) => a.id === id);
-export function applyCommands(scene: Scene, input: unknown): Scene {
+export function applyCommands(
+  scene: Scene,
+  input: unknown,
+  options: { deferInteractionTiming?: boolean } = {},
+): Scene {
   const commands = z.array(commandSchema).max(100).parse(input);
   const s = structuredClone(scene);
   const find = (id: string) => {
@@ -563,9 +568,12 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
         ?.clips.some((c) => c.id === line.clipId)
     )
       delete line.clipId;
-  return validateScene(s);
+  return validateScene(s, options);
 }
-export function validateScene(input: unknown): Scene {
+export function validateScene(
+  input: unknown,
+  options: { deferInteractionTiming?: boolean } = {},
+): Scene {
   const s = sceneSchema.parse(input);
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
   if (
@@ -639,7 +647,7 @@ export function validateScene(input: unknown): Scene {
         ?.clips.some((c) => c.id === line.clipId)
     )
       throw Error("Missing dialogue action.");
-  interactionSessions(s, allMotions(s));
+  if (!options.deferInteractionTiming) interactionSessions(s, allMotions(s));
   return s;
 }
 export const duration = (s: Scene) =>

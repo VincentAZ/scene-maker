@@ -56,6 +56,7 @@ import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
 import { PathEditor } from "./PathEditor";
+import type { Footprint } from "../shared/navigation";
 import { dialogueSubtitles } from "../shared/conversation";
 import {
   readConversationStream,
@@ -141,6 +142,7 @@ export default function App() {
       actor: Entity;
       clipId?: string;
       frame: PathFrame;
+      footprints: Footprint[];
       motion?: Motion;
       content: string;
     } | null>(null),
@@ -382,16 +384,22 @@ export default function App() {
     )
       throw Error("Choose a character before creating a path.");
     await viewport.current!.waitForScene(snapshot);
+    if (sameContent(sceneRef.current) !== sameContent(snapshot))
+      throw Error(
+        "The scene changed while loading. Open the route editor again.",
+      );
     const clip = clipId ? actor.clips.find((c) => c.id === clipId) : undefined;
     const motion =
       clip && allMotions(snapshot).find((m) => m.id === clip.motionId);
     if (clipId && !motion?.path)
       throw Error("This action does not have an editable path.");
+    const navigation = viewport.current!.routeContext(actorId, clipId);
     setPathEdit({
       actorId,
       actor,
       clipId,
-      frame: viewport.current!.sequenceOrigin(actorId, clipId),
+      frame: navigation.frame,
+      footprints: navigation.footprints,
       motion: motion ? { ...motion, duration: clip!.duration } : undefined,
       content: sameContent(snapshot),
     });
@@ -526,6 +534,26 @@ export default function App() {
       { type: "edit" | "newProject" | "copyProject" | "openProject" | "save" }
     >,
   ) {
+    if (step.type === "walkTo") {
+      setPlaying(false);
+      cancelConversationForEdit();
+      const snapshot = sceneRef.current;
+      await viewport.current!.waitForScene(snapshot);
+      if (sameContent(sceneRef.current) !== sameContent(snapshot))
+        throw Error(
+          "The scene changed while planning. Ask for the route again.",
+        );
+      const motion = viewport.current!.planRoute(
+        step.actorId,
+        step.targetId,
+        step.movement,
+      );
+      execute(savePathCommands(snapshot, step.actorId, motion));
+      setSelected(step.actorId);
+      setRightTab("details");
+      setPanel(true);
+      return;
+    }
     if (step.type === "previewAction") {
       setPlaying(false);
       setPreviewAction({
@@ -550,7 +578,11 @@ export default function App() {
       else {
         setPlaying(false);
         if (step.mode === "rewind") setTime(0);
-        if (step.mode === "seek") setTime(step.time!);
+        if (step.mode === "seek") {
+          if (step.time === undefined || step.time > duration(sceneRef.current))
+            throw Error("Choose a time within this scene’s sequence.");
+          setTime(step.time);
+        }
       }
       return;
     }
@@ -1163,7 +1195,8 @@ export default function App() {
               >
                 <Footprints size={16} />
                 <span>
-                  Draw a path<small>Choose where your character goes</small>
+                  Draw a path
+                  <small>Draw freely or plan a walk to an object</small>
                 </span>
                 <Plus size={14} />
               </button>
@@ -2099,6 +2132,19 @@ export default function App() {
           scene={scene}
           actor={pathEdit.actor}
           frame={pathEdit.frame}
+          footprints={pathEdit.footprints}
+          onPlan={(targetId, movement) => {
+            if (sameContent(sceneRef.current) !== pathEdit.content)
+              throw Error(
+                "The scene changed. Close this route and open it again.",
+              );
+            return viewport.current!.planRoute(
+              pathEdit.actorId,
+              targetId,
+              movement,
+              pathEdit.clipId,
+            );
+          }}
           motion={pathEdit.motion}
           onClose={() => setModal(null)}
           onSave={(motion) => {

@@ -87,11 +87,19 @@ export function samplePath(path: MotionPath, progress: number) {
   // Begin at the preceding action's facing and turn into the route. Heading is
   // unwrapped before interpolation, preserving a full circle without a spin.
   const initialHeading = samples[0].heading;
+  const tangent = a.heading + (b.heading - a.heading) * t;
+  const arrivalTurn =
+    path.endHeading === undefined
+      ? 0
+      : Math.atan2(
+          Math.sin(path.endHeading - samples.at(-1)!.heading),
+          Math.cos(path.endHeading - samples.at(-1)!.heading),
+        );
   return {
     point: mix(a.point, b.point, t),
     heading:
-      a.heading +
-      (b.heading - a.heading) * t -
+      tangent +
+      arrivalTurn * ease((u - 0.85) / 0.15) -
       initialHeading * (1 - ease(u / 0.08)),
     travelled,
     length: compiled.length,

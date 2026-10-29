@@ -11,6 +11,12 @@ import { setMotionSources } from "./rig";
 import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
 import { libraryEntry } from "../shared/characterLibrary";
 import type { PathFrame } from "../shared/path";
+import {
+  routeContext,
+  planObjectRoute,
+  type RouteContext,
+} from "./routePlanner";
+import type { Motion } from "../shared/scene";
 import { interactionSessions, type HoldSession } from "../shared/interactions";
 import { type Scene, allAssets, allMotions, duration } from "../shared/scene";
 import {
@@ -27,6 +33,13 @@ export type ViewportHandle = {
   frame: (view: "default" | "front" | "side" | "top", focusId?: string) => void;
   waitForScene: (scene: Scene, signal?: AbortSignal) => Promise<void>;
   sequenceOrigin: (actorId: string, beforeClipId?: string) => PathFrame;
+  routeContext: (actorId: string, beforeClipId?: string) => RouteContext;
+  planRoute: (
+    actorId: string,
+    targetId: string,
+    kind: "walk" | "run",
+    beforeClipId?: string,
+  ) => Motion;
 };
 type Props = {
   scene: Scene;
@@ -383,6 +396,36 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        routeContext(actorId, beforeClipId) {
+          const c = context.current;
+          if (!c) throw Error("Wait for the scene to finish loading.");
+          try {
+            return routeContext(
+              live.current.scene,
+              c.objects,
+              actorId,
+              beforeClipId,
+            );
+          } finally {
+            c.renderAt(live.current.time);
+          }
+        },
+        planRoute(actorId, targetId, kind, beforeClipId) {
+          const c = context.current;
+          if (!c) throw Error("Wait for the scene to finish loading.");
+          try {
+            return planObjectRoute(
+              live.current.scene,
+              c.objects,
+              actorId,
+              targetId,
+              kind,
+              beforeClipId,
+            );
+          } finally {
+            c.renderAt(live.current.time);
+          }
+        },
         sequenceOrigin(actorId, beforeClipId) {
           const c = context.current,
             scene = live.current.scene;

@@ -16,12 +16,15 @@ import {
   type PathFrame,
 } from "../shared/path";
 import type { Point } from "../shared/ladder";
+import type { Footprint } from "../shared/navigation";
 
 type Props = {
   scene: Scene;
   actor: Entity;
   frame: PathFrame;
   motion?: Motion;
+  footprints?: Footprint[];
+  onPlan?: (targetId: string, movement: "walk" | "run") => Motion;
   onSave: (motion: Motion) => void;
   onClose: () => void;
 };
@@ -30,6 +33,8 @@ export function PathEditor({
   actor,
   frame,
   motion,
+  footprints = [],
+  onPlan,
   onSave,
   onClose,
 }: Props) {
@@ -48,6 +53,8 @@ export function PathEditor({
     [manualTime, setManualTime] = useState(!!motion);
   const [error, setError] = useState(""),
     [id] = useState(motion?.id || uid);
+  const [destination, setDestination] = useState("");
+  const [endHeading, setEndHeading] = useState(motion?.path?.endHeading);
   const svg = useRef<SVGSVGElement>(null),
     dragging = useRef<number | null>(null),
     suppressClick = useRef(false);
@@ -60,27 +67,60 @@ export function PathEditor({
         e.position[2] - frame.position[2],
       ) < 20,
   );
-  const [bounds] = useState(() => {
-    const visible = [...points, ...nearby.map((e) => e.position)];
+  const fitMap = (route: Point[]) => {
+    const visible = [...route, ...nearby.map((e) => e.position)];
+    const planned = route.length > 1,
+      padding = planned ? 1 : 2;
     const minX =
-      Math.min(frame.position[0] - 4, ...visible.map((p) => p[0])) - 2;
+      Math.min(
+        frame.position[0] - (planned ? 1 : 4),
+        ...visible.map((p) => p[0]),
+      ) - padding;
     const maxX =
-      Math.max(frame.position[0] + 4, ...visible.map((p) => p[0])) + 2;
+      Math.max(
+        frame.position[0] + (planned ? 1 : 4),
+        ...visible.map((p) => p[0]),
+      ) + padding;
     const minZ =
-      Math.min(frame.position[2] - 3, ...visible.map((p) => p[2])) - 2;
+      Math.min(
+        frame.position[2] - (planned ? 1 : 3),
+        ...visible.map((p) => p[2]),
+      ) - padding;
     const maxZ =
-      Math.max(frame.position[2] + 3, ...visible.map((p) => p[2])) + 2;
+      Math.max(
+        frame.position[2] + (planned ? 1 : 3),
+        ...visible.map((p) => p[2]),
+      ) + padding;
     const width = Math.max(maxX - minX, (maxZ - minZ) * 1.5);
     return {
       x: (minX + maxX - width) / 2,
       z: (minZ + maxZ - width / 1.5) / 2,
       width,
     };
-  });
+  };
+  const [bounds, setBounds] = useState(() => fitMap(points));
   const map = (p: Point) => [
     ((p[0] - bounds.x) / bounds.width) * 600,
     ((p[2] - bounds.z) / bounds.width) * 600,
   ];
+  const labelBoxes: { x: number; y: number; width: number }[] = [];
+  const labelOffsets = new Map(
+    nearby.map((entity) => {
+      const [x, y] = map(entity.position),
+        width = entity.name.length * 6;
+      const offset =
+        [-18, 30, -34, 46, -50, 62].find(
+          (dy) =>
+            !labelBoxes.some(
+              (box) =>
+                Math.abs(x - box.x) < (width + box.width) / 2 + 4 &&
+                Math.abs(y + dy - box.y) < 15,
+            ),
+        ) ?? 78;
+      labelBoxes.push({ x, y: y + offset, width });
+      return [entity.id, offset];
+    }),
+  );
   const path = useMemo(
     () => ({
       points: points.map((p) => {
@@ -89,8 +129,9 @@ export function PathEditor({
         return local;
       }),
       smooth,
+      ...(endHeading === undefined ? {} : { endHeading }),
     }),
-    [points, frame, smooth],
+    [points, frame, smooth, endHeading],
   );
   const compiled = useMemo(
     () => (points.length > 1 ? compilePath(path) : null),
@@ -172,6 +213,56 @@ export function PathEditor({
             : "This route starts after their current actions."}{" "}
           Click the map to add points, or drag a numbered point.
         </p>
+        {onPlan && (
+          <div className="route-destination">
+            <label>
+              Walk to an object
+              <select
+                aria-label="Route destination"
+                value={destination}
+                onChange={(event) => setDestination(event.target.value)}
+              >
+                <option value="">Choose a destination…</option>
+                {scene.entities
+                  .filter(
+                    (e) => e.id !== actor.id && e.visible && !e.clips.length,
+                  )
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              className="secondary"
+              disabled={!destination}
+              onClick={() => {
+                try {
+                  const planned = onPlan(destination, kind);
+                  const route = planned.path!.points.map((p) =>
+                    pathToWorld(p, frame),
+                  );
+                  setPoints(route);
+                  setBounds(fitMap(route));
+                  setSmooth(planned.path!.smooth);
+                  setEndHeading(planned.path!.endHeading);
+                  setName(planned.name);
+                  setManualTime(false);
+                  setError("");
+                } catch (error) {
+                  setError(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not plan this route.",
+                  );
+                }
+              }}
+            >
+              Plan a clear route
+            </button>
+          </div>
+        )}
         <div className="path-map-heading">
           <span>YOUR SCENE · TOP VIEW</span>
           <span>
@@ -219,6 +310,28 @@ export function PathEditor({
             </pattern>
           </defs>
           <rect width="600" height="400" fill="url(#path-grid)" />
+          {footprints.map((box) => {
+            const [x, y] = map([box.minX, frame.position[1], box.minZ]);
+            const [right, bottom] = map([
+              box.maxX,
+              frame.position[1],
+              box.maxZ,
+            ]);
+            return (
+              <rect
+                key={box.id}
+                x={x}
+                y={y}
+                width={right - x}
+                height={bottom - y}
+                rx="2"
+                fill="#cbd2c2"
+                stroke="#9ca98c"
+                opacity=".65"
+                pointerEvents="none"
+              />
+            );
+          })}
           {nearby.map((entity) => {
             const [x, y] = map(entity.position);
             const asset = allAssets(scene).find((a) => a.id === entity.assetId);
@@ -232,7 +345,7 @@ export function PathEditor({
                   r={asset?.category === "characters" ? 8 : 12}
                   fill={entity.color}
                 />
-                <text y="-18" textAnchor="middle">
+                <text y={labelOffsets.get(entity.id)} textAnchor="middle">
                   {entity.name}
                 </text>
               </g>
@@ -345,6 +458,14 @@ export function PathEditor({
           <button className="text-button" onClick={() => setManualTime(false)}>
             Use natural pace
           </button>
+          {endHeading !== undefined && (
+            <button
+              className="text-button"
+              onClick={() => setEndHeading(undefined)}
+            >
+              Use path direction on arrival
+            </button>
+          )}
         </div>
         <details className="path-coordinates">
           <summary>Fine-tune the points</summary>
@@ -384,8 +505,9 @@ export function PathEditor({
           ))}
         </details>
         <p className="path-note">
-          The route guides movement. Leave room around props; paths do not avoid
-          obstacles automatically.
+          Planned routes leave room around the objects shown here and face the
+          destination on arrival. Replan after moving furniture. Check backdrop
+          walls, moving objects, and hand-drawn edits before playback.
         </p>
         <div className="path-footer">
           <button className="secondary" onClick={onClose}>

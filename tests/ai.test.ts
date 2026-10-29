@@ -22,6 +22,29 @@ function model(output: unknown) {
   });
 }
 describe("live AI contract with deterministic model responses", () => {
+  it("accepts a measured route followed by targeted actions through the SDK contract", async () => {
+    const scene = starterScene(),
+      actor = scene.entities[0],
+      cup = scene.entities.find((e) => e.assetId === "cup")!;
+    const steps = [
+      { type: "walkTo", actorId: actor.id, targetId: cup.id, movement: "walk" },
+      {
+        type: "edit",
+        commands: [
+          { type: "chain", id: actor.id, motionId: "sip", targetId: cup.id },
+        ],
+      },
+      { type: "save" },
+    ];
+    const result = await assistant(
+      config,
+      scene,
+      "Walk to the cup and take a sip",
+      actor.id,
+      () => model({ response: "Ready", steps }),
+    );
+    expect(result.steps).toEqual(steps);
+  });
   it("validates a skinned character recipe and a following performance in one SDK plan", async () => {
     const asset = characterDraft("quaternius-casual-female", "Cleo");
     asset.design!.glasses = true;

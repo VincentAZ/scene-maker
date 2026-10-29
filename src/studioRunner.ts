@@ -62,6 +62,8 @@ export function describeStep(step: StudioStep): string {
       return "Opened the action preview";
     case "pathEditor":
       return "Opened the path editor";
+    case "walkTo":
+      return "Added a planned route";
   }
 }
 export async function runStudioPlan(reply: AssistantReply, ports: StudioPorts) {
