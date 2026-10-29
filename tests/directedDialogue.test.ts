@@ -6,8 +6,15 @@ import {
   dialogueTiming,
   dialogueSubtitles,
   reviseDialogue,
+  setDialoguePath,
+  pathableClip,
 } from "../shared/conversation";
-import { applyCommands, starterScene, validateScene } from "../shared/scene";
+import {
+  allMotions,
+  applyCommands,
+  starterScene,
+  validateScene,
+} from "../shared/scene";
 import { validatePlan } from "../shared/studio";
 import {
   assistant,
@@ -360,5 +367,80 @@ describe("directed dialogue performances", () => {
     expect(result.completed).toBe(1);
     expect(result.scene.transcript).toHaveLength(1);
     expect(result.scene.entities[1].clips).toEqual([]);
+  });
+
+  it("routes the first travelling action of a performance line and leaves contact actions in place", () => {
+    const route = {
+      id: "route",
+      name: "Over here",
+      kind: "walk" as const,
+      duration: 30,
+      distance: 0,
+      poses: [],
+      path: {
+        points: [
+          [0, 0, 0],
+          [0, 0, 1],
+        ] as [number, number, number][],
+        smooth: true,
+      },
+    };
+    const spoken = appendSpeech(fixture(), "mila", {
+      dialogue: "Over here.",
+      performance: [
+        { motionId: "pick", targetId: "cup" },
+        { motionId: "talk", duration: 3 },
+      ],
+    });
+    const line = spoken.transcript[0];
+    const [pick, talk] = spoken.entities[0].clips;
+    expect(pathableClip(spoken, line)).toBe(talk.id);
+    // Asking for the line's first (contact) action still routes the talk.
+    const routed = setDialoguePath(spoken, "mila", pick.id, route);
+    const clips = routed.entities[0].clips;
+    expect(clips[0]).toEqual(pick);
+    const motion = allMotions(routed).find((m) => m.id === clips[1].motionId)!;
+    expect(motion.kind).toBe("walk");
+    expect(motion.path).toBeTruthy();
+    expect(clips[1].duration).toBe(3);
+    expect(dialogueTiming(routed, routed.transcript[0])).toEqual(
+      dialogueTiming(spoken, line),
+    );
+    const contactOnly = appendSpeech(fixture(), "mila", {
+      dialogue: "Mm.",
+      performance: [{ motionId: "sip", targetId: "cup", duration: 5 }],
+    });
+    expect(pathableClip(contactOnly, contactOnly.transcript[0])).toBeNull();
+    expect(() =>
+      setDialoguePath(
+        contactOnly,
+        "mila",
+        contactOnly.transcript[0].clipId!,
+        route,
+      ),
+    ).toThrow("Keep this interaction");
+  });
+  it("checks capacity for the largest possible performance before calling a model", async () => {
+    const full = applyCommands(
+      fixture(),
+      Array.from({ length: 96 }, () => ({
+        type: "chain" as const,
+        id: "mila",
+        motionId: "idle",
+        duration: 0.2,
+      })),
+    );
+    const fake = model({
+      dialogue: "Hi.",
+      performance: [{ motionId: "talk" }],
+    });
+    const result = await conversation(config, full, 1, () => fake).catch(
+      (error) => error as ConversationInterrupted,
+    );
+    expect(result).toBeInstanceOf(ConversationInterrupted);
+    expect((result as ConversationInterrupted).message).toContain(
+      "sequence is full",
+    );
+    expect(fake.doGenerateCalls).toHaveLength(0);
   });
 });
