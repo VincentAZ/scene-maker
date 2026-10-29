@@ -156,6 +156,7 @@ describe("local service boundaries", () => {
     expect(JSON.parse(response).providers.openai).toEqual({
       connected: true,
       model: "test-model",
+      thinking: "default",
     });
     expect(fs.statSync(path.join(dir, "connections.json")).mode & 0o777).toBe(
       0o600,

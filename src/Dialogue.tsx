@@ -67,9 +67,11 @@ export function DialogueCaptions({
 export function DialogueTranscript({
   scene,
   onPreview,
+  onPath,
 }: {
   scene: Scene;
   onPreview: (time: number) => void;
+  onPath?: (characterId: string, clipId: string) => void;
 }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -98,6 +100,14 @@ export function DialogueTranscript({
                 )}
               </div>
               <p>{line.text}</p>
+              {line.clipId && onPath && (
+                <button
+                  className="text-button"
+                  onClick={() => onPath(line.characterId, line.clipId!)}
+                >
+                  Draw a path for this line
+                </button>
+              )}
             </div>
           );
         })

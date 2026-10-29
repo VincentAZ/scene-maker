@@ -39,7 +39,11 @@ export type ViewportHandle = {
   screenshot: () => void;
   exportGLB: () => Promise<ArrayBuffer>;
   reset: () => void;
-  frame: (view: "default" | "front" | "side" | "top", focusId?: string) => void;
+  frame: (
+    view: "default" | "front" | "side" | "top" | "conversation",
+    focusId?: string,
+    atTime?: number,
+  ) => void;
   waitForScene: (scene: Scene, signal?: AbortSignal) => Promise<void>;
   sequenceOrigin: (actorId: string, beforeClipId?: string) => PathFrame;
   routeContext: (actorId: string, beforeClipId?: string) => RouteContext;
@@ -131,30 +135,63 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       host.current.appendChild(bubbleLayer);
       const bubbles = new Map<string, HTMLDivElement>();
       const projectBubbles = (time: number) => {
-        const lines = dialogueAt(live.current.scene, time).map(l => ({id:l.characterId, name:l.name, text:l.text, thought:false}));
-        const thinker = live.current.scene.entities.find(e => e.id === live.current.thinkingId && e.visible);
-        if (thinker && !lines.some(l => l.id === thinker.id)) lines.push({id:thinker.id, name:thinker.name, text:"Thinking…", thought:true});
-        for (const [id, bubble] of bubbles) if (!lines.some(l => l.id === id)) { bubble.remove(); bubbles.delete(id); }
+        const lines = dialogueAt(live.current.scene, time).map((l) => ({
+          id: l.characterId,
+          name: l.name,
+          text: l.text,
+          thought: false,
+        }));
+        const thinker = live.current.scene.entities.find(
+          (e) => e.id === live.current.thinkingId && e.visible,
+        );
+        if (thinker && !lines.some((l) => l.id === thinker.id))
+          lines.push({
+            id: thinker.id,
+            name: thinker.name,
+            text: "Thinking…",
+            thought: true,
+          });
+        for (const [id, bubble] of bubbles)
+          if (!lines.some((l) => l.id === id)) {
+            bubble.remove();
+            bubbles.delete(id);
+          }
         for (const line of lines) {
           const object = objects.get(line.id);
           if (!object?.visible) continue;
           let bubble = bubbles.get(line.id);
-          if (!bubble) { bubble = document.createElement("div"); bubbleLayer.appendChild(bubble); bubbles.set(line.id,bubble); }
+          if (!bubble) {
+            bubble = document.createElement("div");
+            bubbleLayer.appendChild(bubble);
+            bubbles.set(line.id, bubble);
+          }
           const key = `${line.name}:${line.text}:${line.thought}`;
           if (bubble.dataset.content !== key) {
             bubble.dataset.content = key;
             bubble.className = `scene-bubble${line.thought ? " thought" : ""}`;
-            const name = document.createElement("strong"); name.textContent = line.name;
-            const words = document.createElement("span"); words.textContent = line.text;
-            bubble.replaceChildren(name,words);
+            const name = document.createElement("strong");
+            name.textContent = line.name;
+            const words = document.createElement("span");
+            words.textContent = line.text;
+            bubble.replaceChildren(name, words);
           }
           const head = object.userData.bones?.head as T.Object3D | undefined;
-          const anchor = head ? head.getWorldPosition(new T.Vector3()) : object.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,1.8,0));
-          anchor.y += .38; anchor.project(camera);
-          const width = renderer.domElement.clientWidth, height = renderer.domElement.clientHeight;
-          bubble.hidden = anchor.z < -1 || anchor.z > 1 || Math.abs(anchor.x) > 1.2 || Math.abs(anchor.y) > 1.3;
-          bubble.style.left = `${Math.max(bubble.offsetWidth/2+8, Math.min(width-bubble.offsetWidth/2-8,(anchor.x*.5+.5)*width))}px`;
-          bubble.style.top = `${Math.max(bubble.offsetHeight+12, Math.min(height-28,(-anchor.y*.5+.5)*height))}px`;
+          const anchor = head
+            ? head.getWorldPosition(new T.Vector3())
+            : object
+                .getWorldPosition(new T.Vector3())
+                .add(new T.Vector3(0, 1.8, 0));
+          anchor.y += 0.38;
+          anchor.project(camera);
+          const width = renderer.domElement.clientWidth,
+            height = renderer.domElement.clientHeight;
+          bubble.hidden =
+            anchor.z < -1 ||
+            anchor.z > 1 ||
+            Math.abs(anchor.x) > 1.2 ||
+            Math.abs(anchor.y) > 1.3;
+          bubble.style.left = `${Math.max(bubble.offsetWidth / 2 + 8, Math.min(width - bubble.offsetWidth / 2 - 8, (anchor.x * 0.5 + 0.5) * width))}px`;
+          bubble.style.top = `${Math.max(bubble.offsetHeight + 12, Math.min(height - 28, (-anchor.y * 0.5 + 0.5) * height))}px`;
         }
       };
       const camera = new T.PerspectiveCamera(38, 1, 0.1, 100);
@@ -287,12 +324,14 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         const selectedObject = live.current.selected
           ? objects.get(live.current.selected)
           : undefined;
-        selection.visible = !!selectedObject && selectedObject.visible;
+        selection.visible =
+          !!selectedObject && selectedObject.visible && !live.current.playing;
         if (selection.visible && selectedObject) {
           selectedObject.updateWorldMatrix(true, true);
           selection.setFromObject(selectedObject);
         }
-        transform.getHelper().visible = !!transform.object?.visible;
+        transform.getHelper().visible =
+          !!transform.object?.visible && !live.current.playing;
         interactionWarning = [
           ...interactionMessages,
           ...Array.from(
@@ -358,25 +397,46 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         previous = performance.now(),
         elapsed = live.current.time,
         wasPlaying = false,
-        lastSent = 0, publishedTime = live.current.time, ended = false;
+        lastSent = 0,
+        publishedTime = live.current.time,
+        ended = false;
       const loop = (now: number) => {
         frame = requestAnimationFrame(loop);
         const dt = Math.min((now - previous) / 1000, 0.1);
         previous = now;
-        if (Math.abs(live.current.time - publishedTime) > .001) {
-          elapsed = live.current.time; publishedTime = elapsed; ended = false;
+        if (Math.abs(live.current.time - publishedTime) > 0.001) {
+          elapsed = live.current.time;
+          publishedTime = elapsed;
+          ended = false;
           live.current.onPlaybackState?.("seek");
         }
-        if (live.current.playing !== wasPlaying) live.current.onPlaybackState?.(live.current.playing ? "play" : "pause");
+        if (live.current.playing !== wasPlaying)
+          live.current.onPlaybackState?.(
+            live.current.playing ? "play" : "pause",
+          );
         if (live.current.playing && !dragging.active() && !transform.dragging) {
           if (!wasPlaying) elapsed = live.current.time;
           elapsed = live.current.advanceTime?.(elapsed, dt) ?? elapsed + dt;
           const total =
-            live.current.loopDuration ?? (live.current.stopAtEnd ? Math.max(0, ...live.current.scene.entities.map(e => e.clips.reduce((t,c) => t+c.duration,0))) : duration(live.current.scene));
+            live.current.loopDuration ??
+            (live.current.stopAtEnd
+              ? Math.max(
+                  0,
+                  ...live.current.scene.entities.map((e) =>
+                    e.clips.reduce((t, c) => t + c.duration, 0),
+                  ),
+                )
+              : duration(live.current.scene));
           if (elapsed >= total && live.current.stopAtEnd) {
             elapsed = total;
-            if (!ended) { ended = true; live.current.onEnded?.(); }
-          } else { ended = false; if (elapsed > total) elapsed = 0; }
+            if (!ended) {
+              ended = true;
+              live.current.onEnded?.();
+            }
+          } else {
+            ended = false;
+            if (elapsed > total) elapsed = 0;
+          }
           if (now - lastSent > 40) {
             publishedTime = elapsed;
             live.current.onTime(elapsed);
@@ -629,10 +689,45 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             "The requested scene is not ready to export. Wait for imported assets or retry after finishing your edits.",
           );
         },
-        frame(view, focusId) {
+        frame(view, focusId, atTime) {
           const c = context.current;
           if (!c) throw Error("The view is not ready.");
-          c.renderAt(live.current.time);
+          c.renderAt(atTime ?? live.current.time);
+          if (view === "conversation") {
+            const bounds = new T.Box3();
+            for (const actor of live.current.scene.entities) {
+              const obj = c.objects.get(actor.id);
+              if (
+                actor.visible &&
+                obj &&
+                allAssets(live.current.scene).find(
+                  (a) => a.id === actor.assetId,
+                )?.category === "characters"
+              )
+                bounds.expandByObject(obj);
+            }
+            if (bounds.isEmpty()) return;
+            const size = bounds.getSize(new T.Vector3()),
+              target = bounds.getCenter(new T.Vector3());
+            const fit = Math.max(size.y + 1.1, size.x / c.camera.aspect + 0.8);
+            const distance = Math.max(
+              3.8,
+              (fit / (2 * Math.tan(T.MathUtils.degToRad(c.camera.fov / 2)))) *
+                1.2 +
+                size.z * 0.65,
+            );
+            target.y += 0.2;
+            c.controls.target.copy(target);
+            c.camera.position
+              .copy(target)
+              .add(
+                new T.Vector3(0.15, 0.12, 1)
+                  .normalize()
+                  .multiplyScalar(distance),
+              );
+            c.controls.update();
+            return;
+          }
           const object = focusId ? c.objects.get(focusId) : undefined;
           if (focusId && !object)
             throw Error("The selected object is not loaded.");

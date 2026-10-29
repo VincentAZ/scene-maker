@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "../shared/thinking";
 import { useState, useEffect } from "react";
 import { ArrowLeft, Check, ExternalLink } from "lucide-react";
 import { providers, allAssets, type Scene, type Entity } from "../shared/scene";
@@ -8,7 +9,7 @@ export type ProviderModel = { id: string; name: string };
 export type ConnectionsData = {
   assistant: Provider | null;
   blender: string;
-  providers: Record<string, { connected: boolean; model: string }>;
+  providers: Record<string, { connected: boolean; model: string; thinking?: ThinkingLevel }>;
 };
 export const providerNames: Record<Provider, string> = {
   openai: "OpenAI",

@@ -1,3 +1,5 @@
+import { ThinkingControl } from "./ThinkingControl";
+import { thinkingChoices, type ThinkingLevel } from "../shared/thinking";
 import { useEffect, useRef, useState } from "react";
 import { Check, ArrowRight } from "lucide-react";
 import { api } from "./api";
@@ -25,12 +27,21 @@ export function ProviderConnection({
   const saved = data.providers[provider];
   const [key, setKey] = useState("");
   const [model, setModel] = useState(saved?.model || "");
+  const [thinking, setThinking] = useState<ThinkingLevel>(
+    saved?.thinking || "default",
+  );
+  useEffect(() => {
+    setThinking(saved?.thinking || "default");
+  }, [saved?.thinking]);
   const [models, setModels] = useState<ProviderModel[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const requestId = useRef(0);
-  const dirty = !!key || model !== (saved?.model || "");
+  const dirty =
+    !!key ||
+    model !== (saved?.model || "") ||
+    thinking !== (saved?.thinking || "default");
   const listed = !!models?.some((m) => m.id === model);
   const inUse = data.assistant === provider;
   const canSave = listed && !loading && !saving;
@@ -86,6 +97,9 @@ export function ProviderConnection({
         provider,
         ...(key.trim() ? { key: key.trim() } : {}),
         model,
+        thinking: thinkingChoices(provider, model).includes(thinking)
+          ? thinking
+          : "default",
         ...(useForAssistant ? { assistant: provider } : {}),
       });
       setKey("");
@@ -182,6 +196,13 @@ export function ProviderConnection({
             : "Connect your key to see assistant suggestions."}
         </p>
       )}
+      <ThinkingControl
+        provider={provider}
+        model={model}
+        value={thinking}
+        disabled={saving || loading}
+        onChange={setThinking}
+      />
       {models && model && !listed && (
         <p className="connection-error" role="alert">
           “{model}” was not returned by {name}. Choose one of the assistant

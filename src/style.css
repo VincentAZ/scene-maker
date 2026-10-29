@@ -3392,8 +3392,8 @@ label > span {
 .conversation-controls { overflow:auto; padding:18px; min-height:0; }
 .conversation-controls[hidden] { display:none; }
 .conversation-intro { font-size:18px; margin:0 0 18px; line-height:1.4; }
-.conversation-resize { position:absolute; width:9px; left:-5px; top:0; bottom:0; cursor:col-resize; touch-action:none; z-index:5; }
-.conversation-resize:focus-visible { background:#b6cd8e; outline:none; }
+.panel-resize { position:absolute; width:9px; left:-5px; top:0; bottom:0; cursor:col-resize; touch-action:none; z-index:5; }
+.panel-resize:hover, .panel-resize:focus-visible { background:#b6cd8e80; outline:none; }
 .conversation-voice { padding-bottom:16px; border-bottom:1px solid var(--line); margin-bottom:16px; display:grid; gap:12px; }
 .conversation-voice label { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:11px; }
 .conversation-voice label select, .conversation-voice input[type=range] { width:100%; }
@@ -3408,3 +3408,45 @@ label > span {
 .scene-bubble.thought { border-style:dashed; border-radius:24px; font-style:italic; }
 .scene-bubble.thought::after { border:1px solid #819776; border-radius:50%; width:8px; height:8px; bottom:-13px; }
 @media(max-width:850px) { .conversation-aside.expanded { position:absolute; right:0; top:70px; bottom:30px; z-index:8; max-width:min(85vw,400px); box-shadow:-10px 0 30px #28382515; } .conversation-aside.collapsed { width:36px; } }
+.manual-dialogue { border-block:1px solid var(--line); padding:12px 0; }
+.manual-dialogue summary { cursor:pointer; font-size:12px; }
+.manual-dialogue form { display:grid; gap:12px; padding-top:14px; }
+
+.thinking-control { display: grid; gap: 7px; margin: 14px 0; color: #4d5b43; font-size: 12px; }
+.thinking-control select { width: 100%; padding: 9px 11px; border: 1px solid #d5ddca; border-radius: 8px; background: #fff; color: #34462b; }
+.thinking-control small { font-size: 11px; color: #76816b; line-height: 1.5; }
+
+.conversation-aside .conversation-content { padding:0; }
+.conversation-voice { display:block; }
+.conversation-voice summary { cursor:pointer; font-size:12px; padding:5px 0; }
+.conversation-voice label { margin:12px 0; }
+.conversation-voice label > input[type=checkbox] { width:16px; margin:0; display:inline-block; accent-color:#657d4f; }
+.conversation-voice input[type=range] { accent-color:#657d4f; }
+.conversation-aside .cast-avatars { margin:10px 0; }
+
+/* Each studio section remembers its width and stays mounted when tucked away. */
+.right-panel.flexible-panel { position:relative; flex:0 0 auto; min-width:0; max-width:45vw; height:auto; display:flex; flex-direction:column; border-left:1px solid var(--line); }
+.flexible-panel .right-tabs { padding:0 10px; gap:6px; flex-shrink:0; }
+.flexible-panel .right-tabs > button { gap:5px; padding:0 7px; white-space:nowrap; }
+.flexible-panel .right-tabs > .panel-collapse { margin-left:auto; padding:0 5px; }
+.right-panel-content { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; overflow:hidden; }
+.right-panel-content[hidden] { display:none; }
+.right-panel-content > .coding-assistant, .right-panel-content > .details { flex:1; min-height:0; }
+.right-panel-content .message p { overflow-wrap:anywhere; }
+.right-panel.flexible-panel.collapsed { width:44px; }
+.flexible-panel.collapsed .right-tabs { flex-direction:column; height:auto; padding:0; gap:0; border-bottom:0; }
+.flexible-panel.collapsed .right-tabs > button { writing-mode:vertical-rl; padding:18px 12px; gap:10px; border-bottom:1px solid var(--line); }
+.flexible-panel.collapsed .right-tabs > button.active { background:#edf2e4; }
+.flexible-panel.collapsed .right-tabs > button.active:after { display:none; }
+@media(max-width:850px) {
+  .right-panel.flexible-panel.expanded { position:fixed; right:0; top:70px; bottom:30px; z-index:9; max-width:min(85vw,640px); box-shadow:-10px 0 30px #28382515; }
+  .right-panel.flexible-panel.collapsed { width:36px; }
+  .flexible-panel.collapsed .right-tabs > button { padding-inline:8px; }
+}
+@media(max-width:800px) {
+  .right-panel.flexible-panel.collapsed, .conversation-aside.collapsed { grid-column:1/-1; width:100%; max-width:none; border-top:1px solid var(--line); }
+  .flexible-panel.collapsed .right-tabs { flex-direction:row; }
+  .flexible-panel.collapsed .right-tabs > button { writing-mode:horizontal-tb; flex:1; justify-content:center; padding:14px 8px; }
+  .conversation-aside.collapsed .conversation-heading { writing-mode:horizontal-tb; padding:14px 16px; min-height:44px; }
+  .conversation-aside.expanded { position:fixed; }
+}

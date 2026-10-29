@@ -66,6 +66,7 @@ describe("connection setup and persistence", () => {
     expect(saved.providers.openai).toEqual({
       connected: true,
       model: "gpt-fixture",
+      thinking: "default",
     });
     expect(JSON.stringify(saved)).not.toContain("saved-fixture");
     await req("/api/connections/models", { provider: "openai" }, "POST");
@@ -149,6 +150,7 @@ describe("connection setup and persistence", () => {
     expect((await settings()).providers.openai).toEqual({
       connected: true,
       model: "gpt-fixture-two",
+      thinking: "default",
     });
     await req("/api/connections", { provider: "openai", key: "", model: "" });
     expect(await settings()).toMatchObject({
@@ -167,4 +169,43 @@ describe("connection setup and persistence", () => {
       ).status,
     ).toBe(403);
   });
+});
+
+it("persists thinking independently for each provider and rejects unsupported levels", async () => {
+  expect(
+    (
+      await req("/api/connections", {
+        provider: "anthropic",
+        model: "claude-fable-5-1",
+        thinking: "high",
+      })
+    ).status,
+  ).toBe(200);
+  expect((await settings()).providers.anthropic.thinking).toBe("high");
+  await req("/api/connections", {
+    provider: "openai",
+    model: "gpt-6-luna",
+    thinking: "low",
+  });
+  expect((await settings()).providers.anthropic.thinking).toBe("high");
+  expect((await settings()).providers.openai.thinking).toBe("low");
+  expect(
+    (
+      await req("/api/connections", {
+        provider: "openai",
+        thinking: "impossible",
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await req("/api/connections", {
+        provider: "openai",
+        model: "gpt-4o",
+        thinking: "high",
+      })
+    ).status,
+  ).toBe(400);
+  await req("/api/connections", { provider: "openai", model: "gpt-4o" });
+  expect((await settings()).providers.openai.thinking).toBe("default");
 });

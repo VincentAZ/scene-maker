@@ -309,3 +309,42 @@ Verification evidence:
 - App version and a UTC build identifier are now visible in the bottom-left footer. Verified browser build: **v0.1.0 · build 20261029.191321**.
 
 [Code panel and version label](coding-assistant.png)
+
+### 2026-10-29 — Anthropic request compatibility and thinking controls
+
+Reproduced the reported Claude Fable 5.1 error against the configured Anthropic API. Its HTTP 400 response identified 55 optional parameters in the scene-plan schema, exceeding the provider's limit of 24. The Anthropic scene-planning transport now uses a single required JSON-string envelope with the domain schema in its description; decoding still validates the entire original scene plan before execution. OpenAI retains its existing transport. This follows the distinction between wire-format constraints and application validation documented in [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+
+A subsequent live no-edit request succeeded with `Ready.`. A deterministic test using the real Anthropic adapter verifies the envelope, adaptive thinking/effort wire fields, successful domain decoding, and rejection of an invalid XYZ tuple. The OpenAI adapter regression also checks reasoning effort.
+
+Added Thinking effort to the header model dropdown and each provider's Connections panel. Settings persist per provider, are validated against the selected model, and apply to scene planning, cast replies and coding tasks. Unsupported models use their defaults. Browser verification saved High from the dropdown, confirmed it in Connections, then restored and saved Model default from Connections. The original provider/model selection was preserved.
+
+Build and all **210 tests across 27 files passed**. Existing unrelated conversation edits were preserved. Verified build: **v0.1.0 · build 20261029.193327**.
+
+Screenshots: [dropdown](thinking-dropdown.png), [Connections](thinking-connections.png).
+
+### 2026-10-29 — Conversation performed in the scene
+
+Replaced the cast-conversation modal with a collapsed-by-default, resizable aside. Replies now play progressively in the scene with head-anchored speech bubbles, a thinking bubble during generation, partner-facing body poses, listening movement and speaking gestures. Voice playback is optional, with per-character browser voices and pace control. Speech start, boundary and end events guide the animation clock; pause, seek, cancellation and voice failures have explicit transport handling. Collapsing the aside keeps playback running. Directors can write a line directly or draw a walk/run route for one line; its duration stays locked to that line and later turns retain their timing.
+
+Verification used the actual service at `http://127.0.0.1:4311/` and a separate saved project, **Conversation in the scene** (`8254e791-2f20-496e-862d-a2ccbcbcb3dc`):
+
+- Drew and saved a route for Dara's first line, preserving its 6.2-second duration and Tess's 6.2-second start. Reloaded saved data retained the route and dialogue.
+- Ran two rounds against the configured Anthropic Claude Fable 5.1 model: four new turns arrived progressively, saved and played. Observed a thinking bubble during generation and the active speaker's bubble in the 3D scene. Provider credentials and model selection were not changed by this work.
+- Added a manual Tess line through the aside, bringing the saved rehearsal to eight turns / 78.4 seconds. Saved the revised direction through the same project persistence path.
+- Enabled the available English browser voices and observed speech-paced progression into subsequent turns. Pausing held the playhead at 21.802249 seconds across subsequent observations. Voice selectors distinguish online voices; no subjective audio-quality or lip-sync claim is made.
+- Verified collapse during playback, keyboard resizing and persisted width. At a 390 × 844 viewport, the expanded aside fit inside the screen and document width remained 390 pixels. Restored the browser viewport afterward. Final browser console warning/error check was empty.
+- One earlier rehearsal save failed; reloading and subsequent route, generation and manual-line saves succeeded. The UI now retains the actual save error rather than replacing it with a generic message. The initial failure's cause was not established.
+
+`npm run build` passed and `npm test` passed **217 tests across 28 files**. Seven new tests cover speech timing, pause/resume and word-offset seeking, voice timeout recovery, stale callback isolation, timing-preserving path edits, deterministic reverse scrubbing, and preview/export pose agreement using the actual shipped Dara and Tess GLBs. The export comparison samples all normalized joints with error below `1e-5`. Existing cancellation/partial-failure tests also pass. `git diff --check` passed. Known third-party schema/annotation and bundle-size warnings remain. Verified browser build: **v0.1.0 · build 20261029.194618**.
+
+Limits: the existing characters remain stylized; there is no phoneme lip-sync. Walking routes are director-authored, not automatically invented by dialogue generation. Browser speech and bubble graphics are preview features; exports include the body performance and authored subtitle timing, without recorded voice audio. Voice availability and boundary-event quality depend on the browser and selected voice.
+
+Evidence: [expanded conversation aside](conversation-in-scene.jpg), [collapsed aside](conversation-collapsed.jpg). DigitalHumanStudio was not changed. Concurrent assistant/provider work in this checkout was preserved.
+
+### 2026-10-29 — Flexible Assistant, Details and Code panels
+
+Added a shared resize handle and collapsible rail for the studio sidebar. Assistant, Details and Code retain independent browser-local widths from 290–640 pixels. The conversation aside uses the same pointer/keyboard resize component with its existing limits. Collapsing keeps the active section mounted so unsent Assistant and Code drafts survive; focus returns to the active section button. Opening studio tools collapses the conversation aside. Narrow screens use an overlay for expanded panels and compact rows for collapsed panels.
+
+Chrome verification on the actual local app confirmed pointer dragging (Assistant 370 → 490 pixels), independent Details and Code widths, keyboard sizing including End, collapse/reopen draft retention and reload persistence (490 / 370 / 620 pixels). At 390 × 844, the Code overlay measured 331.5 pixels wide, the page remained 390 pixels wide, and the Assistant input stayed within the visible overlay. Keyboard focus returned to Code after collapse. The conversation panel also retained working keyboard resizing. Restored the normal viewport after testing; removed all unsent test drafts. No scene edits, AI messages or coding tasks were submitted.
+
+The local service was stopped before verification and was restarted with `npm start`. Production build and **217 tests across 28 files passed**, as did `git diff --check`. Browser warning/error logs were empty. Known dependency annotation/schema and bundle-size warnings remain. Verified build: **v0.1.0 · build 20261029.201821**. [Resized sidebar](flexible-studio-panels.jpg), [collapsed section rail](flexible-studio-panels-collapsed.jpg).

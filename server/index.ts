@@ -1,3 +1,4 @@
+import { thinkingLevels, thinkingChoices } from "../shared/thinking";
 import { createCodingService, codingRouter } from "./coding";
 import { codingPreview } from "./codingPreview";
 import express from "express";
@@ -111,6 +112,7 @@ function connectionSummary(c: Config) {
         {
           connected: !!c.providers[p]?.key,
           model: c.providers[p]?.model || "",
+          thinking: c.providers[p]?.thinking || "default",
         },
       ]),
     ),
@@ -137,6 +139,7 @@ app.put("/api/connections", (req, res) => {
         provider: z.enum(providers).optional(),
         key: z.string().trim().max(1000).optional(),
         model: z.string().trim().max(200).optional(),
+        thinking: z.enum(thinkingLevels).optional(),
         assistant: z.enum(providers).nullable().optional(),
         blender: z.string().min(1).max(1000).optional(),
       })
@@ -144,9 +147,13 @@ app.put("/api/connections", (req, res) => {
     c = config();
   if (body.provider) {
     const prev = c.providers[body.provider];
+    const model = body.model ?? prev?.model ?? "";
+    const thinking = body.thinking ?? prev?.thinking ?? "default";
+    if (body.thinking && !thinkingChoices(body.provider, model).includes(body.thinking)) throw Error("This thinking effort is not supported by the selected model.");
     c.providers[body.provider] = {
       key: body.key === undefined ? prev?.key || "" : body.key,
-      model: body.model ?? prev?.model ?? "",
+      model,
+      thinking: thinkingChoices(body.provider, model).includes(thinking) ? thinking : "default",
     };
   }
   if (body.assistant) {

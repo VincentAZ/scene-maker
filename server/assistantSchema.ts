@@ -40,3 +40,44 @@ export const assistantOutputSchema = jsonSchema<AssistantPlan>(
     },
   },
 );
+
+// Claude's grammar compiler caps optional fields across the entire schema at 24.
+// The scene command union exceeds that limit. Transport the plan as a JSON string
+// inside a tiny required envelope, then validate the full original domain schema.
+export const anthropicAssistantSchema = jsonSchema<AssistantPlan>(
+  {
+    type: "object",
+    properties: {
+      plan: {
+        type: "string",
+        description:
+          "A JSON-encoded scene plan, not Markdown. The decoded object must match this schema: " +
+          JSON.stringify(
+            normalizeAssistantSchema(
+              z.toJSONSchema(assistantPlanSchema, {
+                target: "draft-7",
+                io: "input",
+              }),
+            ),
+          ),
+      },
+    },
+    required: ["plan"],
+    additionalProperties: false,
+  },
+  {
+    validate: async (value) => {
+      try {
+        const envelope = z.object({ plan: z.string() }).strict().parse(value);
+        const result = await assistantPlanSchema.safeParseAsync(
+          JSON.parse(envelope.plan),
+        );
+        return result.success
+          ? { success: true, value: result.data }
+          : { success: false, error: result.error };
+      } catch (error) {
+        return { success: false, error: error as Error };
+      }
+    },
+  },
+);

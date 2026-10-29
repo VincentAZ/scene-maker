@@ -144,3 +144,53 @@ export function dialogueSubtitles(scene: Scene): string {
     )
     .join("\n");
 }
+
+/** A speaking route has the line's duration; changing it cannot overlap the next speaker. */
+export function setDialoguePath(
+  scene: Scene,
+  characterId: string,
+  clipId: string,
+  motion: import("./scene").Motion,
+): Scene {
+  const actor = scene.entities.find((e) => e.id === characterId);
+  const clip = actor?.clips.find((c) => c.id === clipId);
+  if (
+    !actor ||
+    !clip ||
+    !scene.transcript.some(
+      (l) => l.characterId === characterId && l.clipId === clipId,
+    )
+  )
+    throw Error("This dialogue line no longer has a timed action.");
+  const old = allMotions(scene).find((m) => m.id === clip.motionId)!;
+  if (
+    clip.targetId ||
+    !["talk", "idle", "wave", "bow", "walk", "run"].includes(old.kind)
+  )
+    throw Error(
+      "Keep this interaction in place. Add a separate spoken line for walking.",
+    );
+  if (!motion.path || !["walk", "run"].includes(motion.kind))
+    throw Error("Draw a walking or running path for this line.");
+  const reusable =
+    scene.customMotions.some((m) => m.id === old.id) &&
+    scene.entities.flatMap((e) => e.clips).filter((c) => c.motionId === old.id)
+      .length === 1;
+  const route = {
+    ...motion,
+    id: reusable ? old.id : crypto.randomUUID(),
+    duration: clip.duration,
+  };
+  return applyCommands(scene, [
+    { type: reusable ? "updateMotion" : "createMotion", motion: route },
+    {
+      type: "update",
+      id: characterId,
+      changes: {
+        clips: actor.clips.map((c) =>
+          c.id === clipId ? { ...c, motionId: route.id } : c,
+        ),
+      },
+    },
+  ]);
+}

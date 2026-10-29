@@ -1,3 +1,5 @@
+import { ThinkingControl } from "./ThinkingControl";
+import type { ThinkingLevel } from "../shared/thinking";
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
@@ -140,6 +142,27 @@ export function AssistantModelMenu({
       onBusyChange(false);
     }
   }
+  async function changeThinking(thinking: ThinkingLevel) {
+    if (!provider || savingRef.current || disabled) return;
+    savingRef.current = true;
+    setSaving(true);
+    onBusyChange(true);
+    setError("");
+    try {
+      setData(
+        await api<ConnectionsData>("/api/connections", {
+          method: "PUT",
+          body: JSON.stringify({ provider, thinking }),
+        }),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      onBusyChange(false);
+    }
+  }
   const models = catalog?.provider === provider ? catalog.models : [];
   const current = models.find((item) => item.id === model) || {
     id: model,
@@ -239,6 +262,15 @@ export function AssistantModelMenu({
           <p className="assistant-model-hint">
             Choose to switch immediately. Your chat stays here.
           </p>
+          {provider && (
+            <ThinkingControl
+              provider={provider}
+              model={model}
+              value={data?.providers[provider]?.thinking || "default"}
+              disabled={saving || disabled}
+              onChange={(value) => void changeThinking(value)}
+            />
+          )}
           <div
             className="quick-provider-list"
             role="group"

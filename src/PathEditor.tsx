@@ -24,6 +24,7 @@ type Props = {
   frame: PathFrame;
   motion?: Motion;
   footprints?: Footprint[];
+  speechDuration?: number;
   onPlan?: (targetId: string, movement: "walk" | "run") => Motion;
   onSave: (motion: Motion) => void;
   onClose: () => void;
@@ -34,6 +35,7 @@ export function PathEditor({
   frame,
   motion,
   footprints = [],
+  speechDuration,
   onPlan,
   onSave,
   onClose,
@@ -142,7 +144,7 @@ export function PathEditor({
     0.5,
     Math.min(60, Math.round((length / (kind === "run" ? 2.6 : 1.1)) * 10) / 10),
   );
-  const duration = manualTime ? seconds : pace;
+  const duration = speechDuration ?? (manualTime ? seconds : pace);
   const drawn =
     compiled?.samples
       .map((s) => map(pathToWorld(s.point, frame)).join(","))
@@ -208,9 +210,11 @@ export function PathEditor({
     >
       <div className="path-editor">
         <p className="muted">
-          {motion
-            ? "Shape this action’s route."
-            : "This route starts after their current actions."}{" "}
+          {speechDuration
+            ? "This route plays during the line. Its speed follows the words."
+            : motion
+              ? "Shape this action’s route."
+              : "This route starts after their current actions."}{" "}
           Click the map to add points, or drag a numbered point.
         </p>
         {onPlan && (
@@ -432,12 +436,15 @@ export function PathEditor({
             </select>
           </label>
           <label>
-            Duration (seconds)
+            {speechDuration
+              ? "Timed to this line (seconds)"
+              : "Duration (seconds)"}
             <input
               type="number"
               min=".2"
               max="60"
               step=".1"
+              disabled={speechDuration !== undefined}
               value={duration}
               onChange={(event) => {
                 setManualTime(true);
@@ -455,9 +462,14 @@ export function PathEditor({
             />{" "}
             Smooth turns
           </label>
-          <button className="text-button" onClick={() => setManualTime(false)}>
-            Use natural pace
-          </button>
+          {speechDuration === undefined && (
+            <button
+              className="text-button"
+              onClick={() => setManualTime(false)}
+            >
+              Use natural pace
+            </button>
+          )}
           {endHeading !== undefined && (
             <button
               className="text-button"
@@ -524,7 +536,12 @@ export function PathEditor({
             }
             onClick={submit}
           >
-            <Footprints size={16} /> {motion ? "Save path" : "Add to sequence"}
+            <Footprints size={16} />{" "}
+            {speechDuration
+              ? "Use for this line"
+              : motion
+                ? "Save path"
+                : "Add to sequence"}
           </button>
         </div>
       </div>

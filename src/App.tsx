@@ -39,7 +39,6 @@ import {
   X,
   LoaderCircle,
   Film,
-  SlidersHorizontal,
   Lightbulb,
   PanelRightClose,
 } from "lucide-react";
@@ -61,7 +60,12 @@ import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
 import { PathEditor } from "./PathEditor";
 import type { Footprint } from "../shared/navigation";
-import { dialogueSubtitles, dialogueTiming } from "../shared/conversation";
+import {
+  dialogueSubtitles,
+  dialogueTiming,
+  appendSpeech,
+  setDialoguePath,
+} from "../shared/conversation";
 import {
   readConversationStream,
   mergeConversationTurn,
@@ -89,7 +93,13 @@ import {
   uid,
   assets,
 } from "../shared/scene";
+import {
+  readConversationPreferences,
+  saveConversationPreferences,
+} from "./conversationPreferences";
+import { ManualDialogue } from "./ManualDialogue";
 import { ConversationAside } from "./ConversationAside";
+import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
 import { Viewport, type ViewportHandle } from "./Viewport";
 import { AssetArt } from "./AssetArt";
@@ -129,12 +139,18 @@ export default function App() {
     [playing, setPlaying] = useState(false),
     [time, setTime] = useState(0),
     [move, setMove] = useState(false),
-    [rightTab, setRightTab] = useState<"assistant" | "details" | "code">("assistant"),
-    [panel, setPanel] = useState(true),
+    [rightTab, setRightTab] = useState<"assistant" | "details" | "code">(
+      "assistant",
+    ),
+    [panel, setPanelState] = useState(true),
     [conversationOpen, setConversationOpen] = useState(false),
     [voiceEnabled, setVoiceEnabled] = useState(false),
-    [voiceChoices, setVoiceChoices] = useState<Record<string, string>>({}),
-    [conversationRate, setConversationRate] = useState(1),
+    [voiceChoices, setVoiceChoices] = useState<Record<string, string>>(
+      () => readConversationPreferences().choices,
+    ),
+    [conversationRate, setConversationRate] = useState(
+      () => readConversationPreferences().rate,
+    ),
     [modal, setModal] = useState<
       | "settings"
       | "connections"
@@ -159,6 +175,7 @@ export default function App() {
       footprints: Footprint[];
       motion?: Motion;
       content: string;
+      dialogueClip?: boolean;
     } | null>(null),
     [error, setError] = useState(""),
     [interactionWarning, setInteractionWarning] = useState(""),
@@ -180,15 +197,50 @@ export default function App() {
     [importCategory, setImportCategory] = useState<"characters" | "props">(
       "characters",
     );
+  const setPanel = useCallback((open: boolean) => {
+    setPanelState(open);
+    if (open) setConversationOpen(false);
+  }, []);
   useEffect(() => {
-    if (modal === "conversation") { setConversationOpen(true); setPanel(false); setModal(null); }
+    if (modal === "conversation") {
+      setConversationOpen(true);
+      setPanel(false);
+      setModal(null);
+    }
   }, [modal]);
   const setSelected = useCallback((id: string | null) => {
     setSelectedState(id);
     setMove(id !== null);
   }, []);
-  const voice = useConversationVoice(scene, playing, voiceEnabled, voiceChoices, conversationRate, setError);
+  useEffect(() => {
+    saveConversationPreferences({
+      choices: voiceChoices,
+      rate: conversationRate,
+    });
+  }, [voiceChoices, conversationRate]);
+  const voice = useConversationVoice(
+    scene,
+    playing,
+    voiceEnabled,
+    voiceChoices,
+    conversationRate,
+    setError,
+  );
   const conversationController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (
+      playing &&
+      !castProgress &&
+      scene.transcript.length &&
+      time >=
+        Math.max(
+          ...scene.entities.map((e) =>
+            e.clips.reduce((t, c) => t + c.duration, 0),
+          ),
+        )
+    )
+      setPlaying(false);
+  }, [playing, castProgress, time, scene]);
   useEffect(() => () => conversationController.current?.abort(), []);
   const viewport = useRef<ViewportHandle>(null),
     sceneRef = useRef(scene),
@@ -198,6 +250,7 @@ export default function App() {
     }),
     saveBlocked = useRef(false),
     saveRetries = useRef(0),
+    saveFailure = useRef(""),
     readyRef = useRef(false),
     fileInput = useRef<HTMLInputElement>(null),
     assetInput = useRef<HTMLInputElement>(null),
@@ -232,9 +285,11 @@ export default function App() {
     try {
       await saveQueue.current!.flush();
       setSaveState("All changes saved");
+      saveFailure.current = "";
       saveRetries.current = 0;
       return true;
     } catch (e) {
+      saveFailure.current = (e as Error).message;
       setSaveState("Changes not saved");
       if (
         (e as { status?: number }).status !== 409 &&
@@ -252,7 +307,8 @@ export default function App() {
   async function saveOrThrow() {
     if (!(await save()))
       throw Error(
-        "Your current project could not be saved. Your changes are still here; the requested operation has stopped.",
+        saveFailure.current ||
+          "Your current project could not be saved. Your changes are still here; the requested operation has stopped.",
       );
   }
   useEffect(() => {
@@ -410,7 +466,11 @@ export default function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [selected, modal, previewAction, historyVersion]);
-  async function openPathEditor(actorId: string, clipId?: string) {
+  async function openPathEditor(
+    actorId: string,
+    clipId?: string,
+    dialogueClip = false,
+  ) {
     setPlaying(false);
     cancelConversationForEdit();
     const snapshot = sceneRef.current;
@@ -429,7 +489,7 @@ export default function App() {
     const clip = clipId ? actor.clips.find((c) => c.id === clipId) : undefined;
     const motion =
       clip && allMotions(snapshot).find((m) => m.id === clip.motionId);
-    if (clipId && !motion?.path)
+    if (clipId && !motion?.path && !dialogueClip)
       throw Error("This action does not have an editable path.");
     const navigation = viewport.current!.routeContext(actorId, clipId);
     setPathEdit({
@@ -438,7 +498,10 @@ export default function App() {
       clipId,
       frame: navigation.frame,
       footprints: navigation.footprints,
-      motion: motion ? { ...motion, duration: clip!.duration } : undefined,
+      dialogueClip,
+      motion: motion?.path
+        ? { ...motion, duration: clip!.duration }
+        : undefined,
       content: sameContent(snapshot),
     });
     setError("");
@@ -466,7 +529,12 @@ export default function App() {
     execute([{ type: "update", id, changes }]);
   function add(asset: Asset, position?: [number, number, number]) {
     const before = sceneRef.current.entities.length;
-    if (!execute([{ type: "add", assetId: asset.id, ...(position ? { position } : {}) }])) return;
+    if (
+      !execute([
+        { type: "add", assetId: asset.id, ...(position ? { position } : {}) },
+      ])
+    )
+      return;
     if (asset.category !== "environments") {
       const added = sceneRef.current.entities[before];
       if (added) {
@@ -722,6 +790,15 @@ export default function App() {
     setPlaying(false);
     setConversationOpen(true);
     setPanel(false);
+    setTime(
+      Math.max(
+        0,
+        ...sceneRef.current.entities.map((e) =>
+          e.clips.reduce((t, c) => t + c.duration, 0),
+        ),
+      ),
+    );
+    voice.stop();
     setError("");
     const controller = new AbortController();
     conversationController.current = controller;
@@ -761,21 +838,27 @@ export default function App() {
             expected,
             event.scene,
           );
+          const firstTurn = completed === 0;
           change(next, true);
-          if (completed === 0) {
-            setTime(dialogueTiming(next, next.transcript.at(-1)!)?.start || 0);
-            setPlaying(true);
-          }
           expected = structuredClone(next);
           completed = event.completed;
-          setCastProgress((progress) => ({
+          setCastProgress({
             name: "",
             characterId: "",
             completed,
             total: event.total,
             stopping: controller.signal.aborted,
-          }));
+          });
           await saveOrThrow();
+          if (firstTurn && !controller.signal.aborted) {
+            await viewport.current?.waitForScene(next, controller.signal);
+            const start =
+              dialogueTiming(next, next.transcript.at(-1)!)?.start || 0;
+            setTime(start);
+            setPlaying(true);
+            setSelected(null);
+            viewport.current?.frame("conversation", undefined, start);
+          }
         }
       });
       toast(`Your cast added ${completed} turns to the scene`);
@@ -1230,9 +1313,13 @@ export default function App() {
                     key={a.id}
                     data-asset-id={a.id}
                     title={`Drag ${a.name} into the scene, or click to add`}
-                    onPointerDown={(event) => viewport.current?.startAssetDrag(a, event.nativeEvent)}
+                    onPointerDown={(event) =>
+                      viewport.current?.startAssetDrag(a, event.nativeEvent)
+                    }
                     onDragStart={(event) => event.preventDefault()}
-                    onClick={() => { if (!viewport.current?.suppressAssetClick()) add(a); }}
+                    onClick={() => {
+                      if (!viewport.current?.suppressAssetClick()) add(a);
+                    }}
                   >
                     <div className={`asset-art ${a.category}`}>
                       <AssetArt asset={a} />
@@ -1388,7 +1475,10 @@ export default function App() {
               </button>
               <button
                 className="text-button"
-                onClick={() => { setConversationOpen(v => !v); setPanel(false); }}
+                onClick={() => {
+                  setConversationOpen((v) => !v);
+                  setPanel(false);
+                }}
               >
                 <MessageCircle size={15} />
                 <span>Direct the cast</span>
@@ -1396,7 +1486,12 @@ export default function App() {
               <button
                 className={`icon-button ${!panel ? "active" : ""}`}
                 aria-label="Toggle side panel"
-                onClick={() => setPanel(!panel)}
+                aria-expanded={panel}
+                aria-controls="studio-panel-content"
+                onClick={() => {
+                  setPanel(!panel);
+                  setConversationOpen(false);
+                }}
               >
                 <PanelRightClose size={17} />
               </button>
@@ -1415,13 +1510,20 @@ export default function App() {
               advanceTime={voice.advance}
               onPlaybackState={voice.playbackState}
               stopAtEnd={scene.transcript.length > 0}
-              onEnded={() => { if (!conversationController.current) setPlaying(false); }}
+              onEnded={() => {
+                if (!conversationController.current) setPlaying(false);
+              }}
               onMove={(id, position) => update(id, { position })}
               onAdd={(assetId, position) => {
-                const asset = allAssets(sceneRef.current).find(item => item.id === assetId);
+                const asset = allAssets(sceneRef.current).find(
+                  (item) => item.id === assetId,
+                );
                 if (asset) add(asset, position);
               }}
-              onEditStart={() => { setPlaying(false); cancelConversationForEdit(); }}
+              onEditStart={() => {
+                setPlaying(false);
+                cancelConversationForEdit();
+              }}
               onError={report}
               onInteractionWarning={setInteractionWarning}
               move={move}
@@ -1433,7 +1535,7 @@ export default function App() {
                 <span>{interactionWarning}</span>
               </div>
             )}
-            {castProgress && (
+            {castProgress && !conversationOpen && (
               <div className="stage-progress">
                 <CastProgress
                   progress={castProgress}
@@ -1507,7 +1609,8 @@ export default function App() {
               <span>
                 <span className="kbd">Drag objects</span> to move{" "}
                 <span className="dot-separator">·</span>
-                <span className="kbd">Empty space</span> to orbit · Shift snaps · Esc cancels
+                <span className="kbd">Empty space</span> to orbit · Shift snaps
+                · Esc cancels
               </span>
               <span>
                 {scene.environment === "room" &&
@@ -1543,7 +1646,20 @@ export default function App() {
                 <button
                   className="play-button"
                   aria-label={playing ? "Pause scene" : "Play scene"}
-                  onClick={() => setPlaying(!playing)}
+                  onClick={() => {
+                    if (
+                      !playing &&
+                      scene.transcript.length &&
+                      time >=
+                        Math.max(
+                          ...scene.entities.map((e) =>
+                            e.clips.reduce((t, c) => t + c.duration, 0),
+                          ),
+                        )
+                    )
+                      setTime(0);
+                    setPlaying(!playing);
+                  }}
                 >
                   {playing ? (
                     <Pause size={15} fill="currentColor" />
@@ -1661,10 +1777,21 @@ export default function App() {
             </div>
           </section>
         </main>
-        <ConversationAside open={conversationOpen} onToggle={() => setConversationOpen(v => !v)}
-          voiceEnabled={voiceEnabled} onVoiceEnabled={setVoiceEnabled} voices={voice.voices}
-          cast={cast} choices={voiceChoices} onChoices={setVoiceChoices}
-          rate={conversationRate} onRate={setConversationRate}>
+        <ConversationAside
+          open={conversationOpen}
+          onToggle={() => {
+            setConversationOpen((v) => !v);
+            setPanel(false);
+          }}
+          voiceEnabled={voiceEnabled}
+          onVoiceEnabled={setVoiceEnabled}
+          voices={voice.voices}
+          cast={cast}
+          choices={voiceChoices}
+          onChoices={setVoiceChoices}
+          rate={conversationRate}
+          onRate={setConversationRate}
+        >
           <div className="conversation-content">
             <div className="cast-avatars">
               {cast.map((e) => (
@@ -1727,15 +1854,44 @@ export default function App() {
             {castProgress && (
               <CastProgress progress={castProgress} onStop={stopConversation} />
             )}
+            <button
+              className="text-button"
+              onClick={() => {
+                setSelected(null);
+                viewport.current?.frame("conversation");
+              }}
+            >
+              Frame the conversation
+            </button>
             <p className="small muted">
-              Turns play in the scene as they arrive. Collapse this panel to watch, or pause to change the direction.
+              Turns play in the scene as they arrive. Collapse this panel to
+              watch, or pause to change the direction.
             </p>
+            <ManualDialogue
+              cast={cast}
+              disabled={busy || !!castProgress}
+              onSpeak={(id, text) => {
+                const next = appendSpeech(sceneRef.current, id, {
+                  dialogue: text,
+                  action: "talk",
+                });
+                change(next);
+                setTime(dialogueTiming(next, next.transcript.at(-1)!)!.start);
+                setPlaying(true);
+                setSelected(null);
+                viewport.current?.frame("conversation");
+              }}
+            />
             <DialogueTranscript
               scene={scene}
+              onPath={(id, clipId) =>
+                void openPathEditor(id, clipId, true).catch((e) =>
+                  report(e.message),
+                )
+              }
               onPreview={(start) => {
                 setTime(start);
                 setPlaying(true);
-
               }}
             />
             {scene.transcript.length > 0 && (
@@ -1772,577 +1928,562 @@ export default function App() {
             )}
           </div>
         </ConversationAside>
-        {panel && (
-          <aside className="right-panel">
-            <div className="right-tabs">
-              <button
-                className={rightTab === "assistant" ? "active" : ""}
-                onClick={() => setRightTab("assistant")}
-              >
-                <Sparkles size={16} /> Assistant
-              </button>
-              <button
-                className={rightTab === "details" ? "active" : ""}
-                onClick={() => setRightTab("details")}
-              >
-                <SlidersHorizontal size={15} /> Details
-              </button>
-              <button className={rightTab === "code" ? "active" : ""} onClick={() => setRightTab("code")}>
-                <span aria-hidden="true">&lt;/&gt;</span> Code
-              </button>
-            </div>
-            {rightTab === "code" ? <CodingAssistant /> : rightTab === "assistant" ? (
-              <>
-                <div className="assistant-heading">
-                  <span className="assistant-orb">
-                    <Sparkles size={22} />
-                  </span>
-                  <h2>
-                    Your imagination.
-                    <br />
-                    <span>A little company.</span>
-                  </h2>
-                  <p>
-                    A creative partner for every
-                    <br />
-                    “what if” and “let’s try”.
-                  </p>
-                </div>
-                <div className="chat-toolbar">
-                  <span>Conversation</span>
-                  {clearedMessages ? (
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => {
-                        setMessages(clearedMessages);
-                        setClearedMessages(null);
-                      }}
-                    >
-                      <Undo2 size={13} /> Undo clear
-                    </button>
-                  ) : (
-                    <button
-                      className="text-button"
-                      disabled={busy || messages.length <= 1}
-                      title={
-                        busy
-                          ? "Wait for this request to finish before clearing chat"
-                          : "Clear the conversation history. Scene edits stay saved."
-                      }
-                      onClick={() => {
-                        setClearedMessages(messages);
-                        setMessages([welcomeMessage]);
-                        requestAnimationFrame(() =>
-                          document.getElementById("assistant-prompt")?.focus(),
-                        );
-                      }}
-                    >
-                      <Trash2 size={13} /> Clear chat
-                    </button>
-                  )}
-                </div>
-                {clearedMessages && (
-                  <p className="chat-cleared" role="status">
-                    Chat cleared. Your next message starts a fresh conversation.
-                  </p>
-                )}
-                <div className="chat-messages">
-                  {messages.map((m, i) => (
-                    <div key={i} className={`message ${m.role}`}>
-                      <div className="message-byline">
-                        {m.role === "assistant" ? (
-                          <>
-                            <Sparkles size={12} /> SCENE ASSISTANT
-                          </>
-                        ) : (
-                          "YOU"
-                        )}
-                        {m.mode === "offline" && <span>OFFLINE HELPER</span>}
-                      </div>
-                      <p>{m.text}</p>
-                    </div>
-                  ))}
-                  {messages.length === 1 && (
-                    <div className="suggestions">
-                      <span>LET’S START WITH SOMETHING</span>
-                      {[
-                        "Add a coffee cup",
-                        "Have Mila walk then wave",
-                        "Set the scene at moonlight",
-                      ].map((text, i) => (
-                        <button key={text} onClick={() => ask(text)}>
-                          {i === 0 ? (
-                            <Box size={14} />
-                          ) : i === 1 ? (
-                            <Footprints size={14} />
-                          ) : (
-                            <Sun size={14} />
-                          )}
-                          <span>{text}</span>
-                          <ArrowUp size={13} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {busy && (
-                    <div className="thinking">
-                      <LoaderCircle size={14} className="spin" /> Finding the
-                      next little possibility…
-                    </div>
-                  )}
-                  <div ref={chatEnd} />
-                </div>
-                <form
-                  className="prompt-box"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void ask();
-                  }}
-                >
-                  <textarea
-                    id="assistant-prompt"
-                    aria-label="Ask the scene assistant"
-                    placeholder="What are we creating today?"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void ask();
-                      }
+        <StudioAside
+          open={panel}
+          active={rightTab}
+          onSelect={(tab) => {
+            setRightTab(tab);
+            setPanel(true);
+          }}
+          onCollapse={() => setPanel(false)}
+        >
+          {rightTab === "code" ? (
+            <CodingAssistant />
+          ) : rightTab === "assistant" ? (
+            <>
+              <div className="assistant-heading">
+                <span className="assistant-orb">
+                  <Sparkles size={22} />
+                </span>
+                <h2>
+                  Your imagination.
+                  <br />
+                  <span>A little company.</span>
+                </h2>
+                <p>
+                  A creative partner for every
+                  <br />
+                  “what if” and “let’s try”.
+                </p>
+              </div>
+              <div className="chat-toolbar">
+                <span>Conversation</span>
+                {clearedMessages ? (
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => {
+                      setMessages(clearedMessages);
+                      setClearedMessages(null);
                     }}
-                  />
-                  <div>
-                    <span>
-                      <Sparkles size={12} /> Imagine. Ask. Create.
-                    </span>
+                  >
+                    <Undo2 size={13} /> Undo clear
+                  </button>
+                ) : (
+                  <button
+                    className="text-button"
+                    disabled={busy || messages.length <= 1}
+                    title={
+                      busy
+                        ? "Wait for this request to finish before clearing chat"
+                        : "Clear the conversation history. Scene edits stay saved."
+                    }
+                    onClick={() => {
+                      setClearedMessages(messages);
+                      setMessages([welcomeMessage]);
+                      requestAnimationFrame(() =>
+                        document.getElementById("assistant-prompt")?.focus(),
+                      );
+                    }}
+                  >
+                    <Trash2 size={13} /> Clear chat
+                  </button>
+                )}
+              </div>
+              {clearedMessages && (
+                <p className="chat-cleared" role="status">
+                  Chat cleared. Your next message starts a fresh conversation.
+                </p>
+              )}
+              <div className="chat-messages">
+                {messages.map((m, i) => (
+                  <div key={i} className={`message ${m.role}`}>
+                    <div className="message-byline">
+                      {m.role === "assistant" ? (
+                        <>
+                          <Sparkles size={12} /> SCENE ASSISTANT
+                        </>
+                      ) : (
+                        "YOU"
+                      )}
+                      {m.mode === "offline" && <span>OFFLINE HELPER</span>}
+                    </div>
+                    <p>{m.text}</p>
+                  </div>
+                ))}
+                {messages.length === 1 && (
+                  <div className="suggestions">
+                    <span>LET’S START WITH SOMETHING</span>
+                    {[
+                      "Add a coffee cup",
+                      "Have Mila walk then wave",
+                      "Set the scene at moonlight",
+                    ].map((text, i) => (
+                      <button key={text} onClick={() => ask(text)}>
+                        {i === 0 ? (
+                          <Box size={14} />
+                        ) : i === 1 ? (
+                          <Footprints size={14} />
+                        ) : (
+                          <Sun size={14} />
+                        )}
+                        <span>{text}</span>
+                        <ArrowUp size={13} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {busy && (
+                  <div className="thinking">
+                    <LoaderCircle size={14} className="spin" /> Finding the next
+                    little possibility…
+                  </div>
+                )}
+                <div ref={chatEnd} />
+              </div>
+              <form
+                className="prompt-box"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void ask();
+                }}
+              >
+                <textarea
+                  id="assistant-prompt"
+                  aria-label="Ask the scene assistant"
+                  placeholder="What are we creating today?"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void ask();
+                    }
+                  }}
+                />
+                <div>
+                  <span>
+                    <Sparkles size={12} /> Imagine. Ask. Create.
+                  </span>
+                  <button
+                    aria-label="Send message"
+                    disabled={busy || modelSwitchBusy || !prompt.trim()}
+                  >
+                    <ArrowUp size={17} />
+                  </button>
+                </div>
+              </form>
+              <p className="assistant-footnote">
+                Your ideas, with room to play.
+              </p>
+            </>
+          ) : (
+            <div className="details">
+              {entity ? (
+                <>
+                  <div className="details-title">
+                    <span
+                      className="object-dot"
+                      style={{ background: entity.color }}
+                    />
+                    <input
+                      aria-label="Object name"
+                      value={entity.name}
+                      onChange={(e) =>
+                        update(entity.id, {
+                          name: e.target.value || "Untitled",
+                        })
+                      }
+                    />
                     <button
-                      aria-label="Send message"
-                      disabled={busy || modelSwitchBusy || !prompt.trim()}
+                      className="icon-button danger"
+                      aria-label="Delete selected object"
+                      onClick={() => {
+                        execute([{ type: "remove", id: entity.id }]);
+                        setSelected(null);
+                      }}
                     >
-                      <ArrowUp size={17} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
-                </form>
-                <p className="assistant-footnote">
-                  Your ideas, with room to play.
-                </p>
-              </>
-            ) : (
-              <div className="details">
-                {entity ? (
-                  <>
-                    <div className="details-title">
-                      <span
-                        className="object-dot"
-                        style={{ background: entity.color }}
-                      />
+                  <div className="detail-actions">
+                    <button
+                      onClick={() => {
+                        const id = uid();
+                        const copy = {
+                          ...structuredClone(entity),
+                          id,
+                          name: entity.name + " copy",
+                          setDressing: false,
+                          position: [
+                            entity.position[0] + 0.6,
+                            entity.position[1],
+                            entity.position[2] + 0.6,
+                          ] as Entity["position"],
+                        };
+                        change({
+                          ...sceneRef.current,
+                          entities: [...sceneRef.current.entities, copy],
+                        });
+                        setSelected(id);
+                      }}
+                    >
+                      <Copy size={14} /> Duplicate
+                    </button>
+                    <button
+                      onClick={() =>
+                        update(entity.id, { visible: !entity.visible })
+                      }
+                    >
+                      {entity.visible ? (
+                        <EyeOff size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}{" "}
+                      {entity.visible ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {entity.setDressing && (
+                    <button
+                      className="secondary full"
+                      onClick={() => update(entity.id, { setDressing: false })}
+                    >
+                      Keep when switching sets
+                    </button>
+                  )}
+                  <h3>Make it yours</h3>
+                  {!selectedAsset?.url && (
+                    <label className="color-label">
+                      Signature color
                       <input
-                        aria-label="Object name"
-                        value={entity.name}
+                        aria-label="Object color"
+                        type="color"
+                        value={entity.color}
                         onChange={(e) =>
-                          update(entity.id, {
-                            name: e.target.value || "Untitled",
-                          })
+                          update(entity.id, { color: e.target.value })
                         }
                       />
-                      <button
-                        className="icon-button danger"
-                        aria-label="Delete selected object"
-                        onClick={() => {
-                          execute([{ type: "remove", id: entity.id }]);
-                          setSelected(null);
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    </label>
+                  )}
+                  <label>
+                    Position
+                    <div className="coordinates">
+                      {["Left / right", "Up / down", "Near / far"].map(
+                        (name, i) => (
+                          <label key={name}>
+                            <span>{name}</span>
+                            <input
+                              aria-label={name}
+                              type="number"
+                              step=".1"
+                              value={entity.position[i]}
+                              onChange={(e) => {
+                                const pos = [
+                                  ...entity.position,
+                                ] as Entity["position"];
+                                pos[i] = Number(e.target.value);
+                                update(entity.id, { position: pos });
+                              }}
+                            />
+                          </label>
+                        ),
+                      )}
                     </div>
-                    <div className="detail-actions">
-                      <button
-                        onClick={() => {
-                          const id = uid();
-                          const copy = {
-                            ...structuredClone(entity),
-                            id,
-                            name: entity.name + " copy",
-                            setDressing: false,
-                            position: [
-                              entity.position[0] + 0.6,
-                              entity.position[1],
-                              entity.position[2] + 0.6,
-                            ] as Entity["position"],
-                          };
-                          change({
-                            ...sceneRef.current,
-                            entities: [...sceneRef.current.entities, copy],
-                          });
-                          setSelected(id);
-                        }}
-                      >
-                        <Copy size={14} /> Duplicate
-                      </button>
-                      <button
-                        onClick={() =>
-                          update(entity.id, { visible: !entity.visible })
+                  </label>
+                  <label>
+                    Facing{" "}
+                    <span>
+                      {Math.round((entity.rotation * 180) / Math.PI)}°
+                    </span>
+                    <input
+                      aria-label="Facing"
+                      type="range"
+                      min={-Math.PI}
+                      max={Math.PI}
+                      step=".05"
+                      value={entity.rotation}
+                      onChange={(e) =>
+                        update(entity.id, {
+                          rotation: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Size <span>{entity.scale.toFixed(1)}×</span>
+                    <input
+                      aria-label="Size"
+                      type="range"
+                      min=".2"
+                      max="3"
+                      step=".1"
+                      value={entity.scale}
+                      onChange={(e) =>
+                        update(entity.id, { scale: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                  {isCharacter && (
+                    <>
+                      <h3>A little personality</h3>
+                      <p className="muted small">
+                        Who are they? What do they want? Give your character a
+                        point of view.
+                      </p>
+                      <textarea
+                        aria-label="Character personality"
+                        rows={4}
+                        value={entity.personality}
+                        onChange={(e) =>
+                          update(entity.id, { personality: e.target.value })
                         }
-                      >
-                        {entity.visible ? (
-                          <EyeOff size={14} />
-                        ) : (
-                          <Eye size={14} />
-                        )}{" "}
-                        {entity.visible ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                    {entity.setDressing && (
+                      />
                       <button
                         className="secondary full"
-                        onClick={() =>
-                          update(entity.id, { setDressing: false })
-                        }
+                        onClick={() => {
+                          setConversationOpen((v) => !v);
+                          setPanel(false);
+                        }}
                       >
-                        Keep when switching sets
+                        <MessageCircle size={14} /> Direct the cast
                       </button>
-                    )}
-                    <h3>Make it yours</h3>
-                    {!selectedAsset?.url && (
-                      <label className="color-label">
-                        Signature color
-                        <input
-                          aria-label="Object color"
-                          type="color"
-                          value={entity.color}
-                          onChange={(e) =>
-                            update(entity.id, { color: e.target.value })
-                          }
-                        />
-                      </label>
-                    )}
-                    <label>
-                      Position
-                      <div className="coordinates">
-                        {["Left / right", "Up / down", "Near / far"].map(
-                          (name, i) => (
-                            <label key={name}>
-                              <span>{name}</span>
+                      <h3>
+                        Their next moves{" "}
+                        <span className="count">{entity.clips.length}</span>
+                      </h3>
+                      <div className="clip-list">
+                        {entity.clips.map((c, i) => (
+                          <div className="clip-editor" key={c.id}>
+                            <div>
+                              <span className="clip-number">
+                                {String(i + 1).padStart(2, "0")}
+                              </span>
+                              <strong>
+                                {
+                                  allMotions(scene).find(
+                                    (m) => m.id === c.motionId,
+                                  )?.name
+                                }
+                              </strong>
+                              <button
+                                aria-label={`Remove action ${i + 1}`}
+                                className="icon-button"
+                                onClick={() =>
+                                  execute([
+                                    {
+                                      type: "removeClip",
+                                      id: entity.id,
+                                      clipId: c.id,
+                                    },
+                                  ])
+                                }
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                            <div className="clip-controls">
+                              <button
+                                aria-label={`Move action ${i + 1} earlier`}
+                                disabled={i === 0}
+                                onClick={() =>
+                                  execute([
+                                    {
+                                      type: "reorderClip",
+                                      id: entity.id,
+                                      clipId: c.id,
+                                      direction: "earlier",
+                                    },
+                                  ])
+                                }
+                              >
+                                <ArrowLeft size={12} />
+                              </button>
+                              <button
+                                aria-label={`Move action ${i + 1} later`}
+                                disabled={i === entity.clips.length - 1}
+                                onClick={() =>
+                                  execute([
+                                    {
+                                      type: "reorderClip",
+                                      id: entity.id,
+                                      clipId: c.id,
+                                      direction: "later",
+                                    },
+                                  ])
+                                }
+                              >
+                                <ArrowRight size={12} />
+                              </button>
                               <input
-                                aria-label={name}
+                                aria-label={`Action ${i + 1} duration`}
                                 type="number"
-                                step=".1"
-                                value={entity.position[i]}
+                                min=".2"
+                                max="60"
+                                step=".2"
+                                value={c.duration}
                                 onChange={(e) => {
-                                  const pos = [
-                                    ...entity.position,
-                                  ] as Entity["position"];
-                                  pos[i] = Number(e.target.value);
-                                  update(entity.id, { position: pos });
-                                }}
-                              />
-                            </label>
-                          ),
-                        )}
-                      </div>
-                    </label>
-                    <label>
-                      Facing{" "}
-                      <span>
-                        {Math.round((entity.rotation * 180) / Math.PI)}°
-                      </span>
-                      <input
-                        aria-label="Facing"
-                        type="range"
-                        min={-Math.PI}
-                        max={Math.PI}
-                        step=".05"
-                        value={entity.rotation}
-                        onChange={(e) =>
-                          update(entity.id, {
-                            rotation: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Size <span>{entity.scale.toFixed(1)}×</span>
-                      <input
-                        aria-label="Size"
-                        type="range"
-                        min=".2"
-                        max="3"
-                        step=".1"
-                        value={entity.scale}
-                        onChange={(e) =>
-                          update(entity.id, { scale: Number(e.target.value) })
-                        }
-                      />
-                    </label>
-                    {isCharacter && (
-                      <>
-                        <h3>A little personality</h3>
-                        <p className="muted small">
-                          Who are they? What do they want? Give your character a
-                          point of view.
-                        </p>
-                        <textarea
-                          aria-label="Character personality"
-                          rows={4}
-                          value={entity.personality}
-                          onChange={(e) =>
-                            update(entity.id, { personality: e.target.value })
-                          }
-                        />
-                        <button
-                          className="secondary full"
-                          onClick={() => { setConversationOpen(v => !v); setPanel(false); }}
-                        >
-                          <MessageCircle size={14} /> Direct the cast
-                        </button>
-                        <h3>
-                          Their next moves{" "}
-                          <span className="count">{entity.clips.length}</span>
-                        </h3>
-                        <div className="clip-list">
-                          {entity.clips.map((c, i) => (
-                            <div className="clip-editor" key={c.id}>
-                              <div>
-                                <span className="clip-number">
-                                  {String(i + 1).padStart(2, "0")}
-                                </span>
-                                <strong>
-                                  {
-                                    allMotions(scene).find(
-                                      (m) => m.id === c.motionId,
-                                    )?.name
-                                  }
-                                </strong>
-                                <button
-                                  aria-label={`Remove action ${i + 1}`}
-                                  className="icon-button"
-                                  onClick={() =>
-                                    execute([
-                                      {
-                                        type: "removeClip",
-                                        id: entity.id,
-                                        clipId: c.id,
-                                      },
-                                    ])
-                                  }
-                                >
-                                  <X size={13} />
-                                </button>
-                              </div>
-                              <div className="clip-controls">
-                                <button
-                                  aria-label={`Move action ${i + 1} earlier`}
-                                  disabled={i === 0}
-                                  onClick={() =>
-                                    execute([
-                                      {
-                                        type: "reorderClip",
-                                        id: entity.id,
-                                        clipId: c.id,
-                                        direction: "earlier",
-                                      },
-                                    ])
-                                  }
-                                >
-                                  <ArrowLeft size={12} />
-                                </button>
-                                <button
-                                  aria-label={`Move action ${i + 1} later`}
-                                  disabled={i === entity.clips.length - 1}
-                                  onClick={() =>
-                                    execute([
-                                      {
-                                        type: "reorderClip",
-                                        id: entity.id,
-                                        clipId: c.id,
-                                        direction: "later",
-                                      },
-                                    ])
-                                  }
-                                >
-                                  <ArrowRight size={12} />
-                                </button>
-                                <input
-                                  aria-label={`Action ${i + 1} duration`}
-                                  type="number"
-                                  min=".2"
-                                  max="60"
-                                  step=".2"
-                                  value={c.duration}
-                                  onChange={(e) => {
-                                    if (Number(e.target.value) >= 0.2)
-                                      update(entity.id, {
-                                        clips: entity.clips.map((x) =>
-                                          x.id === c.id
-                                            ? {
-                                                ...x,
-                                                duration: Number(
-                                                  e.target.value,
-                                                ),
-                                              }
-                                            : x,
-                                        ),
-                                      });
-                                  }}
-                                />
-                                <span>sec</span>
-                              </div>
-                              {i > 0 &&
-                                !contactAction(scene, c) &&
-                                !contactAction(scene, entity.clips[i - 1]) && (
-                                  <label className="clip-transition">
-                                    Into this action
-                                    <select
-                                      aria-label={`Action ${i + 1} transition`}
-                                      value={c.transition || "cut"}
-                                      onChange={(event) =>
-                                        update(entity.id, {
-                                          clips: entity.clips.map((clip) =>
-                                            clip.id === c.id
-                                              ? {
-                                                  ...clip,
-                                                  transition: event.target
-                                                    .value as "smooth" | "cut",
-                                                }
-                                              : clip,
-                                          ),
-                                        })
-                                      }
-                                    >
-                                      <option value="smooth">Smooth</option>
-                                      <option value="cut">Cut</option>
-                                    </select>
-                                  </label>
-                                )}
-                              {allMotions(scene).find(
-                                (m) => m.id === c.motionId,
-                              )?.path && (
-                                <button
-                                  className="text-button"
-                                  onClick={() =>
-                                    void openPathEditor(entity.id, c.id).catch(
-                                      (e) => report(e.message),
-                                    )
-                                  }
-                                >
-                                  <Footprints size={13} /> Edit path
-                                </button>
-                              )}
-                              {[
-                                "sip",
-                                "pick",
-                                "place",
-                                "climb",
-                                "sit",
-                              ].includes(
-                                allMotions(scene).find(
-                                  (m) => m.id === c.motionId,
-                                )?.kind || "",
-                              ) && (
-                                <select
-                                  aria-label={`Action ${i + 1} prop`}
-                                  value={c.targetId || ""}
-                                  onChange={(event) =>
+                                  if (Number(e.target.value) >= 0.2)
                                     update(entity.id, {
                                       clips: entity.clips.map((x) =>
                                         x.id === c.id
                                           ? {
                                               ...x,
-                                              targetId:
-                                                event.target.value || undefined,
+                                              duration: Number(e.target.value),
                                             }
                                           : x,
                                       ),
-                                    })
-                                  }
-                                >
-                                  <option value="">
-                                    {allMotions(scene).find(
-                                      (m) => m.id === c.motionId,
-                                    )?.kind === "climb"
-                                      ? "Choose a ladder…"
-                                      : allMotions(scene).find(
-                                            (m) => m.id === c.motionId,
-                                          )?.kind === "sit"
-                                        ? "Choose a seat…"
-                                        : "Choose a prop…"}
-                                  </option>
-                                  {scene.entities
-                                    .filter((e) => {
-                                      const asset = allAssets(scene).find(
-                                        (a) => a.id === e.assetId,
-                                      );
-                                      return (
-                                        asset?.category === "props" &&
-                                        (allMotions(scene).find(
-                                          (m) => m.id === c.motionId,
-                                        )?.kind !== "climb" ||
-                                          ladderProfile(asset)) &&
-                                        (allMotions(scene).find(
-                                          (m) => m.id === c.motionId,
-                                        )?.kind !== "sit" ||
-                                          seatProfile(asset))
-                                      );
-                                    })
-                                    .map((e) => (
-                                      <option value={e.id} key={e.id}>
-                                        {e.name}
-                                      </option>
-                                    ))}
-                                </select>
-                              )}
+                                    });
+                                }}
+                              />
+                              <span>sec</span>
                             </div>
-                          ))}
-                        </div>
-                        {entity.clips.length > 0 &&
-                          !contactAction(scene, entity.clips.at(-1)!) && (
-                            <label className="sequence-ending">
-                              After the last action
+                            {i > 0 &&
+                              !contactAction(scene, c) &&
+                              !contactAction(scene, entity.clips[i - 1]) && (
+                                <label className="clip-transition">
+                                  Into this action
+                                  <select
+                                    aria-label={`Action ${i + 1} transition`}
+                                    value={c.transition || "cut"}
+                                    onChange={(event) =>
+                                      update(entity.id, {
+                                        clips: entity.clips.map((clip) =>
+                                          clip.id === c.id
+                                            ? {
+                                                ...clip,
+                                                transition: event.target
+                                                  .value as "smooth" | "cut",
+                                              }
+                                            : clip,
+                                        ),
+                                      })
+                                    }
+                                  >
+                                    <option value="smooth">Smooth</option>
+                                    <option value="cut">Cut</option>
+                                  </select>
+                                </label>
+                              )}
+                            {allMotions(scene).find((m) => m.id === c.motionId)
+                              ?.path && (
+                              <button
+                                className="text-button"
+                                onClick={() =>
+                                  void openPathEditor(entity.id, c.id).catch(
+                                    (e) => report(e.message),
+                                  )
+                                }
+                              >
+                                <Footprints size={13} /> Edit path
+                              </button>
+                            )}
+                            {["sip", "pick", "place", "climb", "sit"].includes(
+                              allMotions(scene).find((m) => m.id === c.motionId)
+                                ?.kind || "",
+                            ) && (
                               <select
-                                aria-label="After the last action"
-                                value={entity.ending || "rest"}
+                                aria-label={`Action ${i + 1} prop`}
+                                value={c.targetId || ""}
                                 onChange={(event) =>
                                   update(entity.id, {
-                                    ending: event.target.value as
-                                      "hold" | "rest",
+                                    clips: entity.clips.map((x) =>
+                                      x.id === c.id
+                                        ? {
+                                            ...x,
+                                            targetId:
+                                              event.target.value || undefined,
+                                          }
+                                        : x,
+                                    ),
                                   })
                                 }
                               >
-                                <option value="hold">
-                                  Hold the final pose
+                                <option value="">
+                                  {allMotions(scene).find(
+                                    (m) => m.id === c.motionId,
+                                  )?.kind === "climb"
+                                    ? "Choose a ladder…"
+                                    : allMotions(scene).find(
+                                          (m) => m.id === c.motionId,
+                                        )?.kind === "sit"
+                                      ? "Choose a seat…"
+                                      : "Choose a prop…"}
                                 </option>
-                                <option value="rest">Return to neutral</option>
+                                {scene.entities
+                                  .filter((e) => {
+                                    const asset = allAssets(scene).find(
+                                      (a) => a.id === e.assetId,
+                                    );
+                                    return (
+                                      asset?.category === "props" &&
+                                      (allMotions(scene).find(
+                                        (m) => m.id === c.motionId,
+                                      )?.kind !== "climb" ||
+                                        ladderProfile(asset)) &&
+                                      (allMotions(scene).find(
+                                        (m) => m.id === c.motionId,
+                                      )?.kind !== "sit" ||
+                                        seatProfile(asset))
+                                    );
+                                  })
+                                  .map((e) => (
+                                    <option value={e.id} key={e.id}>
+                                      {e.name}
+                                    </option>
+                                  ))}
                               </select>
-                            </label>
-                          )}
-                        <button
-                          className="dashed-button"
-                          onClick={() => setTab("motions")}
-                        >
-                          <Plus size={14} /> Add an action
-                        </button>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <div className="empty-details">
-                    <Move size={26} />
-                    <h3>A world of possibilities</h3>
-                    <p>Select something in the scene to make it your own.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </aside>
-        )}
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {entity.clips.length > 0 &&
+                        !contactAction(scene, entity.clips.at(-1)!) && (
+                          <label className="sequence-ending">
+                            After the last action
+                            <select
+                              aria-label="After the last action"
+                              value={entity.ending || "rest"}
+                              onChange={(event) =>
+                                update(entity.id, {
+                                  ending: event.target.value as "hold" | "rest",
+                                })
+                              }
+                            >
+                              <option value="hold">Hold the final pose</option>
+                              <option value="rest">Return to neutral</option>
+                            </select>
+                          </label>
+                        )}
+                      <button
+                        className="dashed-button"
+                        onClick={() => setTab("motions")}
+                      >
+                        <Plus size={14} /> Add an action
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="empty-details">
+                  <Move size={26} />
+                  <h3>A world of possibilities</h3>
+                  <p>Select something in the scene to make it your own.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </StudioAside>
       </div>
       <footer className="statusbar">
         <span>
           <span className="status-dot" />
-          <span className="studio-version" aria-label="App version" title="Build timestamp in UTC">v{studioVersion} · build {studioBuild}</span>
+          <span
+            className="studio-version"
+            aria-label="App version"
+            title="Build timestamp in UTC"
+          >
+            v{studioVersion} · build {studioBuild}
+          </span>
         </span>
         <span>Made for the stories only you can tell.</span>
         <button onClick={() => setModal("settings")}>
@@ -2418,6 +2559,12 @@ export default function App() {
               pathEdit.clipId,
             );
           }}
+          speechDuration={
+            pathEdit.dialogueClip
+              ? pathEdit.actor.clips.find((c) => c.id === pathEdit.clipId)
+                  ?.duration
+              : undefined
+          }
           motion={pathEdit.motion}
           onClose={() => setModal(null)}
           onSave={(motion) => {
@@ -2425,20 +2572,37 @@ export default function App() {
               throw Error(
                 "The scene changed while you were drawing. Close this path and open it again.",
               );
-            const next = applyCommands(
-              sceneRef.current,
-              savePathCommands(
-                sceneRef.current,
-                pathEdit.actorId,
-                motion,
-                pathEdit.clipId,
-              ),
-            );
+            const next = pathEdit.dialogueClip
+              ? setDialoguePath(
+                  sceneRef.current,
+                  pathEdit.actorId,
+                  pathEdit.clipId!,
+                  motion,
+                )
+              : applyCommands(
+                  sceneRef.current,
+                  savePathCommands(
+                    sceneRef.current,
+                    pathEdit.actorId,
+                    motion,
+                    pathEdit.clipId,
+                  ),
+                );
             change(next);
             setSelected(pathEdit.actorId);
-            setTime(0);
-            setRightTab("details");
-            setPanel(true);
+            const line = next.transcript.find(
+              (l) =>
+                l.characterId === pathEdit.actorId &&
+                l.clipId === pathEdit.clipId,
+            );
+            setTime(line ? dialogueTiming(next, line)!.start : 0);
+            if (pathEdit.dialogueClip) {
+              setConversationOpen(true);
+              setPanel(false);
+            } else {
+              setRightTab("details");
+              setPanel(true);
+            }
             setModal(null);
             toast(
               pathEdit.clipId ? "Path updated" : "Path added to the sequence",
@@ -2737,7 +2901,6 @@ export default function App() {
           </div>
         </Modal>
       )}
-
     </div>
   );
 }
