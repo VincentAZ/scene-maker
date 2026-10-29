@@ -1,6 +1,10 @@
 import JSZip from "jszip";
 import { dialogueSubtitles } from "../shared/conversation";
 import type { Scene } from "../shared/scene";
+import {
+  libraryCharacters,
+  libraryAssetURLs,
+} from "../shared/characterLibrary";
 
 const adapters = {
   "blender_import.py": "blender_import.py",
@@ -25,7 +29,29 @@ export async function productionPackage(
   zip.file("scene.glb", glb);
   const subtitles = dialogueSubtitles(scene);
   if (subtitles) zip.file("dialogue.srt", subtitles);
+  const used = new Set([
+    ...scene.entities.map((entity) => entity.assetId),
+    ...scene.customMotions.map((motion) => motion.sourceAssetId),
+  ]);
+  const libraryAssets = libraryCharacters.filter((asset) => used.has(asset.id));
   const files = [
+    ...libraryAssets.map((asset) => ({
+      url: asset.url!,
+      destination: "assets/quaternius/" + asset.url!.split("/").pop(),
+      error: `Cannot package ${asset.name}. The library file is missing.`,
+    })),
+    ...(libraryAssets.length ||
+    scene.customAssets.some(
+      (asset) => asset.url && libraryAssetURLs.has(asset.url),
+    )
+      ? [
+          {
+            url: "/library/quaternius/LICENSE.txt",
+            destination: "assets/quaternius/LICENSE.txt",
+            error: "The character library license could not be loaded.",
+          },
+        ]
+      : []),
     ...scene.customAssets
       .filter((asset) => asset.url)
       .map((asset) => ({

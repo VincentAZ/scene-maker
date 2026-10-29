@@ -1,0 +1,226 @@
+[
+  {
+    "file": "Worker_Male.gltf",
+    "url": "https://drive.google.com/file/d/10TWw1W-6aa4KmwKbQYewSG4-m67_4nof/view?usp=drivesdk",
+    "id": "10TWw1W-6aa4KmwKbQYewSG4-m67_4nof",
+    "sourceSha256": "324e2c95c31d11b9b48171d78fe3a0715cb9e58cea77ebc7a5b0de4936bc7b9e",
+    "glbSha256": "8a0d55dab0cb18e76cc1634352551dc4fc256afa854948aa5f3e1d397f6d0cba"
+  },
+  {
+    "file": "Worker_Female.gltf",
+    "url": "https://drive.google.com/file/d/1rnm-vJlpnt0QFKOzwbV1-wUQKaFxJ-1T/view?usp=drivesdk",
+    "id": "1rnm-vJlpnt0QFKOzwbV1-wUQKaFxJ-1T",
+    "sourceSha256": "a1cb51a7bde7758884e8e83f7e8569cb6fede8f95bf4cfaf55102f468921c0d9",
+    "glbSha256": "8f6b7388992311b4904a37613c3d49956c16388a6beb21c50ce0ad8207f5d3b8"
+  },
+  {
+    "file": "Wizard.gltf",
+    "url": "https://drive.google.com/file/d/1kVJicV3OAdeL96Uif-3ud1bh8gsl7QGT/view?usp=drivesdk",
+    "id": "1kVJicV3OAdeL96Uif-3ud1bh8gsl7QGT",
+    "sourceSha256": "baa9cd2d9f1ab3452d6e47d6efc5d4c6c8381fe16a44fc710df46bf16bc7fce8",
+    "glbSha256": "3ecc36c83104192b7e5a13cfef5fdb9e2bc1d3e90a9b080681c555394615ab97"
+  },
+  {
+    "file": "Witch.gltf",
+    "url": "https://drive.google.com/file/d/1EFjDcONKk6r-yJoqShGi2XY4lYydxg2Y/view?usp=drivesdk",
+    "id": "1EFjDcONKk6r-yJoqShGi2XY4lYydxg2Y",
+    "sourceSha256": "32d5c49fa0a3d4215116fd9eb7d672cd34367a19b6abb88f1a63aba7de882511",
+    "glbSha256": "b74716e98624d4e8434c1e5c45549693f0feaa27131bbbab2248c651c6470e3b"
+  },
+  {
+    "file": "Suit_Male.gltf",
+    "url": "https://drive.google.com/file/d/1MVJZ8EtcdxpTq5FQ591rWrD1RG0uSQGl/view?usp=drivesdk",
+    "id": "1MVJZ8EtcdxpTq5FQ591rWrD1RG0uSQGl",
+    "sourceSha256": "d89d245d10c81ee637116b3400657dad2873ec1bbfb7f90579b2f77a8779fa5b",
+    "glbSha256": "ca3434f1c0620e660705e2ff0f3c15c54c22e849b61641fd068dd5c4686e79eb"
+  },
+  {
+    "file": "Suit_Female.gltf",
+    "url": "https://drive.google.com/file/d/1f0AZRaRmoxdn64Khz6of_6wLHBzMc8AE/view?usp=drivesdk",
+    "id": "1f0AZRaRmoxdn64Khz6of_6wLHBzMc8AE",
+    "sourceSha256": "37cbe38d428f57aff788be0f585fb9892b6115cc014c494cb19ec65c621e1f07",
+    "glbSha256": "5560b54e201fba53b798e45da9f62259155a4b672c5683483fc4e4108b4475c6"
+  },
+  {
+    "file": "Pirate_Male.gltf",
+    "url": "https://drive.google.com/file/d/1SMvmsBmVFHn4PD-pDXr2vM1Poi-OywAO/view?usp=drivesdk",
+    "id": "1SMvmsBmVFHn4PD-pDXr2vM1Poi-OywAO",
+    "sourceSha256": "b372461f1ca937385729c015fc7062671095b7b49b9e4f38f8a054d72c2a80e6",
+    "glbSha256": "04c0e4d964508c883e7be94a130b087f1dd39e660adbca2bde7a5656dc368ed5"
+  },
+  {
+    "file": "Pirate_Female.gltf",
+    "url": "https://drive.google.com/file/d/1QhqLpuHqH57EXCxiG8RSIMyZkV4kvbQI/view?usp=drivesdk",
+    "id": "1QhqLpuHqH57EXCxiG8RSIMyZkV4kvbQI",
+    "sourceSha256": "766ca84f2b277879ddc724e2d1bd626f4d02c724243c3a1cfda3021245a48578",
+    "glbSha256": "354870448953e034be205caa14df247691491b21408913ee0033167d9dbd9ee9"
+  },
+  {
+    "file": "OldClassy_Male.gltf",
+    "url": "https://drive.google.com/file/d/1a1o9LoZDE6mjVz1JtDg9lV5qulfxALzy/view?usp=drivesdk",
+    "id": "1a1o9LoZDE6mjVz1JtDg9lV5qulfxALzy",
+    "sourceSha256": "9ac226f58ee2f80acb2cd4c66f15cfb210937ee1744b9465425f796aa900d9b8",
+    "glbSha256": "92305e6a32277225c9d02b8ffc5f842df2aec83e29d7450381d0d08efc128339"
+  },
+  {
+    "file": "OldClassy_Female.gltf",
+    "url": "https://drive.google.com/file/d/1xr7_81_CCdXpMy17wXOoLqQEefzOjSzZ/view?usp=drivesdk",
+    "id": "1xr7_81_CCdXpMy17wXOoLqQEefzOjSzZ",
+    "sourceSha256": "0c116d90c588f357e6537f12bdab5f377f6cb30590f29826092824dc55f7c5eb",
+    "glbSha256": "12f08a09eaa8c4a54dc47e78c1afd1626f3d254841a79db4e783cf45495a4332"
+  },
+  {
+    "file": "Knight_Male.gltf",
+    "url": "https://drive.google.com/file/d/1WWGpx8ugvwSs8hH21XsKxgutc7K8ayWD/view?usp=drivesdk",
+    "id": "1WWGpx8ugvwSs8hH21XsKxgutc7K8ayWD",
+    "sourceSha256": "7d71328d850869b2afca41cbe5436f8be19cefb6cd996afaff3e8a7b870188af",
+    "glbSha256": "abede56827e92b7b774cd04eddab11232413adf9c12b55355f377578b857efe7"
+  },
+  {
+    "file": "Knight_Golden_Male.gltf",
+    "url": "https://drive.google.com/file/d/1gE-bQC4eOYQP--p7EuM2SN8PLPgW5Ud7/view?usp=drivesdk",
+    "id": "1gE-bQC4eOYQP--p7EuM2SN8PLPgW5Ud7",
+    "sourceSha256": "96b5ac2f7b46fd279bc28bb9eda54a9e1d8d6aa2ffded19fbeb33d3e7c09265f",
+    "glbSha256": "b733e688b682ccf6ecb4e82772aeac19ea408ad17275079e5bf02834b4f22ad5"
+  },
+  {
+    "file": "Knight_Golden_Female.gltf",
+    "url": "https://drive.google.com/file/d/1etB7GTumoPrUf-wjvnkmhkp-Zs4mDPqv/view?usp=drivesdk",
+    "id": "1etB7GTumoPrUf-wjvnkmhkp-Zs4mDPqv",
+    "sourceSha256": "dc468d46e898aa02b1ca92f19adfb1b5497721d273efb6405aa80e7155f26cc8",
+    "glbSha256": "9b551a2fc39d337b8747f184bf69f15b4671633b8408f2abfc6e8104ab6458a9"
+  },
+  {
+    "file": "Kimono_Male.gltf",
+    "url": "https://drive.google.com/file/d/1F_QpqJz2vBV2_30ryafhuuOiJ9HLXMEF/view?usp=drivesdk",
+    "id": "1F_QpqJz2vBV2_30ryafhuuOiJ9HLXMEF",
+    "sourceSha256": "0be982ad6230c46f4277a0bdd77cf6f0af5cbc9319a025a4bdf62ad3ac1dfcf0",
+    "glbSha256": "fa92ab1306b1467d087e15adf6b65d4ab5be3fb3786cf3a45d72250ed78bfe3b"
+  },
+  {
+    "file": "Kimono_Female.gltf",
+    "url": "https://drive.google.com/file/d/15v-eCHVDraNSD_6l5b8_2oR4o4d5nYwp/view?usp=drivesdk",
+    "id": "15v-eCHVDraNSD_6l5b8_2oR4o4d5nYwp",
+    "sourceSha256": "8d3e909be3b854b1715855aed3c371a102788811a5c2673a0aee39fdb0a32df3",
+    "glbSha256": "698b363d38baaffc6ffa9a8f46e2e40e3f23f7b6fac92aba190a155507d9eb6b"
+  },
+  {
+    "file": "Elf.gltf",
+    "url": "https://drive.google.com/file/d/1OBeMqrUwJ7X9gFjEVEWA_1g_i6dEL9hR/view?usp=drivesdk",
+    "id": "1OBeMqrUwJ7X9gFjEVEWA_1g_i6dEL9hR",
+    "sourceSha256": "f1f480b79f274a20e414eaa0a2c76bd2aa40ac8e29f1178d6208af74cc69eb88",
+    "glbSha256": "771014549ec28761d238c49420bb015be3034c121c430c927c99a58a1d512171"
+  },
+  {
+    "file": "Doctor_Male_Young.gltf",
+    "url": "https://drive.google.com/file/d/17p9Xl0UQ_kMiHdCfAuT8N-k4EU-j8ZD1/view?usp=drivesdk",
+    "id": "17p9Xl0UQ_kMiHdCfAuT8N-k4EU-j8ZD1",
+    "sourceSha256": "4f39182b6ecff6affac27f7c4cb2abf9529d68be4a77cc71343b40a83fe6e0cd",
+    "glbSha256": "c640417cfe5ebd5f0924d08923fa53d22ecb4029c769905c2ac0e3082ae1348f"
+  },
+  {
+    "file": "Doctor_Male_Old.gltf",
+    "url": "https://drive.google.com/file/d/17HktS9je5E1nDUBrnqA40Ql4DMvnu0Jc/view?usp=drivesdk",
+    "id": "17HktS9je5E1nDUBrnqA40Ql4DMvnu0Jc",
+    "sourceSha256": "882741dd558d5a4e91704c6ef88f2979f9c34d956f2da6ce83aca80e5f43a6ab",
+    "glbSha256": "91d1a6bdc319570c7ac73bc3dc6fec9e34cf0fbc83b2d4724bed5d0ff59baf9c"
+  },
+  {
+    "file": "Doctor_Female_Young.gltf",
+    "url": "https://drive.google.com/file/d/1qoWTIzACscAsFirhSlTyaPM2D3A0kvwU/view?usp=drivesdk",
+    "id": "1qoWTIzACscAsFirhSlTyaPM2D3A0kvwU",
+    "sourceSha256": "2fd5082696aca804d77555eff96f6e07c11549e4f03661ce2467e2b9f881e5ab",
+    "glbSha256": "32aaaf67dda30def46101381889d41f0176e546567173c7e0e797f9fd3f73d99"
+  },
+  {
+    "file": "Doctor_Female_Old.gltf",
+    "url": "https://drive.google.com/file/d/1z0S9Qm0UdXpwhSVNlf2GCumGKtjChw2Q/view?usp=drivesdk",
+    "id": "1z0S9Qm0UdXpwhSVNlf2GCumGKtjChw2Q",
+    "sourceSha256": "7574bea268ed05f11bb1e4a16fdf36ab6302051b5514f20e12f4befb4c99b172",
+    "glbSha256": "bc314e1f0c22b66d3face235bf3460e027570f3a7308d7b5a1d414e945903805"
+  },
+  {
+    "file": "Cowboy_Male.gltf",
+    "url": "https://drive.google.com/file/d/1UvADD7MjiurAnZ1VqC9xSL4e9uqJfQPX/view?usp=drivesdk",
+    "id": "1UvADD7MjiurAnZ1VqC9xSL4e9uqJfQPX",
+    "sourceSha256": "91e20fef76c4ac9a3bd73b786727b68b3d4a14848d63987180db88ee88fd2ee0",
+    "glbSha256": "09ff8513fed0c07e05d1206827cfb6cb182e0137eb9676f5b2b755c2f8025e51"
+  },
+  {
+    "file": "Cowboy_Female.gltf",
+    "url": "https://drive.google.com/file/d/1BlCKDU45hNaPwCb47Mq_l75pHcGa4bsg/view?usp=drivesdk",
+    "id": "1BlCKDU45hNaPwCb47Mq_l75pHcGa4bsg",
+    "sourceSha256": "fdf0c238b0ad0047bc3342c9dc0535abb50ed65986044e53b07e3d7576f3ff60",
+    "glbSha256": "b777c65c1117a28d2224018c19fa272efeb0b58bd7706fcda871e6525183bbb3"
+  },
+  {
+    "file": "Chef_Male.gltf",
+    "url": "https://drive.google.com/file/d/1zTy8YXT3Ioy5xZfo79eBxTaoDKSbJMuX/view?usp=drivesdk",
+    "id": "1zTy8YXT3Ioy5xZfo79eBxTaoDKSbJMuX",
+    "sourceSha256": "e503dbd75f595863689e7e1d5181624be34ce191e5231e3e9ce82b83d55aa134",
+    "glbSha256": "f3f7be3ef50805420a18f6b3d0880d956d0bbaf6cddcd89ca67ed0d8ec3b81ea"
+  },
+  {
+    "file": "Chef_Hat.gltf",
+    "url": "https://drive.google.com/file/d/1SCWKXug68sBUDMgWxFCrFmpnWb5No9lL/view?usp=drivesdk",
+    "id": "1SCWKXug68sBUDMgWxFCrFmpnWb5No9lL",
+    "sourceSha256": "920c21e1d02dcf9a87832a285e08a3a7dcb4b869793cd4c51bb445ca39f1ea25",
+    "glbSha256": "9925d23ffe54232834383fa6aa31532c71350cfea96b3d418a46c30d16bff3fc"
+  },
+  {
+    "file": "Casual_Male.gltf",
+    "url": "https://drive.google.com/file/d/1rrj82IYNaSWj5ySxR6fW9oojyHFiW7_r/view?usp=drivesdk",
+    "id": "1rrj82IYNaSWj5ySxR6fW9oojyHFiW7_r",
+    "sourceSha256": "db66b2424af60d7799760795ca63c8a5be1c8af64e9f134217f0a3ff9e405379",
+    "glbSha256": "23ffd92746fb5bf45e8f028536ebb750bb4daa339d7629acdd7a14d150b1e04d"
+  },
+  {
+    "file": "Chef_Female.gltf",
+    "url": "https://drive.google.com/file/d/1SRN6B7N3YjURbqx9IVOrGTpx8mxNrkOL/view?usp=drivesdk",
+    "id": "1SRN6B7N3YjURbqx9IVOrGTpx8mxNrkOL",
+    "sourceSha256": "3e1959fe0432026b521ff04ff83df4e4487790948cbb182b0a92b08998d9beda",
+    "glbSha256": "24a56c08d1249faf131d87c92b16ffe3bc3a87ff4a38d9c1b6394f43d7038eb4"
+  },
+  {
+    "file": "Casual_Female.gltf",
+    "url": "https://drive.google.com/file/d/1E79ks2jbMt5iIrI8Ag9lRgA0VRnfU4pk/view?usp=drivesdk",
+    "id": "1E79ks2jbMt5iIrI8Ag9lRgA0VRnfU4pk",
+    "sourceSha256": "87327963ab0f37d004c7340d130808727f3d67b724c3d41aad01fd63c7d6fc8a",
+    "glbSha256": "1164c3fbd428596eb78f451edce792401cd760ad6530d3bbe422324328d51de0"
+  },
+  {
+    "file": "Casual_Bald.gltf",
+    "url": "https://drive.google.com/file/d/1CCFvA8E1HqW5UIBaxPoZZwuZJfgyiDlk/view?usp=drivesdk",
+    "id": "1CCFvA8E1HqW5UIBaxPoZZwuZJfgyiDlk",
+    "sourceSha256": "a75e2ade5703cd02371d7f38bb6ab307d94a7db2f07d4a219f9248fdecab5e6a",
+    "glbSha256": "877aec432f43a5b7f6dcddb8505d6b3d886ab3021a8dc923ec162d507f2111f8"
+  },
+  {
+    "file": "Casual3_Male.gltf",
+    "url": "https://drive.google.com/file/d/1lu0NtOCZ8KAM3R9HU1spzWzqdK-_Fn-H/view?usp=drivesdk",
+    "id": "1lu0NtOCZ8KAM3R9HU1spzWzqdK-_Fn-H",
+    "sourceSha256": "f84ec360f53796287cfdb6082ad82fd76464dc34845759ca7f1f2ee9e7604057",
+    "glbSha256": "9f68e9f8b46551b75ce749252fcf66ca94358f0fbfcd20d8114ffdee2a9e7e93"
+  },
+  {
+    "file": "Casual3_Female.gltf",
+    "url": "https://drive.google.com/file/d/1fjKYtYFGqBsfgCwRxRc3Zp4blfxXFSRu/view?usp=drivesdk",
+    "id": "1fjKYtYFGqBsfgCwRxRc3Zp4blfxXFSRu",
+    "sourceSha256": "75cb6d7fa20674cb6b1dc3ad4e3c6d0d1de03f0128817ba60dcc4fad4ca008a2",
+    "glbSha256": "345223dcf252f0322e9939b92081e3580b580cf75948f67a40f79140013a26f0"
+  },
+  {
+    "file": "Casual2_Male.gltf",
+    "url": "https://drive.google.com/file/d/1L2h3GVVJxa-_8sHnqOL-g4n7fQlD-Fdm/view?usp=drivesdk",
+    "id": "1L2h3GVVJxa-_8sHnqOL-g4n7fQlD-Fdm",
+    "sourceSha256": "9e8f23af968979cc6945d11015d9fd3cb1e94d53c3b91c39cac39a80e7490a79",
+    "glbSha256": "aba9222c152dae3367f2b44bf85ef85e209e65891753bcfedf82d81f2b255792"
+  },
+  {
+    "file": "Casual2_Female.gltf",
+    "url": "https://drive.google.com/file/d/1ou-CadwWpR_ita6L96e169IrVUFCqWBN/view?usp=drivesdk",
+    "id": "1ou-CadwWpR_ita6L96e169IrVUFCqWBN",
+    "sourceSha256": "b614bfe01ae69e0d9dfdfb6ff74fb53abfcc32be59858a9b89fb05ffd3062324",
+    "glbSha256": "43c169820834d941578a7feaec5fa938edfeb35ff15a44ef601234c36144ce89"
+  }
+]

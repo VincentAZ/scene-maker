@@ -1,5 +1,5 @@
 import * as T from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import {
   allAssets,
   allMotions,
@@ -13,6 +13,13 @@ export async function loadImportedAsset(asset: Asset): Promise<T.Group> {
   if (!asset.url)
     throw Error(`Reimport ${asset.name} to use its original motions.`);
   const gltf = await new GLTFLoader().loadAsync(asset.url);
+  return prepareImportedAsset(asset, gltf);
+}
+
+export function prepareImportedAsset(
+  asset: Asset,
+  gltf: Pick<GLTF, "scene" | "animations">,
+): T.Group {
   const group = new T.Group(),
     imported = gltf.scene;
   // Keep node UUIDs: original animation tracks may bind to unnamed nodes.

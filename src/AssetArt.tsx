@@ -1,5 +1,9 @@
 import type { Asset } from "../shared/scene";
+import { libraryEntry } from "../shared/characterLibrary";
 export function AssetArt({ asset }: { asset: Asset }) {
+  const entry = libraryEntry(asset);
+  if (entry)
+    return <img src={entry.thumbnail} alt="" loading="lazy" decoding="async" />;
   const c = asset.color;
   return (
     <svg viewBox="0 0 160 125" aria-hidden="true">

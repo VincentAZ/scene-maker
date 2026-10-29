@@ -67,8 +67,16 @@ export function offlineCommands(
 ) {
   const lower = prompt.toLowerCase(),
     commands: Command[] = [];
+  const words = (text: string) =>
+    " " +
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim() +
+    " ";
+  const mentioned = (name: string) => words(prompt).includes(words(name));
   const find =
-    scene.entities.find((e) => lower.includes(e.name.toLowerCase())) ||
+    scene.entities.find((e) => mentioned(e.name)) ||
     scene.entities.find((e) => e.id === selected) ||
     scene.entities.find(
       (e) =>
@@ -83,8 +91,8 @@ export function offlineCommands(
     commands.push({ type: "scene", changes: { lighting: "daylight" } });
   if (/\b(add|place|bring)\b/.test(lower)) {
     const asset =
-      allAssets(scene).find((a) => lower.includes(a.name.toLowerCase())) ||
-      allAssets(scene).find((a) => lower.includes(a.id));
+      allAssets(scene).find((a) => mentioned(a.name)) ||
+      allAssets(scene).find((a) => mentioned(a.id));
     if (asset) commands.push({ type: "add", assetId: asset.id });
   }
   if (/\b(remove|delete)\b/.test(lower) && find)
@@ -95,7 +103,7 @@ export function offlineCommands(
     ),
   );
   const actor =
-    characters.find((e) => lower.includes(e.name.toLowerCase())) ||
+    characters.find((e) => mentioned(e.name)) ||
     characters.find((e) => e.id === selected) ||
     characters[0];
   if (

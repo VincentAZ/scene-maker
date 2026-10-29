@@ -20,6 +20,7 @@ export default defineConfig({
       "/uploads": "http://127.0.0.1:4311",
       "/engine": "http://127.0.0.1:4311",
       "/exports": "http://127.0.0.1:4311",
+      "/library": "http://127.0.0.1:4311",
     },
   },
 });

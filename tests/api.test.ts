@@ -30,6 +30,7 @@ describe("local service boundaries", () => {
       "/engine/unreal/missing.py",
       "/uploads/missing.glb",
       "/exports/missing.zip",
+      "/library/quaternius/missing.glb",
     ]) {
       const response = await fetch(base + url);
       expect(response.status).toBe(404);

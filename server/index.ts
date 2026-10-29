@@ -53,6 +53,10 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: "8mb" }));
 app.use(
+  "/library",
+  express.static(path.resolve("public/library"), { fallthrough: false }),
+);
+app.use(
   "/uploads",
   express.static(path.join(dataDir, "uploads"), {
     fallthrough: false,

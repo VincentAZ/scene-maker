@@ -9,6 +9,7 @@ import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
 import { setMotionSources } from "./rig";
 import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
+import { libraryEntry } from "../shared/characterLibrary";
 import type { PathFrame } from "../shared/path";
 import { interactionSessions, type HoldSession } from "../shared/interactions";
 import { type Scene, allAssets, allMotions, duration } from "../shared/scene";
@@ -351,7 +352,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             .catch(() => {
               if (!cancelled)
                 live.current.onError(
-                  `Could not load ${e.name}. Reimport the character from your files.`,
+                  libraryEntry(a)
+                    ? `Could not load ${e.name}. Try reloading the studio.`
+                    : `Could not load ${e.name}. Reimport the character from your files.`,
                 );
             });
         } else

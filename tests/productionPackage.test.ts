@@ -5,11 +5,14 @@ import JSZip from "jszip";
 import { productionPackage } from "../src/productionPackage";
 import { starterScene, characters } from "../shared/scene";
 import { assistant } from "../server/ai";
+import { libraryCharacters } from "../shared/characterLibrary";
 
 const read: typeof fetch = async (input) => {
   const url = String(input);
   if (url.startsWith("/engine/"))
     return new Response(await readFile("." + url));
+  if (url.startsWith("/library/"))
+    return new Response(await readFile("public" + url));
   if (url === "/uploads/fixture.glb") return new Response("original source");
   return new Response("Missing", { status: 404 });
 };
@@ -68,6 +71,27 @@ it("exports the editable scene, original assets and automatic Unreal project tog
   expect(await zip.file("README.txt")!.async("string")).toContain(
     "playback parity",
   );
+});
+
+it("includes only used bundled models and their license in a portable export", async () => {
+  const scene = starterScene(),
+    asset = libraryCharacters[0];
+  scene.entities[0].assetId = asset.id;
+  const zip = await JSZip.loadAsync(
+    await productionPackage(scene, new ArrayBuffer(0), read),
+  );
+  const model = zip.file("assets/quaternius/" + asset.url!.split("/").pop())!;
+  expect(hash(await model.async("uint8array"))).toBe(
+    hash(await readFile("public" + asset.url)),
+  );
+  expect(
+    await zip.file("assets/quaternius/LICENSE.txt")!.async("string"),
+  ).toContain("CC0 1.0 Universal");
+  expect(
+    Object.keys(zip.files).filter(
+      (name) => name.startsWith("assets/quaternius/") && name.endsWith(".glb"),
+    ),
+  ).toHaveLength(1);
 });
 
 it("does not produce a partial package when an original asset or required adapter is missing", async () => {

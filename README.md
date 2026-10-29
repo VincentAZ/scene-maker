@@ -22,6 +22,8 @@ Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback.
 
 ## Create a scene
 
+The character library includes **46 ready-to-use characters**: 32 bundled Quaternius humanoids plus 14 original studio presets and mannequins. Browse Everyday, Professionals, Adventure, Fantasy, or Mannequins; search by name or role. The new cards show rendered previews of their actual models. Try “Add Harper” or “Add Dr Amara”, then chain their actions as usual. The [asset provenance and conversion notes](docs/CHARACTER_ASSETS.md) record the CC0 sources and local processing.
+
 1. Choose characters, props, and a set from the library. The starter café is already populated.
 2. Select an object to edit its placement, color, size, and character personality. The move tool also provides a 3D translation gizmo.
 3. Select a character and add actions. Reorder actions, change their duration, and assign props in Details. Space plays/pauses; the timeline scrubs; Ctrl/Cmd+Z undoes.

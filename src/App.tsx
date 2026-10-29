@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { productionPackage } from "./productionPackage";
+import { characterCollection, libraryEntry } from "../shared/characterLibrary";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
@@ -82,6 +83,15 @@ import { Modal } from "./Modal";
 import { Connections } from "./Connections";
 import { api, download } from "./api";
 type Tab = "characters" | "props" | "environments" | "motions";
+const characterFilters = [
+  "All",
+  "Everyday",
+  "Professionals",
+  "Adventure",
+  "Fantasy",
+  "Mannequins",
+  "My assets",
+];
 type Message = { role: "user" | "assistant"; text: string; mode?: string };
 const tabs = [
   { id: "characters", label: "Characters", icon: Users },
@@ -800,15 +810,19 @@ export default function App() {
       setExporting(false);
     }
   }
-  const filtered = allAssets(scene).filter(
-    (a) =>
-      a.category === tab &&
-      (filter !== "My assets" ||
-        scene.customAssets.some((c) => c.id === a.id)) &&
-      (filter !== "Professionals" ||
-        !["Creative", "Everyday", "Mannequin"].includes(a.style)) &&
-      (a.name + " " + a.style).toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = allAssets(scene)
+    .filter(
+      (a) =>
+        a.category === tab &&
+        (filter !== "My assets" ||
+          scene.customAssets.some((c) => c.id === a.id)) &&
+        (["All", "My assets"].includes(filter) ||
+          characterCollection(a) === filter) &&
+        (a.name + " " + a.style + " " + a.description)
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    )
+    .sort((a, b) => Number(!!libraryEntry(b)) - Number(!!libraryEntry(a)));
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -908,20 +922,40 @@ export default function App() {
               <span>⌕</span>
             </div>
             {tab !== "motions" && (
-              <div className="filters">
-                {(tab === "characters"
-                  ? ["All", "Professionals", "My assets"]
-                  : ["All", "My assets"]
-                ).map((f) => (
-                  <button
-                    key={f}
-                    className={filter === f ? "active" : ""}
-                    onClick={() => setFilter(f)}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
+              <>
+                <select
+                  className="collection-picker"
+                  aria-label={
+                    tab === "characters"
+                      ? "Character collection"
+                      : "Asset collection"
+                  }
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                >
+                  {(tab === "characters"
+                    ? characterFilters
+                    : ["All", "My assets"]
+                  ).map((f) => (
+                    <option key={f}>{f}</option>
+                  ))}
+                </select>
+                <div className="filters">
+                  {(tab === "characters"
+                    ? characterFilters
+                    : ["All", "My assets"]
+                  ).map((f) => (
+                    <button
+                      key={f}
+                      className={filter === f ? "active" : ""}
+                      aria-pressed={filter === f}
+                      onClick={() => setFilter(f)}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
             <div className="section-caption">
               <span>
@@ -1015,7 +1049,9 @@ export default function App() {
                       <span className="add-badge">
                         <Plus size={13} />
                       </span>
-                      {a.url && <span className="imported-badge">YOURS</span>}
+                      {a.url && !libraryEntry(a) && (
+                        <span className="imported-badge">YOURS</span>
+                      )}
                     </div>
                     <strong>{a.name}</strong>
                     <span>

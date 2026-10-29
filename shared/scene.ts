@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { interactionSessions } from "./interactions";
 import { ladderProfile } from "./ladder";
+import { libraryAssetURLs, libraryCharacters } from "./characterLibrary";
 export const providers = [
   "openai",
   "anthropic",
@@ -142,7 +143,12 @@ export const assetSchema = z.object({
   body: z.enum(["feminine", "masculine", "mannequin"]).default("masculine"),
   url: z
     .string()
-    .regex(/^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/)
+    .refine(
+      (url) =>
+        /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
+        libraryAssetURLs.has(url),
+      "Choose an uploaded file or an existing library character.",
+    )
     .optional(),
   description: z.string().max(1000).default(""),
   parts: z.array(shapeSchema).max(256).optional(),
@@ -341,7 +347,12 @@ export const environments: Asset[] = [
   category: "environments",
   description: "A complete set, ready for your story.",
 }));
-export const assets = [...characters, ...props, ...environments];
+export const assets = [
+  ...characters,
+  ...libraryCharacters,
+  ...props,
+  ...environments,
+];
 export const motions: Motion[] = [
   ["idle", "Breathe", 3, 0],
   ["walk", "Walk", 4, 2],

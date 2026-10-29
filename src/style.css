@@ -302,8 +302,12 @@ button svg {
 }
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
   margin: 14px 0 21px;
+}
+.collection-picker {
+  display: none;
 }
 .filters button {
   font-size: 10px;
@@ -368,13 +372,18 @@ button svg {
 .asset-card:nth-child(4n + 4) .asset-art {
   background: #ede8e2;
 }
-.asset-art svg {
+.asset-art svg,
+.asset-art img {
   width: 100%;
   height: 100%;
   padding-top: 8px;
   transition: transform 0.25s;
 }
-.asset-card:hover .asset-art svg {
+.asset-art img {
+  object-fit: contain;
+}
+.asset-card:hover .asset-art svg,
+.asset-card:hover .asset-art img {
   transform: scale(1.06);
 }
 .asset-card > strong {
@@ -2602,4 +2611,22 @@ label > span {
 .sequence-ending {
   margin: 16px 0;
   font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .filters {
+    display: none;
+  }
+  .collection-picker {
+    display: block;
+    width: 100%;
+    min-height: 38px;
+    margin: 12px 0 16px;
+    padding: 6px;
+    font-size: 11px;
+    color: #40523b;
+    background: #f4f6ee;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
 }
