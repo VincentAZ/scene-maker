@@ -264,6 +264,43 @@ describe("local service boundaries", () => {
       fs.rmSync(path.join(projects, "outdated-schema.json"), { force: true });
     }
   });
+  it("exposes speech routes with validation and a saved ElevenLabs key", async () => {
+    const voices = await (await fetch(base + "/api/speech/voices")).json();
+    expect(voices).toMatchObject({
+      elevenlabs: [],
+      piper: [],
+      piperEngine: false,
+    });
+    expect(Array.isArray(voices.openai)).toBe(true);
+    expect(
+      (
+        await req("/api/speech", {
+          provider: "openai",
+          voice: "../x",
+          text: "hi",
+        })
+      ).status,
+    ).toBe(400);
+    const piper = await req("/api/speech", {
+      provider: "piper",
+      voice: "en_US-lessac-medium",
+      text: "hi",
+    });
+    expect(piper.status).toBe(400);
+    expect((await piper.json()).error).toContain("Install the Piper engine");
+    const saved = await (
+      await req("/api/connections", { elevenlabsKey: "eleven-fixture" }, "PUT")
+    ).json();
+    expect(saved.speech).toMatchObject({
+      elevenlabs: true,
+      piper: { engine: false, voices: 0 },
+    });
+    const cleared = await (
+      await req("/api/connections", { elevenlabsKey: "" }, "PUT")
+    ).json();
+    expect(cleared.speech.elevenlabs).toBe(false);
+    expect((await fetch(base + "/api/speech/jobs")).status).toBe(200);
+  });
   it("resolves named project requests from saved data and validates chat history", async () => {
     const target = { ...starterScene(), name: "Saved scene for the assistant" };
     const saved = await (

@@ -229,6 +229,8 @@ export const entitySchema = z.object({
   model: z.string().max(200),
   // Per-character thinking effort; absent means the provider's saved setting.
   thinking: z.enum(thinkingLevels).optional(),
+  // Voice for spoken playback ("provider:voice[#speaker]"); absent = automatic.
+  voice: z.string().max(200).optional(),
   clips: z.array(clipSchema).max(100),
   ending: z.enum(["hold", "rest"]).optional(),
   setDressing: z.boolean().optional(),

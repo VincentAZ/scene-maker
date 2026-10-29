@@ -43,6 +43,8 @@ export type Config = {
   >;
   assistant: Provider | null;
   blender: string;
+  /** Speech-only services; OpenAI voices reuse the OpenAI provider key. */
+  speech?: { elevenlabs?: { key: string } };
 };
 export function thinkingFor(
   config: Config,

@@ -1,6 +1,7 @@
 import { thinkingLevels, thinkingChoices } from "../shared/thinking";
 import { createCodingService, codingRouter } from "./coding";
 import { codingPreview } from "./codingPreview";
+import { createSpeechService } from "./speech";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -80,6 +81,16 @@ app.use(
     setHeaders: (r) => r.setHeader("X-Content-Type-Options", "nosniff"),
   }),
 );
+fs.mkdirSync(path.join(dataDir, "speech"), { recursive: true, mode: 0o700 });
+app.use(
+  "/speech",
+  express.static(path.join(dataDir, "speech"), {
+    fallthrough: false,
+    immutable: true,
+    maxAge: "30d",
+    setHeaders: (r) => r.setHeader("X-Content-Type-Options", "nosniff"),
+  }),
+);
 app.use(
   "/engine",
   express.static(path.resolve("engine"), { fallthrough: false }),
@@ -96,6 +107,7 @@ app.use(
   }),
 );
 const coding = createCodingService(config);
+const speech = createSpeechService({ config });
 const codePreview = codingPreview(coding);
 app.use(
   "/api/coding",
@@ -120,6 +132,7 @@ function connectionSummary(c: Config) {
   return {
     assistant: c.assistant,
     blender: c.blender,
+    speech: speech.summary(c),
     providers: Object.fromEntries(
       providers.map((p) => [
         p,
@@ -156,9 +169,17 @@ app.put("/api/connections", (req, res) => {
         thinking: z.enum(thinkingLevels).optional(),
         assistant: z.enum(providers).nullable().optional(),
         blender: z.string().min(1).max(1000).optional(),
+        elevenlabsKey: z.string().trim().max(1000).optional(),
       })
       .parse(req.body),
     c = config();
+  if (body.elevenlabsKey !== undefined)
+    c.speech = {
+      ...c.speech,
+      ...(body.elevenlabsKey
+        ? { elevenlabs: { key: body.elevenlabsKey } }
+        : { elevenlabs: undefined }),
+    };
   if (body.provider) {
     const prev = c.providers[body.provider];
     const model = body.model ?? prev?.model ?? "";
@@ -190,6 +211,37 @@ app.put("/api/connections", (req, res) => {
   if (body.blender !== undefined) c.blender = body.blender;
   atomicWrite(configFile, c);
   res.json({ ok: true, ...connectionSummary(c) });
+});
+// Spoken playback: catalogues, synthesis (cached on disk) and the local Piper engine.
+app.get("/api/speech/voices", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(await speech.voices());
+});
+app.get("/api/speech/piper/catalog", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    voices: await speech.piperCatalog(),
+    engine: speech.summary(config()).piper.engine,
+  });
+});
+app.get("/api/speech/jobs", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ jobs: speech.jobs(), piper: speech.summary(config()).piper });
+});
+app.post("/api/speech", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(await speech.synthesize(req.body));
+});
+app.post("/api/speech/piper/install", (_req, res) => {
+  res.json({ job: speech.installEngine() });
+});
+app.post("/api/speech/piper/voices", async (req, res) => {
+  const { id } = z.object({ id: z.string().min(1).max(120) }).parse(req.body);
+  res.json({ job: await speech.installVoice(id) });
+});
+app.delete("/api/speech/piper/voices/:id", (req, res) => {
+  speech.removeVoice(String(req.params.id));
+  res.json({ ok: true });
 });
 app.post("/api/assistant", async (req, res) => {
   const controller = new AbortController();
