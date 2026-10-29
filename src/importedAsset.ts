@@ -1,7 +1,7 @@
 import * as T from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import {
-  allAssets,
+  resolveMotionSource,
   allMotions,
   type Asset,
   type Entity,
@@ -51,5 +51,8 @@ export function requiredMotionSources(scene: Scene, entity: Entity): Asset[] {
       )
       .map((motion) => motion.sourceAssetId),
   );
-  return allAssets(scene).filter((asset) => sourceIds.has(asset.id));
+  return [...sourceIds].flatMap((id) => {
+    const asset = resolveMotionSource(scene, id);
+    return asset ? [asset] : [];
+  });
 }

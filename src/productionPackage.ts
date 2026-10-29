@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { dialogueSubtitles } from "../shared/conversation";
-import type { Scene } from "../shared/scene";
+import { allMotions, type Scene } from "../shared/scene";
+import { motionSource } from "../shared/motionLibrary";
 import {
   libraryCharacters,
   libraryAssetURLs,
@@ -30,14 +31,39 @@ export async function productionPackage(
   zip.file("scene.glb", glb);
   const subtitles = dialogueSubtitles(scene);
   if (subtitles) zip.file("dialogue.srt", subtitles);
+  const motionIds = new Set(
+    scene.entities.flatMap((entity) =>
+      entity.clips.map((clip) => clip.motionId),
+    ),
+  );
   const used = new Set([
     ...scene.entities.map((entity) => entity.assetId),
-    ...scene.customMotions.map((motion) => motion.sourceAssetId),
+    ...allMotions(scene)
+      .filter(
+        (motion) =>
+          motionIds.has(motion.id) ||
+          scene.customMotions.some((custom) => custom.id === motion.id),
+      )
+      .map((motion) => motion.sourceAssetId),
     ...scene.customAssets.map((asset) => asset.design?.baseId),
   ]);
   const libraryAssets = libraryCharacters.filter((asset) => used.has(asset.id));
   const furniture = furnitureAssets.filter((asset) => used.has(asset.id));
   const files = [
+    ...(used.has(motionSource.id)
+      ? [
+          {
+            url: motionSource.url!,
+            destination: "assets/actions/quaternius-actions.glb",
+            error: "The action library could not be loaded.",
+          },
+          {
+            url: "/library/actions/LICENSE.txt",
+            destination: "assets/actions/LICENSE.txt",
+            error: "The action library license could not be loaded.",
+          },
+        ]
+      : []),
     ...furniture.map((asset) => ({
       url: asset.url!,
       destination: "assets/furniture/" + asset.url!.split("/").pop(),

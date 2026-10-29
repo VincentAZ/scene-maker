@@ -43,6 +43,8 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { productionPackage } from "./productionPackage";
+import { ActionPreview } from "./ActionPreview";
+import { motionCollections, motionDetails } from "../shared/motionLibrary";
 import { CharacterCreator } from "./CharacterCreator";
 import { characterCollection, libraryEntry } from "../shared/characterLibrary";
 import {
@@ -129,6 +131,11 @@ export default function App() {
       | "character"
       | null
     >(null),
+    [previewAction, setPreviewAction] = useState<{
+      motion: Motion;
+      actorId?: string;
+      source: Scene;
+    } | null>(null),
     [pathEdit, setPathEdit] = useState<{
       actorId: string;
       actor: Entity;
@@ -344,7 +351,8 @@ export default function App() {
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
         e.target instanceof HTMLSelectElement ||
-        modal
+        modal ||
+        previewAction
       )
         return;
       if ((e.metaKey || e.ctrlKey) && e.key === "z") {
@@ -361,7 +369,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [selected, modal, historyVersion]);
+  }, [selected, modal, previewAction, historyVersion]);
   async function openPathEditor(actorId: string, clipId?: string) {
     setPlaying(false);
     cancelConversationForEdit();
@@ -483,12 +491,52 @@ export default function App() {
       setBusy(false);
     }
   }
+  function addMotion(motion: Motion, actorId = selected) {
+    const current = sceneRef.current;
+    const actor = current.entities.find((e) => e.id === actorId);
+    if (
+      !actor ||
+      allAssets(current).find((a) => a.id === actor.assetId)?.category !==
+        "characters"
+    ) {
+      report("Choose a character in your scene first.");
+      return;
+    }
+    const ladder =
+      motion.kind === "climb"
+        ? nearestLadder(current.entities, allAssets(current), actor)
+        : undefined;
+    if (motion.kind === "climb" && !ladder) {
+      toast("Add a ladder from Props, then try this action.");
+      return;
+    }
+    execute([
+      {
+        type: "chain",
+        id: actor.id,
+        motionId: motion.id,
+        ...(ladder ? { targetId: ladder.id } : {}),
+      },
+    ]);
+    toast(`${motion.name} added to ${actor.name}’s sequence`);
+  }
   async function performStudioStep(
     step: Exclude<
       StudioStep,
       { type: "edit" | "newProject" | "copyProject" | "openProject" | "save" }
     >,
   ) {
+    if (step.type === "previewAction") {
+      setPlaying(false);
+      setPreviewAction({
+        motion: allMotions(sceneRef.current).find(
+          (m) => m.id === step.motionId,
+        )!,
+        source: structuredClone(sceneRef.current),
+        actorId: step.actorId,
+      });
+      return;
+    }
     if (step.type === "pathEditor") {
       await openPathEditor(step.actorId, step.clipId);
       return;
@@ -857,7 +905,19 @@ export default function App() {
       ? characterFilters
       : tab === "props"
         ? ["All", ...furnitureCollections, "Essentials", "My assets"]
-        : ["All", "My assets"];
+        : tab === "motions"
+          ? motionCollections
+          : ["All", "My assets"];
+  const filteredMotions = allMotions(scene).filter(
+    (m) =>
+      (filter === "All" ||
+        (filter === "My actions"
+          ? scene.customMotions.some((custom) => custom.id === m.id)
+          : motionDetails(m).collection === filter)) &&
+      (m.name + " " + motionDetails(m).description)
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -956,36 +1016,34 @@ export default function App() {
               />
               <span>⌕</span>
             </div>
-            {tab !== "motions" && (
-              <>
-                <select
-                  className="collection-picker"
-                  aria-label={
-                    tab === "characters"
-                      ? "Character collection"
-                      : "Asset collection"
-                  }
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
+            <select
+              className="collection-picker"
+              aria-label={
+                tab === "characters"
+                  ? "Character collection"
+                  : tab === "motions"
+                    ? "Action collection"
+                    : "Asset collection"
+              }
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              {collectionFilters.map((f) => (
+                <option key={f}>{f}</option>
+              ))}
+            </select>
+            <div className="filters">
+              {collectionFilters.map((f) => (
+                <button
+                  key={f}
+                  className={filter === f ? "active" : ""}
+                  aria-pressed={filter === f}
+                  onClick={() => setFilter(f)}
                 >
-                  {collectionFilters.map((f) => (
-                    <option key={f}>{f}</option>
-                  ))}
-                </select>
-                <div className="filters">
-                  {collectionFilters.map((f) => (
-                    <button
-                      key={f}
-                      className={filter === f ? "active" : ""}
-                      aria-pressed={filter === f}
-                      onClick={() => setFilter(f)}
-                    >
-                      {f}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+                  {f}
+                </button>
+              ))}
+            </div>
             <div className="section-caption">
               <span>
                 {tab === "characters"
@@ -997,7 +1055,7 @@ export default function App() {
                       : "MAKE YOUR NEXT MOVE"}
               </span>
               <span>
-                {tab === "motions" ? allMotions(scene).length : filtered.length}
+                {tab === "motions" ? filteredMotions.length : filtered.length}
               </span>
             </div>
             {tab === "environments" && (
@@ -1008,47 +1066,9 @@ export default function App() {
             )}
             {tab === "motions" ? (
               <div className="motion-library">
-                {allMotions(scene)
-                  .filter((m) =>
-                    m.name.toLowerCase().includes(search.toLowerCase()),
-                  )
-                  .map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        if (!entity || !isCharacter) {
-                          report("Choose a character in your scene first.");
-                          return;
-                        }
-                        const ladder =
-                          m.kind === "climb"
-                            ? nearestLadder(
-                                scene.entities,
-                                allAssets(scene),
-                                entity,
-                              )
-                            : undefined;
-                        if (m.kind === "climb" && !ladder) {
-                          toast(
-                            "Add a ladder from Props, then try this action.",
-                          );
-                          return;
-                        }
-                        execute([
-                          {
-                            type: "chain",
-                            id: entity.id,
-                            motionId: m.id,
-                            ...(m.kind === "climb"
-                              ? {
-                                  targetId: ladder?.id,
-                                }
-                              : {}),
-                          },
-                        ]);
-                        toast(`${m.name} added to ${entity.name}’s sequence`);
-                      }}
-                    >
+                {filteredMotions.map((m) => (
+                  <div className="motion-card" key={m.id}>
+                    <button className="motion-add" onClick={() => addMotion(m)}>
                       <span className="motion-symbol">
                         <Footprints size={18} />
                       </span>
@@ -1056,20 +1076,40 @@ export default function App() {
                         <strong>{m.name}</strong>
                         <small>
                           {Number(m.duration.toFixed(1))}s ·{" "}
-                          {m.kind === "imported"
-                            ? m.sourceAssetId === entity?.assetId
-                              ? "Original action"
-                              : isCharacter
+                          {motionDetails(m).authored
+                            ? "Authored motion"
+                            : m.kind === "imported"
+                              ? isCharacter
                                 ? `Adapt to ${entity!.name}`
                                 : "From your files"
-                            : m.kind === "custom"
-                              ? "Your creation"
-                              : "Ready to use"}
+                              : m.kind === "custom"
+                                ? "Your creation"
+                                : "Ready to use"}
                         </small>
                       </span>
                       <Plus size={15} />
                     </button>
-                  ))}
+                    <button
+                      className="motion-preview"
+                      aria-label={`Preview ${m.name}`}
+                      onClick={() => {
+                        setPlaying(false);
+                        setPreviewAction({
+                          motion: m,
+                          source: structuredClone(sceneRef.current),
+                          actorId: isCharacter ? entity!.id : undefined,
+                        });
+                      }}
+                    >
+                      <Play size={12} /> Preview
+                    </button>
+                  </div>
+                ))}
+                {!filteredMotions.length && (
+                  <p className="empty-state">
+                    No actions match. Try another collection or search.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="asset-grid">
@@ -2038,6 +2078,22 @@ export default function App() {
           e.target.value = "";
         }}
       />
+      {previewAction && (
+        <ActionPreview
+          scene={previewAction.source}
+          motion={previewAction.motion}
+          actorId={previewAction.actorId}
+          onClose={() => setPreviewAction(null)}
+          onAdd={
+            previewAction.actorId
+              ? () => {
+                  addMotion(previewAction.motion, previewAction.actorId);
+                  setPreviewAction(null);
+                }
+              : undefined
+          }
+        />
+      )}
       {modal === "path" && pathEdit && (
         <PathEditor
           scene={scene}

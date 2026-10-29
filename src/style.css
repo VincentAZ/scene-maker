@@ -1681,7 +1681,13 @@ label > span {
   flex-direction: column;
   gap: 8px;
 }
-.motion-library > button {
+.motion-card {
+  border: 1px solid #e3e9d8;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #f6f9ee;
+}
+.motion-add {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1691,7 +1697,7 @@ label > span {
   background: #f6f9ee;
   padding: 10px;
 }
-.motion-library > button > span:nth-child(2) {
+.motion-add > span:nth-child(2) {
   flex: 1;
 }
 .motion-library strong {
@@ -2793,5 +2799,96 @@ label > span {
   .character-maker-footer button {
     flex: 1;
     justify-content: center;
+  }
+}
+
+.motion-add {
+  width: 100%;
+  border: 0;
+}
+.motion-preview {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-top: 1px solid #e3e9d8;
+  background: #edf3e4;
+  color: #5b7048;
+  font-size: 10px;
+}
+.motion-preview:hover {
+  background: #e0ebd2;
+}
+.action-preview-stage {
+  position: relative;
+  height: 340px;
+  margin-top: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.action-preview-stage > div {
+  width: 100%;
+  height: 100%;
+}
+.preview-loading {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 8px 12px;
+  background: #fafbf5;
+  border-radius: 8px;
+}
+.action-preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  font-size: 12px;
+}
+.action-preview-controls input {
+  flex: 1;
+  min-width: 40px;
+}
+@media (max-width: 600px) {
+  .action-preview-stage {
+    height: 270px;
+  }
+  .action-preview-controls {
+    gap: 6px;
+  }
+  .motion-add {
+    gap: 6px;
+    padding: 8px;
+  }
+  .motion-symbol {
+    display: none;
+  }
+}
+
+.action-preview-body {
+  padding: 20px 24px 24px;
+}
+.action-preview-body > p {
+  margin: 0 0 12px;
+  line-height: 1.65;
+}
+.action-preview-controls input {
+  accent-color: #6e815b;
+}
+.action-preview-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .action-preview-body {
+    padding: 16px;
+  }
+  .action-preview-footer button {
+    flex: 1;
   }
 }

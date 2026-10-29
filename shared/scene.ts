@@ -4,6 +4,7 @@ import { ladderProfile } from "./ladder";
 import { libraryAssetURLs, libraryCharacters } from "./characterLibrary";
 import { characterDesignSchema, supportsGlasses } from "./characterDesign";
 import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
+import { libraryMotions, motionSource } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
 export const providers = [
   "openai",
@@ -410,7 +411,13 @@ export const motions: Motion[] = [
   poses: [],
 }));
 export const allAssets = (s: Scene) => [...assets, ...s.customAssets];
-export const allMotions = (s: Scene) => [...motions, ...s.customMotions];
+export const allMotions = (s: Scene) => [
+  ...motions,
+  ...libraryMotions,
+  ...s.customMotions,
+];
+export const resolveMotionSource = (s: Scene, id: string | undefined) =>
+  id === motionSource.id ? motionSource : allAssets(s).find((a) => a.id === id);
 export function applyCommands(scene: Scene, input: unknown): Scene {
   const commands = z.array(commandSchema).max(100).parse(input);
   const s = structuredClone(scene);
@@ -563,7 +570,7 @@ export function validateScene(input: unknown): Scene {
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
   if (
     !unique(s.entities.map((e) => e.id)) ||
-    !unique(allAssets(s).map((a) => a.id)) ||
+    !unique([...allAssets(s).map((a) => a.id), motionSource.id]) ||
     !unique(allMotions(s).map((m) => m.id))
   )
     throw Error("Duplicate IDs in scene.");
@@ -576,7 +583,7 @@ export function validateScene(input: unknown): Scene {
         throw Error("Unknown action in scene.");
       const motion = allMotions(s).find((m) => m.id === c.motionId)!;
       if (motion.kind === "imported") {
-        const source = allAssets(s).find((a) => a.id === motion.sourceAssetId);
+        const source = resolveMotionSource(s, motion.sourceAssetId);
         if (!source)
           throw Error(
             "The original asset for this imported action is missing.",

@@ -28,6 +28,8 @@ Choose **Characters → Create a character** to make one of your own. Pick a sta
 
 The prop library includes **105 props**, with 93 bundled furniture models across six collections. **Sets** offers 12 choices, including five furnished rooms with individually editable furniture. Try “Switch to Open kitchen” or “Add a glass coffee table”. Changing sets keeps your cast and separately added props; select a furnishing and choose **Details → Keep when switching sets** to keep that piece too. The [furniture source notes](docs/FURNITURE_ASSETS.md) record licensing and conversion.
 
+**Actions** includes **31 built-in motions**, with 17 authored performances from the Quaternius pack. Browse Movement, Everyday, Acting, Stunts, or Interactions. Choose **Preview** to rehearse on the selected character, play or scrub the action, then add it when ready. Without a selected character, a sample performer demonstrates the motion. The rehearsal leaves your scene unchanged. The assistant accepts “Preview Celebrate”, “Sage Athletic jump then Forward roll”, or “Mila Disappointed then wave”. Authored walks/jogs stay in place; use the studio Walk/Run or a drawn path for travel. Carrying, reaching, sitting, and stage-combat performances are poses; targeted Pick up/Take a sip/Put down handle actual prop contact. See [motion sources and limits](docs/MOTION_ASSETS.md).
+
 1. Choose characters, props, and a set from the library. The starter café is already populated.
 2. Select an object to edit its placement, size, character personality, and (for geometric presets) color. The move tool also provides a 3D translation gizmo.
 3. Select a character and add actions. Reorder actions, change their duration, and assign props in Details. Space plays/pauses; the timeline scrubs; Ctrl/Cmd+Z undoes.
@@ -66,7 +68,7 @@ The production ZIP includes `scene.glb` (baked skeletal/object animation at 24 f
 
 - React + TypeScript + Vite; Three.js for the interactive scene and animated GLB export.
 - An engine-neutral scene schema and command reducer in `shared/`; scene changes use the same validation path from both UI and AI.
-- 14 original rigged character presets, 12 props, 6 sets, 14 procedural actions, custom keyframed actions, and imported native clips.
+- 46 rigged character choices, 105 props, 12 sets, 31 built-in actions, custom keyframed actions, and imported native clips.
 - The AI SDK uses native provider adapters for OpenAI/Anthropic/Google and OpenAI-compatible adapters for xAI/Kimi/OpenRouter. Credentials are server-side only after entry and are stored with mode `0600` in `.data/connections.json` (local disk storage, not an encrypted credential vault).
 - Local JSON persistence uses atomic writes and optimistic revision checks. Imported assets and generated exports live under `.data/`; nothing in this folder is committed.
 - `SCENE_MAKER_DATA` changes the data directory; `PORT` changes the production server port (dev proxy uses 4311). Browser write requests require the studio header and an allowed loopback origin.

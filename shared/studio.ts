@@ -31,6 +31,11 @@ export const studioStepSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("save") }),
   z.object({ type: z.literal("select"), id: z.string().nullable() }),
   z.object({
+    type: z.literal("previewAction"),
+    motionId: z.string(),
+    actorId: z.string().optional(),
+  }),
+  z.object({
     type: z.literal("pathEditor"),
     actorId: z.string(),
     clipId: z.string().optional(),
@@ -139,6 +144,19 @@ export function validatePlan(
     if (["newProject", "copyProject", "openProject"].includes(step.type))
       visited.set(current.id, structuredClone(current));
     if (step.type === "edit") current = applyCommands(current, step.commands);
+    if (step.type === "previewAction") {
+      if (
+        !allMotions(current).some((m) => m.id === step.motionId) ||
+        (step.actorId &&
+          !current.entities.some(
+            (e) =>
+              e.id === step.actorId &&
+              allAssets(current).find((a) => a.id === e.assetId)?.category ===
+                "characters",
+          ))
+      )
+        throw Error("Choose an existing action and character for the preview.");
+    }
     if (step.type === "pathEditor") {
       const actor = current.entities.find((e) => e.id === step.actorId);
       if (
@@ -181,6 +199,8 @@ export function validatePlan(
   // isolated, rather than claiming that subsequent edits were validated correctly.
   if (plan.steps.some((s) => s.type === "history") && plan.steps.length !== 1)
     throw Error("Undo or redo must be a separate request.");
+  if (plan.steps.slice(0, -1).some((s) => s.type === "previewAction"))
+    throw Error("Open the action preview as the final step.");
   if (plan.steps.slice(0, -1).some((s) => s.type === "pathEditor"))
     throw Error(
       "Open the path editor as the final step so the creator can finish drawing.",

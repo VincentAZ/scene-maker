@@ -1,0 +1,79 @@
+[
+  [
+    "Idle",
+    "Relaxed idle",
+    "Everyday",
+    "A relaxed standing loop with a small shift of weight."
+  ],
+  [
+    "Walk",
+    "Easy walk",
+    "Movement",
+    "An authored walking cycle in place. Use a drawn path for travel."
+  ],
+  ["Run", "Jog in place", "Movement", "A quick running cycle in place."],
+  ["Jump", "Athletic jump", "Movement", "Crouch, spring upward, and land."],
+  ["Roll", "Forward roll", "Movement", "Tuck into a forward roll and recover."],
+  [
+    "Walk_Carry",
+    "Careful carrying walk",
+    "Movement",
+    "An in-place walking pose with both hands forward. It does not attach a prop."
+  ],
+  [
+    "Run_Carry",
+    "Carrying jog",
+    "Movement",
+    "An in-place jog with both hands forward. It does not attach a prop."
+  ],
+  [
+    "SitDown",
+    "Settle into a seat",
+    "Everyday",
+    "An authored sitting pose. Place a seat to fit the pose; no seat is targeted automatically."
+  ],
+  [
+    "StandUp",
+    "Rise from a seat",
+    "Everyday",
+    "Rise from the authored seated pose."
+  ],
+  [
+    "PickUp",
+    "Reach to floor",
+    "Everyday",
+    "Bend and reach toward the floor. Use Pick up for a targeted prop interaction."
+  ],
+  ["Victory", "Celebrate", "Acting", "Raise both arms in celebration."],
+  [
+    "Defeat",
+    "Disappointed",
+    "Acting",
+    "Let the shoulders and head drop in disappointment."
+  ],
+  [
+    "Death",
+    "Dramatic fall",
+    "Stunts",
+    "A staged collapse ending on the floor."
+  ],
+  ["RecieveHit", "Recoil", "Stunts", "React to an imagined impact."],
+  [
+    "Punch",
+    "Stage punch",
+    "Stunts",
+    "An exaggerated theatrical punch without a contact target."
+  ],
+  [
+    "SwordSlash",
+    "Stage sword swing",
+    "Stunts",
+    "A one-handed swinging gesture. No weapon is included."
+  ],
+  [
+    "Shoot_OneHanded",
+    "One-handed aim",
+    "Stunts",
+    "An aiming and recoil gesture. No weapon is included."
+  ]
+]

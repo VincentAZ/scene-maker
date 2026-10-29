@@ -23,6 +23,7 @@ type HumanoidRig = {
   bindHips: T.Vector3;
   bindFacing: T.Quaternion;
   roots: Map<T.AnimationClip, RootMotion>;
+  attachmentRest: Partial<Record<BoneName, T.Vector3>>;
 };
 const rigs = new WeakMap<T.Group, HumanoidRig>();
 const parents: Partial<Record<BoneName, BoneName>> = {
@@ -187,7 +188,13 @@ export function configureImportedRig(
       ? group.worldToLocal(position(bones.hips))
       : new T.Vector3(),
     roots: new Map(),
+    attachmentRest: {},
   };
+  for (const name of boneNames.filter((name) => parents[name])) {
+    const parent = bones[parents[name]!];
+    if (bones[name] && parent)
+      data.attachmentRest[name] = parent.worldToLocal(position(bones[name]));
+  }
   rigs.set(group, data);
   if (!compatible || !contacts) return;
   const down = new T.Vector3(0, -1, 0).applyQuaternion(
@@ -375,6 +382,22 @@ function standingHeight(group: T.Group) {
         Math.abs(bones.leftShin.position.y) * (1 + 0.35 / 0.4)
     : 0;
 }
+// Torso/hip/shoulder attachment chains may translate for pelvic sway and shrugs.
+// Elbows and knees remain fixed-length links; detached IK targets are not joints.
+function attachmentChain(group: T.Group, name: BoneName): T.Object3D[] {
+  if (!["spine", "leftLeg", "rightLeg", "leftArm", "rightArm"].includes(name))
+    return [];
+  const bones = group.userData.bones as Record<string, T.Bone>;
+  const end = bones[parents[name]!];
+  const chain: T.Object3D[] = [];
+  for (
+    let node: T.Object3D | null = bones[name];
+    node && node !== end;
+    node = node.parent
+  )
+    chain.push(node);
+  return chain;
+}
 export function transferWarning(
   source: T.Group,
   target: T.Group,
@@ -403,11 +426,20 @@ export function transferWarning(
         if (!(node instanceof T.Object3D)) return false;
         const bind = data.bind.find((entry) => entry.object === node);
         if (!bind) return false;
-        const relevant = node instanceof T.Bone || hasAncestor(hips, node);
+        // Exporters also animate unweighted IK controls. Only joints on an
+        // anatomical chain constrain sharing; moving a detached pole is harmless.
+        const relevant = Object.values(
+          source.userData.bones as Record<string, T.Bone>,
+        ).some((bone) => bone === node || hasAncestor(bone, node));
+        const attachment = (
+          ["spine", "leftLeg", "rightLeg", "leftArm", "rightArm"] as BoneName[]
+        ).some((name) => attachmentChain(source, name).includes(node));
         const baseline =
           path.propertyName === "scale" && relevant
             ? bind.scale
             : path.propertyName === "position" &&
+                relevant &&
+                !attachment &&
                 node instanceof T.Bone &&
                 node !== hips &&
                 !hasAncestor(hips, node)
@@ -499,6 +531,31 @@ export function applyTransferredClip(
     const desired = heading.clone().multiply(rotations[name]!);
     if (targetData) desired.multiply(targetData.neutralWorld[name]!);
     const bone = bones[name];
+    // Preserve the attachment origin relative to its anatomical parent, including
+    // translation and rotation of intermediary shoulder/pelvis helper joints.
+    // Comparing to the bind origin avoids transferring the source's body proportions.
+    const rest = data.attachmentRest[name];
+    if (rest) {
+      const parent = source.userData.bones[parents[name]!] as T.Bone;
+      const local = parent
+        .worldToLocal(position(source.userData.bones[name]))
+        .sub(rest);
+      const point = source.worldToLocal(parent.localToWorld(local));
+      const base = source.worldToLocal(parent.localToWorld(new T.Vector3()));
+      const delta = point
+        .sub(base)
+        .applyQuaternion(initialTurn)
+        .multiplyScalar(
+          (standingHeight(target) / standingHeight(source)) * scale,
+        )
+        .applyQuaternion(heading);
+      const origin = bone.parent!.getWorldPosition(new T.Vector3());
+      bone.position.add(
+        bone
+          .parent!.worldToLocal(origin.clone().add(delta))
+          .sub(bone.parent!.worldToLocal(origin)),
+      );
+    }
     bone.quaternion
       .copy(
         bone

@@ -58,6 +58,8 @@ export function describeStep(step: StudioStep): string {
       return "Opened the studio tool";
     case "library":
       return "Updated the library";
+    case "previewAction":
+      return "Opened the action preview";
     case "pathEditor":
       return "Opened the path editor";
   }

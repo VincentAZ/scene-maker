@@ -25,7 +25,7 @@ export type ViewportHandle = {
   exportGLB: () => Promise<ArrayBuffer>;
   reset: () => void;
   frame: (view: "default" | "front" | "side" | "top", focusId?: string) => void;
-  waitForScene: (scene: Scene) => Promise<void>;
+  waitForScene: (scene: Scene, signal?: AbortSignal) => Promise<void>;
   sequenceOrigin: (actorId: string, beforeClipId?: string) => PathFrame;
 };
 type Props = {
@@ -39,6 +39,7 @@ type Props = {
   onError: (text: string) => void;
   onInteractionWarning: (text: string) => void;
   move: boolean;
+  loopDuration?: number;
 };
 const modelKey = (scene: Scene) =>
   JSON.stringify([
@@ -229,7 +230,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         if (live.current.playing) {
           if (!wasPlaying) elapsed = live.current.time;
           elapsed += dt;
-          const total = duration(live.current.scene);
+          const total =
+            live.current.loopDuration ?? duration(live.current.scene);
           if (elapsed > total) elapsed = 0;
           if (now - lastSent > 40) {
             live.current.onTime(elapsed);
@@ -408,11 +410,13 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           c.renderAt(live.current.time);
           return frame;
         },
-        async waitForScene(scene) {
+        async waitForScene(scene, signal) {
           const desired = stateKey(scene),
             models = modelKey(scene),
             start = performance.now();
           while (performance.now() - start < 30000) {
+            if (signal?.aborted)
+              throw new DOMException("Rehearsal closed", "AbortError");
             await new Promise<void>((resolve) =>
               requestAnimationFrame(() => resolve()),
             );
