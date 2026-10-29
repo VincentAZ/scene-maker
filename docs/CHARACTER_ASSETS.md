@@ -23,4 +23,6 @@ Thumbnails are rendered in Blender from the same calibrated neutral pose used in
 
 Production and Unreal ZIPs retain used library GLBs under `assets/quaternius/`, plus the original license. The baked scene contains all visible geometry, materials, skins, and animation independently of those source files. Editable JSON keeps stable built-in asset IDs, just as it does for the original studio presets; reopening it requires a Scene Maker version with this catalogue. Custom assets retain the existing portable import path.
 
+Character designs use a separate local GLB and rendered PNG; the shipped starting model is never overwritten. Blender recolors the existing materials and adds head/spine-weighted glasses or a backpack. A recipe records the starting catalogue ID, palette, and wearable choices. Generated model-only exports normalize measured near-unit bone scale noise and correct inverse binds before the studio calibrates them. Production packages include the recipe, generated GLB, preview, starting model, and license. Reopening uploads the generated model and preview to new local filenames.
+
 Contact actions still use the studio's geometric approximations. The pack does not add facial animation, physical collision solving, automatic Mixamo service access, or validated Unreal playback.

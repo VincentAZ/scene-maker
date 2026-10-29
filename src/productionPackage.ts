@@ -32,6 +32,7 @@ export async function productionPackage(
   const used = new Set([
     ...scene.entities.map((entity) => entity.assetId),
     ...scene.customMotions.map((motion) => motion.sourceAssetId),
+    ...scene.customAssets.map((asset) => asset.design?.baseId),
   ]);
   const libraryAssets = libraryCharacters.filter((asset) => used.has(asset.id));
   const files = [
@@ -58,6 +59,13 @@ export async function productionPackage(
         url: asset.url!,
         destination: "assets/" + asset.url!.split("/").pop(),
         error: `Cannot package ${asset.name}. Reimport the missing asset.`,
+      })),
+    ...scene.customAssets
+      .filter((asset) => asset.thumbnail)
+      .map((asset) => ({
+        url: asset.thumbnail!,
+        destination: "assets/" + asset.thumbnail!.split("/").pop(),
+        error: `Cannot package the preview for ${asset.name}. Try again when the file is available.`,
       })),
     ...Object.entries(adapters).map(([name, destination]) => ({
       url: "/engine/" + name,

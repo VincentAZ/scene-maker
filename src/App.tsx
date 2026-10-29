@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { productionPackage } from "./productionPackage";
+import { CharacterCreator } from "./CharacterCreator";
 import { characterCollection, libraryEntry } from "../shared/characterLibrary";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
@@ -120,6 +121,7 @@ export default function App() {
       | "import"
       | "conversation"
       | "path"
+      | "character"
       | null
     >(null),
     [pathEdit, setPathEdit] = useState<{
@@ -559,6 +561,7 @@ export default function App() {
         setImportCategory(step.category || "characters");
         setModal("import");
       } else if (step.panel === "settings") setModal("settings");
+      else if (step.panel === "createCharacter") setModal("character");
       else {
         setRightTab(step.panel);
         setPanel(true);
@@ -690,6 +693,23 @@ export default function App() {
               body: data,
             });
             a.url = result.url;
+          }
+          if (a.thumbnail) {
+            const preview = zip.file("assets/" + a.thumbnail.split("/").pop());
+            if (!preview)
+              throw Error(`The package is missing the preview for ${a.name}.`);
+            const data = new FormData();
+            data.append(
+              "file",
+              new Blob([await preview.async("arraybuffer")]),
+              "preview.png",
+            );
+            a.thumbnail = (
+              await api<{ url: string }>("/api/thumbnails", {
+                method: "POST",
+                body: data,
+              })
+            ).url;
           }
         }
       } else next = validateScene(JSON.parse(await file.text()));
@@ -1094,22 +1114,30 @@ export default function App() {
             <button
               className="create-asset"
               onClick={() => {
+                if (tab === "characters") {
+                  setModal("character");
+                  return;
+                }
                 setRightTab("assistant");
                 setPanel(true);
                 setPrompt(
                   tab === "motions"
                     ? "Create a new action where the character "
-                    : tab === "characters"
-                      ? "Create a new character who is "
-                      : "Add a ",
+                    : "Add a ",
                 );
                 document.getElementById("assistant-prompt")?.focus();
               }}
             >
               <Sparkles size={16} />
               <span>
-                Create something new
-                <small>A little imagination goes a long way</small>
+                {tab === "characters"
+                  ? "Create a character"
+                  : "Create something new"}
+                <small>
+                  {tab === "characters"
+                    ? "Choose a look. Make it yours."
+                    : "A little imagination goes a long way"}
+                </small>
               </span>
               <Plus size={14} />
             </button>
@@ -2143,6 +2171,28 @@ export default function App() {
             </button>
           </div>
         </Modal>
+      )}
+      {modal === "character" && (
+        <CharacterCreator
+          onClose={() => setModal(null)}
+          onCreate={(asset) => {
+            const id = uid();
+            execute([
+              { type: "createAsset", asset },
+              { type: "add", id, assetId: asset.id },
+            ]);
+            setModal(null);
+            setSelected(id);
+            setTab("characters");
+            setFilter("My assets");
+            setSearch("");
+            toast(`${asset.name} is ready for your story`);
+            void viewport
+              .current!.waitForScene(sceneRef.current)
+              .then(() => viewport.current!.frame("front", id))
+              .catch((error) => report(error.message));
+          }}
+        />
       )}
       {modal === "export" && (
         <Modal

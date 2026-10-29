@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { request as httpRequest, type Server } from "node:http";
 import { starterScene } from "../shared/scene";
+import { characterDraft } from "../shared/characterDesign";
 let server: Server, base: string, dir: string;
 beforeAll(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "scene-maker-test-"));
@@ -25,6 +26,58 @@ const req = (url: string, body?: unknown, method = "POST") =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 describe("local service boundaries", () => {
+  it("validates character creation before invoking an engine and cleans failed work", async () => {
+    const asset = characterDraft("quaternius-casual-female", "Cleo");
+    const before = fs.readdirSync(path.join(dir, "uploads"));
+    expect(
+      (
+        await req("/api/characters", {
+          ...asset,
+          design: { ...asset.design, baseId: "../../private" },
+        })
+      ).status,
+    ).toBe(400);
+    await req(
+      "/api/connections",
+      { blender: "/missing/character-engine" },
+      "PUT",
+    );
+    const failed = await req("/api/characters", asset);
+    expect(failed.status).toBe(400);
+    expect((await failed.json()).error).toBe(
+      "The character maker needs a connection. Open Studio settings → Connections to finish setup.",
+    );
+    expect(fs.readdirSync(path.join(dir, "uploads"))).toEqual(before);
+  });
+  it("restores PNG previews with safe names and rejects invalid preview content without leftovers", async () => {
+    const png = fs.readFileSync("public/library/quaternius/casual-female.png");
+    const post = (data: Uint8Array) => {
+      const form = new FormData();
+      form.append("file", new Blob([new Uint8Array(data)]), "../unsafe.html");
+      return fetch(base + "/api/thumbnails", {
+        method: "POST",
+        headers: { "X-Scene-Maker": "1" },
+        body: form,
+      });
+    };
+    const valid = await post(png);
+    expect(valid.status).toBe(200);
+    const { url } = await valid.json();
+    expect(url).toMatch(/^\/uploads\/[a-z0-9-]+\.png$/);
+    expect(
+      new Uint8Array(await (await fetch(base + url)).arrayBuffer()),
+    ).toEqual(new Uint8Array(png));
+    fs.rmSync(path.join(dir, "uploads", path.basename(url)));
+    const before = fs.readdirSync(path.join(dir, "uploads"));
+    const tooWide = Buffer.from(png);
+    tooWide.writeUInt32BE(2048, 16);
+    for (const data of [
+      new TextEncoder().encode("<html>not a PNG</html>"),
+      tooWide,
+    ])
+      expect((await post(data)).status).toBe(400);
+    expect(fs.readdirSync(path.join(dir, "uploads"))).toEqual(before);
+  });
   it("returns a missing-file response instead of the app page for unavailable package dependencies", async () => {
     for (const url of [
       "/engine/unreal/missing.py",

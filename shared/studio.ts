@@ -68,6 +68,7 @@ export const studioStepSchema = z.discriminatedUnion("type", [
       "settings",
       "importProject",
       "importAsset",
+      "createCharacter",
       "details",
       "assistant",
     ]),

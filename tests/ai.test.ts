@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import { assistant, conversation, modelFor, type Config } from "../server/ai";
 import { starterScene, applyCommands } from "../shared/scene";
+import { characterDraft } from "../shared/characterDesign";
 const config: Config = {
   assistant: "openai",
   providers: { openai: { key: "test", model: "test" } },
@@ -21,6 +22,43 @@ function model(output: unknown) {
   });
 }
 describe("live AI contract with deterministic model responses", () => {
+  it("validates a skinned character recipe and a following performance in one SDK plan", async () => {
+    const asset = characterDraft("quaternius-casual-female", "Cleo");
+    asset.design!.glasses = true;
+    asset.design!.backpack = true;
+    const scene = starterScene(),
+      fake = model({
+        response: "Cleo is ready to wave.",
+        steps: [
+          {
+            type: "edit",
+            commands: [
+              { type: "createAsset", asset },
+              { type: "add", id: "cleo", assetId: asset.id },
+              { type: "chain", id: "cleo", motionId: "wave" },
+            ],
+          },
+          { type: "save" },
+          { type: "export", format: "package" },
+        ],
+      });
+    const result = await assistant(
+      config,
+      scene,
+      "Create Cleo with glasses and a backpack, wave, then export",
+      undefined,
+      () => fake,
+    );
+    const edit = result.steps[0];
+    if (edit.type !== "edit") throw Error("Expected creation and direction");
+    const next = applyCommands(scene, edit.commands);
+    expect(next.customAssets.at(-1)?.design).toEqual(asset.design);
+    expect(next.entities.at(-1)?.clips[0].motionId).toBe("wave");
+    expect(result.steps.slice(1)).toEqual([
+      { type: "save" },
+      { type: "export", format: "package" },
+    ]);
+  });
   it("includes follow-up history and binds opened projects to the revision used for planning", async () => {
     const current = starterScene(),
       target = { ...starterScene(), name: "Warehouse story", revision: 7 };

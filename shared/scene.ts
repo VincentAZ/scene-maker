@@ -2,6 +2,7 @@ import { z } from "zod";
 import { interactionSessions } from "./interactions";
 import { ladderProfile } from "./ladder";
 import { libraryAssetURLs, libraryCharacters } from "./characterLibrary";
+import { characterDesignSchema, supportsGlasses } from "./characterDesign";
 export const providers = [
   "openai",
   "anthropic",
@@ -130,44 +131,67 @@ export const shapeSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   bone: z.enum(boneNames).optional(),
 });
-export const assetSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1).max(100),
-  category: z.enum(["characters", "props", "environments"]),
-  style: z.string().max(100),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  skin: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/)
-    .default("#bf8866"),
-  body: z.enum(["feminine", "masculine", "mannequin"]).default("masculine"),
-  url: z
-    .string()
-    .refine(
-      (url) =>
-        /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
-        libraryAssetURLs.has(url),
-      "Choose an uploaded file or an existing library character.",
+export const assetSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1).max(100),
+    category: z.enum(["characters", "props", "environments"]),
+    style: z.string().max(100),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    skin: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .default("#bf8866"),
+    body: z.enum(["feminine", "masculine", "mannequin"]).default("masculine"),
+    url: z
+      .string()
+      .refine(
+        (url) =>
+          /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
+          libraryAssetURLs.has(url),
+        "Choose an uploaded file or an existing library character.",
+      )
+      .optional(),
+    description: z.string().max(1000).default(""),
+    thumbnail: z
+      .string()
+      .regex(/^\/uploads\/[a-zA-Z0-9_-]+\.png$/)
+      .optional(),
+    design: characterDesignSchema.optional(),
+    parts: z.array(shapeSchema).max(256).optional(),
+    grip: vec3.optional(),
+    mouth: vec3.optional(),
+    ladder: z
+      .object({
+        height: z.number().min(0.5).max(20),
+        width: z.number().min(0.3).max(3),
+        firstRung: z.number().min(0.05).max(1),
+        spacing: z.number().min(0.1).max(0.8),
+        rungs: z.number().int().min(3).max(32),
+      })
+      .refine(
+        (p) => p.firstRung + (p.rungs - 1) * p.spacing < p.height,
+        "Ladder rungs must fit below its top.",
+      )
+      .optional(),
+  })
+  .superRefine((asset, context) => {
+    if (
+      asset.design &&
+      (asset.category !== "characters" || asset.parts?.length)
     )
-    .optional(),
-  description: z.string().max(1000).default(""),
-  parts: z.array(shapeSchema).max(256).optional(),
-  grip: vec3.optional(),
-  mouth: vec3.optional(),
-  ladder: z
-    .object({
-      height: z.number().min(0.5).max(20),
-      width: z.number().min(0.3).max(3),
-      firstRung: z.number().min(0.05).max(1),
-      spacing: z.number().min(0.1).max(0.8),
-      rungs: z.number().int().min(3).max(32),
-    })
-    .refine(
-      (p) => p.firstRung + (p.rungs - 1) * p.spacing < p.height,
-      "Ladder rungs must fit below its top.",
-    )
-    .optional(),
-});
+      context.addIssue({
+        code: "custom",
+        message:
+          "Character designs use a starting look, without replacement body parts.",
+      });
+    if (asset.design?.glasses && !supportsGlasses(asset.design.baseId))
+      context.addIssue({
+        code: "custom",
+        message:
+          "This helmet covers the face. Choose another look for glasses.",
+      });
+  });
 export type Asset = z.infer<typeof assetSchema>;
 export const clipSchema = z.object({
   id: z.string(),

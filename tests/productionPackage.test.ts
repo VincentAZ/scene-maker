@@ -6,6 +6,7 @@ import { productionPackage } from "../src/productionPackage";
 import { starterScene, characters } from "../shared/scene";
 import { assistant } from "../server/ai";
 import { libraryCharacters } from "../shared/characterLibrary";
+import { characterDraft } from "../shared/characterDesign";
 
 const read: typeof fetch = async (input) => {
   const url = String(input);
@@ -92,6 +93,38 @@ it("includes only used bundled models and their license in a portable export", a
       (name) => name.startsWith("assets/quaternius/") && name.endsWith(".glb"),
     ),
   ).toHaveLength(1);
+});
+
+it("preserves a designed character, its thumbnail, recipe, starting model, and license together", async () => {
+  const scene = starterScene(),
+    asset = {
+      ...characterDraft("quaternius-casual-female", "Cleo"),
+      url: "/uploads/fixture.glb",
+      thumbnail: "/uploads/fixture.png",
+    };
+  scene.customAssets.push(asset);
+  const preview = new Uint8Array([137, 80, 78, 71]);
+  const readPreview: typeof fetch = async (input, options) =>
+    String(input) === asset.thumbnail
+      ? new Response(preview)
+      : read(input, options);
+  const zip = await JSZip.loadAsync(
+    await productionPackage(scene, new ArrayBuffer(0), readPreview),
+  );
+  expect(await zip.file("assets/fixture.glb")!.async("string")).toBe(
+    "original source",
+  );
+  expect(await zip.file("assets/fixture.png")!.async("uint8array")).toEqual(
+    preview,
+  );
+  expect(zip.file("assets/quaternius/casual-female.glb")).toBeTruthy();
+  expect(zip.file("assets/quaternius/LICENSE.txt")).toBeTruthy();
+  expect(
+    JSON.parse(await zip.file("scene.json")!.async("string")).customAssets,
+  ).toContainEqual(asset);
+  await expect(
+    productionPackage(scene, new ArrayBuffer(0), read),
+  ).rejects.toThrow("preview for Cleo");
 });
 
 it("does not produce a partial package when an original asset or required adapter is missing", async () => {

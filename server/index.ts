@@ -16,7 +16,14 @@ import {
 } from "./storage";
 import { assistant, type Config } from "./ai";
 import { conversationRoute } from "./conversationRoute";
-import { validateScene, providers, type Scene } from "../shared/scene";
+import {
+  validateScene,
+  providers,
+  assetSchema,
+  type Asset,
+  type Scene,
+} from "../shared/scene";
+import { generateCharacter } from "./characters";
 import { conversationHistorySchema } from "../shared/studio";
 const run = promisify(execFile);
 const configFile = path.join(dataDir, "connections.json");
@@ -127,67 +134,121 @@ app.put("/api/connections", (req, res) => {
   res.json({ ok: true });
 });
 app.post("/api/assistant", async (req, res) => {
-  const scene = validateScene(req.body.scene),
-    prompt = z.string().min(1).max(8000).parse(req.body.prompt);
-  const result = await assistant(
-    config(),
-    scene,
-    prompt,
-    req.body.selected,
-    undefined,
-    {
-      projects: listProjects(),
-      readProject,
-      history: conversationHistorySchema.parse(req.body.history || []),
-      playhead: z.number().min(0).max(6000).optional().parse(req.body.playhead),
-      stagingFeedback: z
-        .string()
-        .max(1000)
-        .optional()
-        .parse(req.body.stagingFeedback),
-    },
-  );
-  for (const command of result.steps.flatMap((step) =>
-    step.type === "edit" ? step.commands : [],
-  )) {
-    if (
-      command.type === "createAsset" &&
-      command.asset.category === "characters" &&
-      !command.asset.url
-    ) {
-      const id = crypto.randomUUID(),
-        spec = path.join(dataDir, "uploads", id + ".json"),
-        output = path.join(dataDir, "uploads", id + ".glb");
-      try {
-        atomicWrite(spec, command.asset);
-        await run(
+  const controller = new AbortController();
+  const disconnected = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  res.once("close", disconnected);
+  const generated: Asset[] = [];
+  try {
+    const scene = validateScene(req.body.scene),
+      prompt = z.string().min(1).max(8000).parse(req.body.prompt);
+    const result = await assistant(
+      config(),
+      scene,
+      prompt,
+      req.body.selected,
+      undefined,
+      {
+        projects: listProjects(),
+        readProject,
+        history: conversationHistorySchema.parse(req.body.history || []),
+        playhead: z
+          .number()
+          .min(0)
+          .max(6000)
+          .optional()
+          .parse(req.body.playhead),
+        stagingFeedback: z
+          .string()
+          .max(1000)
+          .optional()
+          .parse(req.body.stagingFeedback),
+      },
+    );
+    for (const command of result.steps.flatMap((step) =>
+      step.type === "edit" ? step.commands : [],
+    )) {
+      if (
+        command.type === "createAsset" &&
+        command.asset.category === "characters" &&
+        !command.asset.url
+      ) {
+        command.asset = await generateCharacter(
+          command.asset,
           config().blender,
-          [
-            "--background",
-            "--factory-startup",
-            "--python-exit-code",
-            "1",
-            "--python",
-            path.resolve("engine/create_character.py"),
-            "--",
-            spec,
-            output,
-          ],
-          { timeout: 120000, maxBuffer: 2 * 1024 * 1024 },
+          controller.signal,
         );
-        command.asset.url = "/uploads/" + id + ".glb";
-      } finally {
-        if (fs.existsSync(spec)) fs.unlinkSync(spec);
+        generated.push(command.asset);
       }
     }
+    res.json(result);
+  } catch (error) {
+    for (const asset of generated)
+      for (const url of [asset.url, asset.thumbnail])
+        if (url)
+          fs.rmSync(path.join(dataDir, "uploads", path.basename(url)), {
+            force: true,
+          });
+    throw error;
+  } finally {
+    res.off("close", disconnected);
   }
-  res.json(result);
+});
+app.post("/api/characters", async (req, res) => {
+  const asset = assetSchema.parse(req.body);
+  if (!asset.design) throw Error("Choose a starting look for your character.");
+  const controller = new AbortController();
+  const disconnected = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  res.once("close", disconnected);
+  try {
+    res.json(
+      await generateCharacter(asset, config().blender, controller.signal),
+    );
+  } finally {
+    res.off("close", disconnected);
+  }
 });
 app.post("/api/conversation", conversationRoute(config));
 const upload = multer({
   dest: path.join(dataDir, "uploads"),
   limits: { fileSize: 100 * 1024 * 1024, files: 1 },
 });
+app.post(
+  "/api/thumbnails",
+  multer({
+    dest: path.join(dataDir, "uploads"),
+    limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  }).single("file"),
+  (req, res) => {
+    const file = req.file;
+    if (!file) throw Error("The character preview is missing.");
+    try {
+      const bytes = fs.readFileSync(file.path);
+      if (
+        bytes.length < 33 ||
+        !bytes
+          .subarray(0, 8)
+          .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+        bytes.toString("ascii", 12, 16) !== "IHDR" ||
+        bytes.readUInt32BE(16) < 1 ||
+        bytes.readUInt32BE(16) > 1024 ||
+        bytes.readUInt32BE(20) < 1 ||
+        bytes.readUInt32BE(20) > 1024
+      )
+        throw Error(
+          "Choose a PNG character preview up to 1024 pixels wide and tall.",
+        );
+      const name = crypto.randomUUID() + ".png";
+      fs.renameSync(file.path, path.join(dataDir, "uploads", name));
+      res.json({ url: "/uploads/" + name });
+    } finally {
+      fs.rmSync(file.path, { force: true });
+    }
+  },
+);
 app.post("/api/exports", upload.single("file"), (req, res) => {
   const f = req.file;
   if (!f) throw Error("No package was supplied.");

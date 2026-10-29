@@ -2,6 +2,8 @@ import type { Asset } from "../shared/scene";
 import { libraryEntry } from "../shared/characterLibrary";
 export function AssetArt({ asset }: { asset: Asset }) {
   const entry = libraryEntry(asset);
+  if (asset.thumbnail)
+    return <img src={asset.thumbnail} alt="" loading="lazy" decoding="async" />;
   if (entry)
     return <img src={entry.thumbnail} alt="" loading="lazy" decoding="async" />;
   const c = asset.color;

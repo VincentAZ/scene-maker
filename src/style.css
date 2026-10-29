@@ -2630,3 +2630,162 @@ label > span {
     border-radius: 6px;
   }
 }
+
+.character-maker {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.2fr);
+  gap: 26px;
+  padding: 26px;
+}
+.character-maker label {
+  margin: 0;
+}
+.character-maker label > input,
+.character-maker label > select {
+  margin-top: 0;
+}
+.character-maker-look {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #edf0e5;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px 14px;
+  text-align: center;
+}
+.character-maker-look img {
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+.character-maker-look p {
+  max-width: 220px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #77836e;
+}
+.character-maker-fields {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.character-maker-fields > label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #607053;
+}
+.character-maker-fields > label > input,
+.character-maker-fields select {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  background: #fafbf7;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #3d4c35;
+}
+.character-palette {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.character-palette label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 11px;
+  color: #607053;
+}
+.character-palette input {
+  padding: 3px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 7px;
+  width: 100%;
+  height: 38px;
+  cursor: pointer;
+}
+.character-palette input:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.character-wearables {
+  display: grid;
+  gap: 10px;
+}
+.character-wearables label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: #f5f7ef;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.character-wearables > label > input[type="checkbox"] {
+  accent-color: #526b44;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  margin: 0;
+}
+.character-wearables label > span {
+  float: none;
+  font-size: inherit;
+  color: inherit;
+}
+.character-wearables small {
+  display: block;
+  margin-top: 4px;
+  color: #89927f;
+  font-size: 11px;
+}
+.character-maker-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.character-maker-footer > span {
+  flex: 1;
+  font-size: 12px;
+  color: #7c8970;
+}
+@media (max-width: 600px) {
+  .character-maker {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 18px;
+  }
+  .character-maker-look {
+    padding: 12px;
+  }
+  .character-maker-look img {
+    max-width: 130px;
+  }
+  .character-maker-look p {
+    margin: 6px 0 0;
+  }
+  .character-maker-footer {
+    flex-wrap: wrap;
+  }
+  .character-maker-footer > span {
+    flex-basis: 100%;
+  }
+  .character-maker-footer button {
+    flex: 1;
+    justify-content: center;
+  }
+}
