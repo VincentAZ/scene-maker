@@ -70,6 +70,7 @@ export function CodingAssistant() {
   const [fullDiff, setFullDiff] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [offline, setOffline] = useState(false);
   const log = useRef<HTMLOListElement>(null);
   const task = info?.tasks.find((t) => t.id === selected) ?? info?.tasks[0];
   async function load() {
@@ -82,9 +83,13 @@ export function CodingAssistant() {
     const refresh = async () => {
       try {
         const next = await api<CodingInfo>("/api/coding");
-        if (active) setInfo(next);
-      } catch (e) {
-        if (active) setError((e as Error).message);
+        if (active) {
+          setInfo(next);
+          setOffline(false);
+        }
+      } catch {
+        // The studio restarts after a self-deploy; keep polling and say so.
+        if (active) setOffline(true);
       }
       if (active) timer = setTimeout(refresh, 1500);
     };
@@ -207,6 +212,12 @@ export function CodingAssistant() {
           </button>
         )}
       </form>
+      {offline && (
+        <p role="status" className="coding-notice">
+          Reconnecting to the studio service… This clears on its own once it
+          answers again.
+        </p>
+      )}
       {error && (
         <p role="alert" className="coding-error">
           {error}
