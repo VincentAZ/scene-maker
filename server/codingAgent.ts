@@ -1,4 +1,10 @@
-import { ToolLoopAgent, tool, generateText, isStepCount } from "ai";
+import {
+  ToolLoopAgent,
+  tool,
+  generateText,
+  isStepCount,
+  type ModelMessage,
+} from "ai";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import { z } from "zod";
@@ -33,7 +39,54 @@ export type AgentOptions = {
   mcpServers?: Record<string, McpServerConfig>;
   /** Host dependency directory to expose on PATH for commands. */
   dependencies?: string;
+  /** First wait after a lost provider connection; doubles up to five minutes. */
+  retryDelayMs?: number;
+  /** Quick in-SDK retries per model call before the resume loop takes over. */
+  maxRetries?: number;
 };
+/** Provider failures worth waiting out: network drops, rate limits, overloads, server errors. */
+export function transientProviderError(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return;
+  const e = error as {
+    name?: string;
+    message?: string;
+    statusCode?: number;
+    isRetryable?: boolean;
+    lastError?: unknown;
+    errors?: unknown[];
+    cause?: unknown;
+  };
+  if (e.name === "AbortError" || e.name === "TimeoutError") return;
+  const inner = e.lastError ?? e.errors?.[e.errors.length - 1] ?? e.cause;
+  if (inner && inner !== error) {
+    const nested = transientProviderError(inner);
+    if (nested) return nested;
+  }
+  const message = e.message || "";
+  if (
+    /EAI_AGAIN|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EHOSTUNREACH|ENETUNREACH|fetch failed|socket hang up|Cannot connect|network|terminated|other side closed/i.test(
+      message,
+    )
+  )
+    return "network connection lost";
+  if (e.statusCode === 429) return "rate limit reached";
+  if (e.statusCode === 408 || e.statusCode === 409) return "request interrupted";
+  if (e.statusCode && e.statusCode >= 500) return `provider error ${e.statusCode}`;
+  if (e.isRetryable) return "temporary provider error";
+  return;
+}
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", stop);
+      resolve();
+    }, ms);
+    const stop = () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? Error("Stopped"));
+    };
+    signal.addEventListener("abort", stop, { once: true });
+  });
 const MAX_DEPTH = 3;
 const OUTPUT_LIMIT = 24_000;
 const READ_LIMIT = 80_000;
@@ -429,21 +482,46 @@ If the request asks you to commit, push or deploy, do it with gitCommit, gitPush
 Progress feedback matters: the person watches an activity log. Before each batch of tool calls, write one short plain sentence saying what you are about to do and why. When you finish, summarise what changed, what you verified and any limitations.${depth ? "\n\nYou are a delegated sub-agent. Stay within the task you were given and end with a concise summary for the lead engineer." : ""}`,
     stopWhen: maxSteps > 0 ? isStepCount(maxSteps) : () => false,
     maxOutputTokens: 32_000,
+    maxRetries: options.maxRetries ?? 2,
     providerOptions:
       config.assistant === "openai" ? { openai: { store: false } } : undefined,
     tools,
   });
   let steps = 0;
+  // The conversation so far. A lost connection resumes from the last complete
+  // step instead of failing the task; nothing the engineer did is repeated.
+  const history: ModelMessage[] = [{ role: "user", content: prompt }];
+  let outages = 0;
   try {
-    const result = await agent.generate({
-      prompt,
-      abortSignal: signal,
-      onStepFinish: (step) => {
-        steps += 1;
-        const text = step.text?.trim();
-        emit(text ? NARRATION + text : "", { step: steps, maxSteps });
-      },
-    });
+    let result;
+    for (;;) {
+      try {
+        result = await agent.generate({
+          messages: history,
+          abortSignal: signal,
+          onStepFinish: (step) => {
+            steps += 1;
+            history.push(...step.response.messages);
+            const text = step.text?.trim();
+            emit(text ? NARRATION + text : "", { step: steps, maxSteps });
+          },
+        });
+        break;
+      } catch (error) {
+        const reason = signal.aborted ? undefined : transientProviderError(error);
+        if (!reason) throw error;
+        outages += 1;
+        const wait = Math.min(
+          300_000,
+          (options.retryDelayMs ?? 5_000) * 2 ** Math.min(outages - 1, 6),
+        );
+        emit(
+          `Provider unreachable (${reason}). Work through step ${steps} is kept; resuming in ${Math.round(wait / 1000)}s (attempt ${outages}).`,
+        );
+        await sleep(wait, signal);
+        emit("Reconnecting to the provider…");
+      }
+    }
     signal.throwIfAborted();
     if (result.finishReason === "tool-calls")
       throw Error(

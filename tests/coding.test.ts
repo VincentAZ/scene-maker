@@ -398,6 +398,55 @@ it("narrates steps, reports progress, runs commands, commits and pushes on its o
   expect(await git(root, ["log", "-1", "--format=%s"])).toBe("Set value to 5");
 });
 
+it("survives a lost provider connection and resumes from the last completed step", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { APICallError } = await import("ai");
+  const { runCodingAgent, transientProviderError } = await import("../server/codingAgent");
+  expect(transientProviderError(Error("getaddrinfo EAI_AGAIN api.anthropic.com"))).toBe("network connection lost");
+  expect(transientProviderError({ name: "AI_RetryError", message: "Failed after 3 attempts", lastError: { name: "AI_APICallError", message: "Cannot connect to API: getaddrinfo EAI_AGAIN api.anthropic.com" } })).toBe("network connection lost");
+  expect(transientProviderError({ name: "AI_APICallError", statusCode: 401, message: "Unauthorized" })).toBeUndefined();
+  expect(transientProviderError({ name: "AbortError", message: "aborted" })).toBeUndefined();
+  const responses = [
+    toolCall("editFile", { path: "src/example.ts", oldText: "value = 1", newText: "value = 8" }, "edit", "Editing."),
+    toolCall("readFile", { path: "src/example.ts" }, "read", "Checking the result."),
+    finalText("Resumed and finished."),
+  ];
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      // In-SDK retries are disabled here so the resume loop is what recovers.
+      if (calls === 2)
+        throw new APICallError({
+          message: "Cannot connect to API: getaddrinfo EAI_AGAIN api.anthropic.com",
+          url: "https://api.anthropic.com/v1/messages",
+          requestBodyValues: {},
+          isRetryable: true,
+        });
+      return responses[calls === 1 ? 0 : calls === 3 ? 1 : 2];
+    },
+  });
+  const events: string[] = [];
+  const result = await runCodingAgent(
+    config,
+    root,
+    "Set value to 8",
+    new AbortController().signal,
+    (text) => text && events.push(text),
+    () => model,
+    { retryDelayMs: 10, maxRetries: 0 },
+  );
+  expect(result).toBe("Resumed and finished.");
+  expect(events.some((e) => e.startsWith("Provider unreachable (network connection lost). Work through step 1 is kept"))).toBe(true);
+  expect(events).toContain("Reconnecting to the provider…");
+  expect(readSource(root, "src/example.ts")).toContain("value = 8");
+  // The resumed call carries the first step exactly once and no edit was repeated.
+  const resumed = JSON.stringify(model.doGenerateCalls[2].prompt);
+  expect(resumed.split("\"toolCallId\":\"edit\"").length - 1).toBe(2);
+  expect(events.filter((e) => e === "Updated src/example.ts")).toHaveLength(1);
+  expect(model.doGenerateCalls).toHaveLength(4);
+});
+
 it("has no step limit unless one is configured", async () => {
   const { MockLanguageModelV4 } = await import("ai/test");
   const { runCodingAgent } = await import("../server/codingAgent");
