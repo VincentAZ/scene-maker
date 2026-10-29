@@ -85,6 +85,24 @@ describe("the scene conversation transport", () => {
     expect(utterances[1].text.length).toBeLessThan(utterances[0].text.length);
     expect(synth.cancel).toHaveBeenCalled();
   });
+  it("finishes a line whose voice never reports its end instead of freezing near the last word", () => {
+    const s = fixture(),
+      { transport, options, utterances, report } = voiceFixture();
+    transport.advance(s, 0, 0.05, options);
+    utterances[0].onstart!({} as SpeechSynthesisEvent);
+    const end = dialogueTiming(s, s.transcript[0])!.end;
+    let t = 0,
+      reached = Infinity;
+    for (let i = 0; i < 400 && utterances.length < 2; i++) {
+      t = transport.advance(s, t, 0.05, options);
+      if (t >= end && reached === Infinity) reached = i * 0.05;
+    }
+    // Roughly the spoken length plus the grace, nowhere near the 120 s guard.
+    expect(reached).toBeGreaterThan(3);
+    expect(reached).toBeLessThan(12);
+    expect(utterances).toHaveLength(2);
+    expect(report).not.toHaveBeenCalled();
+  });
   it("times out once and continues silently, without restarting a broken voice each frame", () => {
     const s = fixture(),
       { transport, options, utterances, report } = voiceFixture();

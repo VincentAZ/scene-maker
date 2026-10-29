@@ -138,8 +138,19 @@ export class SpeechTransport {
       a.word > a.offset && a.wordTime > 0.2
         ? (a.word - a.offset) / a.wordTime
         : 13 * options.rate;
-    const predicted =
-      (a.word + (a.spoken - a.wordTime) * measured) / a.textLength;
+    const spokenChars = a.word + (a.spoken - a.wordTime) * measured;
+    const predicted = spokenChars / a.textLength;
+    // Some voices never report the end of an utterance (long remote voices,
+    // a dropped speech service). Once the line should have finished, with a
+    // grace of 1.5 s or a quarter of its length, finish it silently rather
+    // than freezing the scene near the last word.
+    if (!a.done) {
+      const overrun = (spokenChars - a.textLength) / measured;
+      if (overrun > Math.max(1.5, (0.25 * a.textLength) / measured)) {
+        a.done = true;
+        this.synth.cancel();
+      }
+    }
     const target = a.done ? 1 : Math.min(0.985, predicted);
     const step = Math.max(0, target - a.progress);
     // Smooth corrections over ~.2s instead of jumping bodies between word boundaries.

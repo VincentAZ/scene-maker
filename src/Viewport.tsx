@@ -426,15 +426,22 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         elapsed = live.current.time,
         wasPlaying = false,
         lastSent = 0,
-        publishedTime = live.current.time,
         ended = false;
+      // Times published to React recently. The parent may lag several frames
+      // behind, so a prop that matches any of them is an echo, not a seek.
+      const published: number[] = [live.current.time];
+      const remember = (t: number) => {
+        published.push(t);
+        if (published.length > 12) published.shift();
+      };
       const loop = (now: number) => {
         frame = requestAnimationFrame(loop);
         const dt = Math.min((now - previous) / 1000, 0.1);
         previous = now;
-        if (Math.abs(live.current.time - publishedTime) > 0.001) {
+        if (!published.some((t) => Math.abs(live.current.time - t) <= 0.001)) {
           elapsed = live.current.time;
-          publishedTime = elapsed;
+          published.length = 0;
+          remember(elapsed);
           ended = false;
           live.current.onPlaybackState?.("seek");
         }
@@ -466,7 +473,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             if (elapsed > total) elapsed = 0;
           }
           if (now - lastSent > 40) {
-            publishedTime = elapsed;
+            remember(elapsed);
             live.current.onTime(elapsed);
             lastSent = now;
           }
