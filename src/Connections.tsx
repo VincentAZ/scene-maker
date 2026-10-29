@@ -4,12 +4,17 @@ import { ArrowLeft, Check, ExternalLink } from "lucide-react";
 import { providers, allAssets, type Scene, type Entity } from "../shared/scene";
 import { api } from "./api";
 import { ProviderConnection } from "./ProviderConnection";
+import { CharacterModelPicker } from "./CharacterModelPicker";
+import { primeCatalog } from "./connectionsStore";
 export type Provider = (typeof providers)[number];
 export type ProviderModel = { id: string; name: string };
 export type ConnectionsData = {
   assistant: Provider | null;
   blender: string;
-  providers: Record<string, { connected: boolean; model: string; thinking?: ThinkingLevel }>;
+  providers: Record<
+    string,
+    { connected: boolean; model: string; thinking?: ThinkingLevel }
+  >;
 };
 export const providerNames: Record<Provider, string> = {
   openai: "OpenAI",
@@ -21,6 +26,7 @@ export const providerNames: Record<Provider, string> = {
 };
 export function Connections({
   scene,
+  revision,
   onEntity,
   onBack,
   onDone,
@@ -28,6 +34,7 @@ export function Connections({
   onError,
 }: {
   scene: Scene;
+  revision: number;
   onEntity: (id: string, changes: Partial<Entity>) => void;
   onBack: () => void;
   onDone: () => void;
@@ -36,9 +43,6 @@ export function Connections({
 }) {
   const [data, setData] = useState<ConnectionsData | null>(null);
   const [provider, setProvider] = useState<Provider>("openai");
-  const [catalogs, setCatalogs] = useState<
-    Partial<Record<Provider, ProviderModel[]>>
-  >({});
   const [blender, setBlender] = useState("blender");
   const [pathStatus, setPathStatus] = useState("");
   const [pathBusy, setPathBusy] = useState(false);
@@ -117,9 +121,7 @@ export function Connections({
           data={data}
           onSave={save}
           onDone={onDone}
-          onCatalog={(id, models) =>
-            setCatalogs((previous) => ({ ...previous, [id]: models }))
-          }
+          onCatalog={(id, models) => primeCatalog(id, models, revision)}
         />
       ))}
       <details className="connection-details">
@@ -166,66 +168,21 @@ export function Connections({
               allAssets(scene).find((a) => a.id === e.assetId)?.category ===
               "characters",
           )
-          .map((e) => {
-            const selectedProvider = e.provider || data.assistant;
-            const choices = selectedProvider
-              ? catalogs[selectedProvider]
-              : undefined;
-            return (
-              <div className="mind-row" key={e.id}>
-                <strong>{e.name}</strong>
-                <select
-                  aria-label={`${e.name} provider`}
-                  value={e.provider || ""}
-                  onChange={(event) =>
-                    onEntity(e.id, {
-                      provider:
-                        (event.target.value as Entity["provider"]) || null,
-                      model: "",
-                    })
-                  }
-                >
-                  <option value="">Studio default</option>
-                  {providers.map((p) => (
-                    <option
-                      key={p}
-                      value={p}
-                      disabled={
-                        !data.providers[p]?.connected ||
-                        !data.providers[p]?.model
-                      }
-                    >
-                      {providerNames[p]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label={`${e.name} model`}
-                  value={e.model}
-                  onChange={(event) =>
-                    onEntity(e.id, { model: event.target.value })
-                  }
-                >
-                  <option value="">
-                    {selectedProvider
-                      ? `Default · ${data.providers[selectedProvider]?.model || "choose a model above"}`
-                      : "Studio default"}
-                  </option>
-                  {e.model && !choices?.some((m) => m.id === e.model) && (
-                    <option value={e.model}>{e.model} · saved override</option>
-                  )}
-                  {choices?.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            );
-          })}
+          .map((e) => (
+            <div className="mind-row" key={e.id}>
+              <strong>{e.name}</strong>
+              <CharacterModelPicker
+                entity={e}
+                revision={revision}
+                manageable={false}
+                onChange={(changes) => onEntity(e.id, changes)}
+                onConnections={() => undefined}
+              />
+            </div>
+          ))}
         <p className="muted small">
-          To choose another model for a character, open that provider’s tab and
-          load its models first.
+          The same choices are available in each character’s Details panel and
+          in the conversation panel.
         </p>
       </details>
       <details className="connection-details">

@@ -7,6 +7,7 @@ import { characterDesignSchema, supportsGlasses } from "./characterDesign";
 import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
 import { libraryMotions, motionSource } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
+import { thinkingLevels } from "./thinking";
 export const providers = [
   "openai",
   "anthropic",
@@ -226,6 +227,8 @@ export const entitySchema = z.object({
   personality: z.string().max(4000),
   provider: z.enum(providers).nullable(),
   model: z.string().max(200),
+  // Per-character thinking effort; absent means the provider's saved setting.
+  thinking: z.enum(thinkingLevels).optional(),
   clips: z.array(clipSchema).max(100),
   ending: z.enum(["hold", "rest"]).optional(),
   setDressing: z.boolean().optional(),

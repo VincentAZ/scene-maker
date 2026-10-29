@@ -4018,3 +4018,104 @@ label > span {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Per-character AI model picker (details panel, conversation panel, settings) */
+.character-model-menu {
+  position: relative;
+  margin: 6px 0 16px;
+}
+.character-model-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #d7e2cc;
+  border-radius: 8px;
+  background: #fff;
+  color: #3f4d37;
+  font-size: 11px;
+  text-align: left;
+}
+.character-model-trigger > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.character-model-trigger > svg {
+  flex-shrink: 0;
+}
+.character-model-trigger.warning {
+  border-color: #dfae7a;
+  background: #fff9f1;
+}
+.character-model-menu .character-model-popover {
+  position: static;
+  width: auto;
+  margin-top: 8px;
+  box-shadow: none;
+  max-height: none;
+}
+.character-model-menu.compact {
+  margin: 0;
+}
+.character-model-menu.compact .character-model-trigger {
+  padding: 6px 9px;
+  font-size: 10px;
+}
+.model-warning {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 1px solid #efd7b8;
+  border-radius: 8px;
+  background: #fff5ea;
+  color: #8a4a1f;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.model-warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.model-suggestion-tag {
+  font-style: normal;
+  font-weight: 500;
+  color: #6f8a5a;
+}
+.cast-minds {
+  margin: -8px 0 18px;
+}
+.cast-minds > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 0 8px;
+}
+.cast-mind {
+  display: grid;
+  grid-template-columns: minmax(70px, 100px) 1fr;
+  align-items: start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cast-mind-name {
+  font-size: 11px;
+  font-weight: 600;
+  border-left: 3px solid;
+  padding: 7px 0 7px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mind-row {
+  align-items: start;
+}
+.mind-row .character-model-menu {
+  flex: 1;
+  margin: 0;
+}

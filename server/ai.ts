@@ -48,12 +48,13 @@ export function thinkingFor(
   config: Config,
   provider: Provider | null,
   model?: string,
+  override?: ThinkingLevel,
 ) {
   const saved = provider ? config.providers[provider] : undefined;
   return effectiveThinking(
     provider,
     model || saved?.model || "",
-    saved?.thinking,
+    override && override !== "default" ? override : saved?.thinking,
   );
 }
 export function modelFor(
@@ -796,10 +797,18 @@ export async function conversation(
     );
   // Resolve every cast member before sending a paid request.
   const models = new Map(
-    cast.map((e) => [
-      e.id,
-      resolveModel(config, e.provider || config.assistant, e.model),
-    ]),
+    cast.map((e) => {
+      try {
+        return [
+          e.id,
+          resolveModel(config, e.provider || config.assistant, e.model),
+        ] as const;
+      } catch (error) {
+        throw Error(
+          `${e.name}’s AI is not ready. ${(error as Error).message} Or choose another model for ${e.name} in Details.`,
+        );
+      }
+    }),
   );
   // Continue from the next speaker after a stopped or interrupted round.
   const previous = current.transcript.at(-1)?.characterId;
@@ -841,7 +850,12 @@ export async function conversation(
       });
       const { output } = await generateText({
         model: models.get(e.id)!,
-        reasoning: thinkingFor(config, e.provider || config.assistant, e.model),
+        reasoning: thinkingFor(
+          config,
+          e.provider || config.assistant,
+          e.model,
+          e.thinking,
+        ),
         maxRetries: 0,
         abortSignal: options.signal,
         timeout: 60000,

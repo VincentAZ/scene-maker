@@ -106,6 +106,7 @@ import { Viewport, type ViewportHandle } from "./Viewport";
 import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
 import { Connections } from "./Connections";
+import { CharacterModelPicker } from "./CharacterModelPicker";
 import { api, download } from "./api";
 type Tab = "characters" | "props" | "environments" | "motions";
 const characterFilters = [
@@ -1925,6 +1926,29 @@ export default function App() {
                 {cast.map((e) => e.name).join(" + ") || "Add your cast first"}
               </span>
             </div>
+            {cast.length > 0 && (
+              <details className="cast-minds" open>
+                <summary>Who speaks with which AI</summary>
+                {cast.map((e) => (
+                  <div className="cast-mind" key={e.id}>
+                    <span
+                      className="cast-mind-name"
+                      style={{ borderColor: e.color }}
+                    >
+                      {e.name}
+                    </span>
+                    <CharacterModelPicker
+                      compact
+                      entity={e}
+                      revision={connectionsRevision}
+                      disabled={busy || !!castProgress}
+                      onChange={(changes) => update(e.id, changes)}
+                      onConnections={() => setModal("connections")}
+                    />
+                  </div>
+                ))}
+              </details>
+            )}
             <label>
               The direction
               <textarea
@@ -2351,6 +2375,18 @@ export default function App() {
                   </label>
                   {isCharacter && (
                     <>
+                      <h3>Their mind</h3>
+                      <p className="muted small">
+                        Which AI speaks for {entity.name} in conversations. Any
+                        connected provider and model, saved with the scene.
+                      </p>
+                      <CharacterModelPicker
+                        entity={entity}
+                        revision={connectionsRevision}
+                        disabled={busy || !!castProgress}
+                        onChange={(changes) => update(entity.id, changes)}
+                        onConnections={() => setModal("connections")}
+                      />
                       <h3>A little personality</h3>
                       <p className="muted small">
                         Who are they? What do they want? Give your character a
@@ -2811,6 +2847,7 @@ export default function App() {
         >
           <Connections
             onChanged={() => setConnectionsRevision((v) => v + 1)}
+            revision={connectionsRevision}
             scene={scene}
             onEntity={update}
             onBack={() => setModal("settings")}
