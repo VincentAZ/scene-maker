@@ -277,6 +277,10 @@ describe("live AI contract with deterministic model responses", () => {
     expect(JSON.stringify(fake.doGenerateCalls[1].prompt)).toContain(
       "Do you have time",
     );
+    // Optional performance fields are incompatible with OpenAI strict schemas.
+    expect(fake.doGenerateCalls[0].providerOptions?.openai).toMatchObject({
+      strictJsonSchema: false,
+    });
     expect(requested).toContain("anthropic:character-a");
     expect(requested).toContain("kimi:character-b");
     expect(
