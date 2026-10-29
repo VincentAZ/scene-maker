@@ -7,7 +7,12 @@ import {
   type Motion,
 } from "./scene";
 /** A disposable rehearsal. It never writes into the creator's scene. */
-export function actionPreview(scene: Scene, motion: Motion, actorId?: string) {
+export function actionPreview(
+  scene: Scene,
+  motion: Motion,
+  actorId?: string,
+  seatScale?: number,
+) {
   const original = scene.entities.find(
     (e) =>
       e.id === actorId &&
@@ -36,7 +41,19 @@ export function actionPreview(scene: Scene, motion: Motion, actorId?: string) {
   actor.scale = original?.scale || 1;
   if (original?.color) actor.color = original.color;
   let targetId: string | undefined;
-  if (motion.kind === "climb") {
+  if (["sit", "stand"].includes(motion.kind)) {
+    preview = applyCommands(preview, [
+      {
+        type: "add",
+        id: "preview-seat",
+        assetId: "bench",
+        position: [0, 0, -0.4],
+      },
+    ]);
+    preview.entities.find((e) => e.id === "preview-seat")!.scale =
+      seatScale ?? actor.scale;
+    targetId = "preview-seat";
+  } else if (motion.kind === "climb") {
     preview = applyCommands(preview, [
       {
         type: "add",
@@ -65,6 +82,9 @@ export function actionPreview(scene: Scene, motion: Motion, actorId?: string) {
   }
   const performer = preview.entities[0];
   performer.clips = [
+    ...(motion.kind === "stand"
+      ? [{ id: "preview-sit", motionId: "sit", duration: 3, targetId }]
+      : []),
     ...(motion.kind === "place"
       ? [{ id: "preview-pick", motionId: "pick", duration: 2, targetId }]
       : []),
@@ -72,7 +92,7 @@ export function actionPreview(scene: Scene, motion: Motion, actorId?: string) {
       id: "preview-action",
       motionId: motion.id,
       duration: motion.duration,
-      targetId,
+      targetId: motion.kind === "stand" ? undefined : targetId,
       transition: "cut",
     },
   ];

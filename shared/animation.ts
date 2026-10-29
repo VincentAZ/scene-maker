@@ -14,12 +14,21 @@ import {
   type LadderSample,
   type Point,
 } from "./ladder";
+import {
+  planSeat,
+  sampleSeat,
+  seatProfile,
+  type SeatSample,
+  type SeatPlan,
+  type SeatBody,
+} from "./seating";
 import { samplePath } from "./path";
 export type Pose = {
   root: [number, number, number];
   rotations: Record<string, [number, number, number]>;
   heading?: number;
   climb?: LadderSample;
+  seat?: SeatSample;
 };
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 export function motionPose(m: Motion, t: number): Pose {
@@ -122,6 +131,8 @@ export function entityPose(
       | { start: Point; delta: Point; heading?: number; startHeading?: number }
       | undefined;
     canClimb?: boolean;
+    seatBody?: SeatBody;
+    canSit?: boolean;
   } = {},
 ): Pose {
   const p: Pose = {
@@ -130,6 +141,7 @@ export function entityPose(
     rotations: Object.fromEntries(boneNames.map((n) => [n, [0, 0, 0]])),
   };
   let start = 0;
+  let seated: SeatPlan | undefined;
   const library = allMotions(scene);
   const addRoot = (offset: Point) => {
     const world = turnPoint(
@@ -171,6 +183,46 @@ export function entityPose(
       scene.entities.find((entity) => entity.id === clip.targetId);
     const asset =
       target && allAssets(scene).find((asset) => asset.id === target.assetId);
+    if (m.kind === "sit" && target && asset && seatProfile(asset)) {
+      seated = planSeat(
+        p.root,
+        p.heading!,
+        e,
+        target,
+        asset,
+        options.canSit !== false,
+        options.seatBody,
+      );
+      const sample = sampleSeat(seated, (time - start) / clip.duration);
+      p.root = sample.root;
+      p.heading = sample.heading;
+      p.seat = sample.seat;
+      p.climb = undefined;
+      p.rotations = motionPose(
+        {
+          ...m,
+          kind: sample.seat.progress < 0.3 && !seated.warning ? "walk" : "idle",
+          distance: 0,
+        },
+        sample.seat.progress / 0.3,
+      ).rotations;
+      if (time < end) return p;
+      start = end;
+      continue;
+    }
+    if (m.kind === "stand" && seated) {
+      const sample = sampleSeat(seated, (time - start) / clip.duration, true);
+      p.root = sample.root;
+      p.heading = sample.heading;
+      p.seat = sample.seat;
+      p.climb = undefined;
+      p.rotations = motionPose({ ...m, kind: "idle" }, 0).rotations;
+      if (time < end) return p;
+      seated = undefined;
+      p.seat = undefined;
+      start = end;
+      continue;
+    }
     if (m.kind === "climb" && target && asset && ladderProfile(asset)) {
       const plan = planLadder(
         p.root,
@@ -198,7 +250,7 @@ export function entityPose(
     const native = m.kind === "imported" ? options.nativeRoot?.(m) : undefined;
     if (time >= end) {
       const last = motionPose(m, 1);
-      addRoot(native?.delta || last.root);
+      if (!seated) addRoot(native?.delta || last.root);
       p.heading! += native?.heading || 0;
       start = end;
       continue;
@@ -207,7 +259,8 @@ export function entityPose(
     if (clip.targetId && ["pick", "sip", "place"].includes(m.kind))
       for (const bone of ["spine", "head", "rightArm", "rightForearm"])
         local.rotations[bone] = [0, 0, 0];
-    addRoot(native ? (native.start.map((n) => -n) as Point) : local.root);
+    if (!seated)
+      addRoot(native ? (native.start.map((n) => -n) as Point) : local.root);
     p.heading! -= native?.startHeading || 0;
     p.rotations = local.rotations;
     return p;

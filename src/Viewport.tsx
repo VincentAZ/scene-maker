@@ -10,6 +10,7 @@ import { configureRigContacts } from "./ik";
 import { setMotionSources } from "./rig";
 import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
 import { libraryEntry } from "../shared/characterLibrary";
+import type { SeatBody } from "../shared/seating";
 import type { PathFrame } from "../shared/path";
 import {
   routeContext,
@@ -27,6 +28,7 @@ import {
   disposeObject,
 } from "./world";
 export type ViewportHandle = {
+  seatingBody: (actorId: string) => SeatBody | undefined;
   screenshot: () => void;
   exportGLB: () => Promise<ArrayBuffer>;
   reset: () => void;
@@ -396,6 +398,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        seatingBody(actorId) {
+          return context.current?.objects.get(actorId)?.userData.seatBody;
+        },
         routeContext(actorId, beforeClipId) {
           const c = context.current;
           if (!c) throw Error("Wait for the scene to finish loading.");

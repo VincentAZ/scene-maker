@@ -52,6 +52,7 @@ import {
   furnitureEntry,
 } from "../shared/furnitureLibrary";
 import { setLayout } from "../shared/setLayouts";
+import { seatProfile, nearestSeat } from "../shared/seating";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
@@ -323,8 +324,10 @@ export default function App() {
   const execute = (commands: Command[]) => {
     try {
       change(applyCommands(sceneRef.current, commands));
+      return true;
     } catch (e) {
       report((e as Error).message);
+      return false;
     }
   };
   const undo = () => {
@@ -518,15 +521,26 @@ export default function App() {
       toast("Add a ladder from Props, then try this action.");
       return;
     }
-    execute([
+    const seat =
+      motion.kind === "sit"
+        ? nearestSeat(current, allAssets(current), actor)
+        : undefined;
+    if (motion.kind === "sit" && !seat) {
+      toast(
+        "Add a chair with a sitting surface from Props, then try this action.",
+      );
+      return;
+    }
+    const added = execute([
       {
         type: "chain",
         id: actor.id,
         motionId: motion.id,
+        ...(seat ? { targetId: seat.id } : {}),
         ...(ladder ? { targetId: ladder.id } : {}),
       },
     ]);
-    toast(`${motion.name} added to ${actor.name}’s sequence`);
+    if (added) toast(`${motion.name} added to ${actor.name}’s sequence`);
   }
   async function performStudioStep(
     step: Exclude<
@@ -548,7 +562,12 @@ export default function App() {
         step.targetId,
         step.movement,
       );
-      execute(savePathCommands(snapshot, step.actorId, motion));
+      change(
+        applyCommands(
+          snapshot,
+          savePathCommands(snapshot, step.actorId, motion),
+        ),
+      );
       setSelected(step.actorId);
       setRightTab("details");
       setPanel(true);
@@ -923,7 +942,14 @@ export default function App() {
           (tab === "characters"
             ? characterCollection(a)
             : furnitureEntry(a)?.collection || "Essentials") === filter) &&
-        (a.name + " " + a.style + " " + a.description)
+        (
+          a.name +
+          " " +
+          a.style +
+          " " +
+          a.description +
+          (seatProfile(a) ? " seat sitting" : "")
+        )
           .toLowerCase()
           .includes(search.toLowerCase()),
     )
@@ -1168,7 +1194,9 @@ export default function App() {
                           ? setLayout(a.id)
                             ? `${setLayout(a.id)!.props.length} editable props`
                             : "Scene backdrop"
-                          : furnitureEntry(a)?.collection || "Scene prop"}
+                          : seatProfile(a)
+                            ? "Ready for sitting"
+                            : furnitureEntry(a)?.collection || "Scene prop"}
                     </span>
                   </button>
                 ))}
@@ -1974,7 +2002,13 @@ export default function App() {
                                   <Footprints size={13} /> Edit path
                                 </button>
                               )}
-                              {["sip", "pick", "place", "climb"].includes(
+                              {[
+                                "sip",
+                                "pick",
+                                "place",
+                                "climb",
+                                "sit",
+                              ].includes(
                                 allMotions(scene).find(
                                   (m) => m.id === c.motionId,
                                 )?.kind || "",
@@ -2001,7 +2035,11 @@ export default function App() {
                                       (m) => m.id === c.motionId,
                                     )?.kind === "climb"
                                       ? "Choose a ladder…"
-                                      : "Choose a prop…"}
+                                      : allMotions(scene).find(
+                                            (m) => m.id === c.motionId,
+                                          )?.kind === "sit"
+                                        ? "Choose a seat…"
+                                        : "Choose a prop…"}
                                   </option>
                                   {scene.entities
                                     .filter((e) => {
@@ -2013,7 +2051,11 @@ export default function App() {
                                         (allMotions(scene).find(
                                           (m) => m.id === c.motionId,
                                         )?.kind !== "climb" ||
-                                          ladderProfile(asset))
+                                          ladderProfile(asset)) &&
+                                        (allMotions(scene).find(
+                                          (m) => m.id === c.motionId,
+                                        )?.kind !== "sit" ||
+                                          seatProfile(asset))
                                       );
                                     })
                                     .map((e) => (
@@ -2113,6 +2155,7 @@ export default function App() {
       />
       {previewAction && (
         <ActionPreview
+          key={`${previewAction.motion.id}:${previewAction.actorId || "sample"}`}
           scene={previewAction.source}
           motion={previewAction.motion}
           actorId={previewAction.actorId}

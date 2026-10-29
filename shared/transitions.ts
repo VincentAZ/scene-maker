@@ -1,12 +1,13 @@
 import { allMotions, type Entity, type Scene } from "./scene";
 
 export function contactAction(scene: Scene, clip: Entity["clips"][number]) {
+  const kind = allMotions(scene).find(
+    (motion) => motion.id === clip.motionId,
+  )?.kind;
   return (
-    !!clip.targetId &&
-    ["climb", "pick", "sip", "place"].includes(
-      allMotions(scene).find((motion) => motion.id === clip.motionId)?.kind ||
-        "",
-    )
+    kind === "stand" ||
+    (!!clip.targetId &&
+      ["climb", "pick", "sip", "place", "sit"].includes(kind || ""))
   );
 }
 

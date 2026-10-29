@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { interactionSessions } from "./interactions";
+import { seatProfile, validateSeating } from "./seating";
 import { ladderProfile } from "./ladder";
 import { libraryAssetURLs, libraryCharacters } from "./characterLibrary";
 import { characterDesignSchema, supportsGlasses } from "./characterDesign";
@@ -49,6 +50,7 @@ export const motionSchema = z
       "jump",
       "wave",
       "sit",
+      "stand",
       "dance",
       "crawl",
       "climb",
@@ -164,6 +166,13 @@ export const assetSchema = z
       .optional(),
     design: characterDesignSchema.optional(),
     parts: z.array(shapeSchema).max(256).optional(),
+    seat: z
+      .object({
+        position: vec3,
+        width: z.number().min(0.2).max(10),
+        depth: z.number().min(0.2).max(5),
+      })
+      .optional(),
     grip: vec3.optional(),
     mouth: vec3.optional(),
     ladder: z
@@ -394,7 +403,8 @@ export const motions: Motion[] = [
   ["run", "Run", 2, 3],
   ["jump", "Jump", 1.5, 0],
   ["wave", "Wave hello", 2, 0],
-  ["sit", "Sit down", 2, 0],
+  ["sit", "Sit down", 3, 0],
+  ["stand", "Stand up", 2, 0],
   ["dance", "Little dance", 4, 0],
   ["crawl", "Crawl", 4, 1.6],
   ["climb", "Climb a ladder", 6, 1],
@@ -431,6 +441,25 @@ export function applyCommands(
     if (!e) throw Error("That scene object no longer exists.");
     return e;
   };
+  const detachTargets = (ids: Set<string>) => {
+    for (const entity of s.entities) {
+      let removedSeat = false;
+      for (const clip of entity.clips) {
+        const kind = allMotions(s).find((m) => m.id === clip.motionId)?.kind;
+        if (clip.targetId && ids.has(clip.targetId)) {
+          if (kind === "sit") {
+            clip.motionId = "idle";
+            removedSeat = true;
+          }
+          delete clip.targetId;
+        }
+        if (kind === "stand" && removedSeat) {
+          clip.motionId = "idle";
+          removedSeat = false;
+        }
+      }
+    }
+  };
   const clearDressing = () => {
     const ids = new Set(
       s.entities
@@ -438,9 +467,7 @@ export function applyCommands(
         .map((entity) => entity.id),
     );
     s.entities = s.entities.filter((entity) => !ids.has(entity.id));
-    for (const entity of s.entities)
-      for (const clip of entity.clips)
-        if (clip.targetId && ids.has(clip.targetId)) delete clip.targetId;
+    detachTargets(ids);
   };
   for (const cmd of commands) {
     if (cmd.type === "add") {
@@ -500,11 +527,7 @@ export function applyCommands(
     if (cmd.type === "remove") {
       find(cmd.id);
       s.entities = s.entities.filter((e) => e.id !== cmd.id);
-      s.entities.forEach((e) =>
-        e.clips.forEach((c) => {
-          if (c.targetId === cmd.id) delete c.targetId;
-        }),
-      );
+      detachTargets(new Set([cmd.id]));
     }
     if (cmd.type === "chain") {
       const e = find(cmd.id);
@@ -608,6 +631,21 @@ export function validateScene(
       }
       if (c.targetId && !s.entities.some((t) => t.id === c.targetId))
         throw Error("Missing action target.");
+      if (c.targetId && motion.kind === "sit") {
+        const target = s.entities.find((t) => t.id === c.targetId)!;
+        const targetAsset = allAssets(s).find((a) => a.id === target.assetId)!;
+        if (
+          allAssets(s).find((a) => a.id === e.assetId)?.category !==
+            "characters" ||
+          targetAsset.category !== "props" ||
+          !seatProfile(targetAsset)
+        )
+          throw Error(
+            "Choose a character and a seat with a known sitting surface.",
+          );
+        if (target.clips.length)
+          throw Error("Keep the seat still during a seated performance.");
+      }
       if (
         c.targetId &&
         allMotions(s).find((m) => m.id === c.motionId)!.kind === "climb"
@@ -647,6 +685,7 @@ export function validateScene(
         ?.clips.some((c) => c.id === line.clipId)
     )
       throw Error("Missing dialogue action.");
+  validateSeating(s, allMotions(s), options.deferInteractionTiming);
   if (!options.deferInteractionTiming) interactionSessions(s, allMotions(s));
   return s;
 }

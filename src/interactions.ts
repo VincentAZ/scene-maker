@@ -49,6 +49,7 @@ function crouch(
   goal: T.Vector3,
   contacts: RigContacts,
 ) {
+  if (rig.userData.seat?.amount > 0) return;
   const bones = rig.userData.bones as Record<string, T.Bone>;
   const localY = rig.worldToLocal(goal.clone()).y;
   const shoulder = worldPoint(bones.rightArm),

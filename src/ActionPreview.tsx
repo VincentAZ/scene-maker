@@ -19,9 +19,10 @@ export function ActionPreview({
   onClose: () => void;
   onAdd?: () => void;
 }) {
+  const [seatScale, setSeatScale] = useState<number>();
   const rehearsal = useMemo(
-    () => actionPreview(scene, motion, actorId),
-    [scene, motion, actorId],
+    () => actionPreview(scene, motion, actorId, seatScale),
+    [scene, motion, actorId, seatScale],
   );
   const viewport = useRef<ViewportHandle>(null);
   const [time, setTime] = useState(0),
@@ -30,12 +31,25 @@ export function ActionPreview({
     [error, setError] = useState(""),
     [warning, setWarning] = useState("");
   useEffect(() => {
+    setReady(false);
     let cancelled = false;
     const controller = new AbortController();
     void viewport
       .current!.waitForScene(rehearsal.scene, controller.signal)
       .then(() => {
         if (cancelled) return;
+        if (["sit", "stand"].includes(motion.kind) && seatScale === undefined) {
+          const body = viewport.current!.seatingBody(rehearsal.actor.id);
+          if (body) {
+            setSeatScale(
+              Math.max(
+                0.2,
+                Math.min(10, (body.lowerLength / 0.38) * rehearsal.actor.scale),
+              ),
+            );
+            return;
+          }
+        }
         viewport.current!.frame("default", rehearsal.actor.id);
         setReady(true);
       })
@@ -46,7 +60,7 @@ export function ActionPreview({
       cancelled = true;
       controller.abort();
     };
-  }, [rehearsal]);
+  }, [rehearsal, motion.kind, seatScale]);
   const details = motionDetails(motion);
   return (
     <Modal
@@ -116,7 +130,7 @@ export function ActionPreview({
             {time.toFixed(1)} / {rehearsal.total.toFixed(1)}s
           </span>
         </div>
-        {warning && (
+        {warning && ready && (
           <p className="small" role="status">
             {warning}
           </p>
@@ -125,6 +139,9 @@ export function ActionPreview({
           A separate rehearsal with{" "}
           {actorId ? rehearsal.actor.name : "a sample performer"}. Your scene
           stays as it is. Drag to orbit.
+          {["sit", "stand"].includes(motion.kind)
+            ? " The rehearsal bench is sized for this performer. Choose the scene’s seat in Details after adding Sit down."
+            : ""}
           {motion.kind === "place"
             ? " This preview picks up the cup before putting it down."
             : ""}

@@ -51,20 +51,27 @@ export function motionDetails(motion: Motion) {
           ? "Movement"
           : ["walk", "run", "jump", "crawl"].includes(motion.kind)
             ? "Movement"
-            : ["pick", "place", "sip", "climb"].includes(motion.kind)
+            : ["pick", "place", "sip", "climb", "sit", "stand"].includes(
+                  motion.kind,
+                )
               ? "Interactions"
               : ["wave", "dance", "talk", "bow"].includes(motion.kind)
                 ? "Acting"
-                : ["idle", "sit"].includes(motion.kind)
+                : ["idle"].includes(motion.kind)
                   ? "Everyday"
                   : "My actions",
-        description: motion.path
-          ? "Follow your drawn route."
-          : motion.kind === "imported"
-            ? "A motion from your imported character."
-            : motion.kind === "custom"
-              ? "An action created for your scene."
-              : "A studio action, ready to direct.",
+        description:
+          motion.kind === "sit"
+            ? "Sit on a chosen chair; keep seated through gestures."
+            : motion.kind === "stand"
+              ? "Rise from your seat before the next full-body action."
+              : motion.path
+                ? "Follow your drawn route."
+                : motion.kind === "imported"
+                  ? "A motion from your imported character."
+                  : motion.kind === "custom"
+                    ? "An action created for your scene."
+                    : "A studio action, ready to direct.",
         authored: false,
       };
 }

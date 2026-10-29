@@ -22,6 +22,40 @@ function model(output: unknown) {
   });
 }
 describe("live AI contract with deterministic model responses", () => {
+  it("accepts a targeted seat, gestures, standing and travel in an ordered SDK plan", async () => {
+    const scene = starterScene();
+    const commands = [
+      { type: "clear" },
+      { type: "add", assetId: "mila", id: "seated" },
+      { type: "add", assetId: "furniture-chair", id: "seat" },
+      { type: "chain", id: "seated", motionId: "sit", targetId: "seat" },
+      { type: "chain", id: "seated", motionId: "talk" },
+      { type: "chain", id: "seated", motionId: "stand" },
+      { type: "chain", id: "seated", motionId: "walk" },
+    ];
+    const result = await assistant(
+      config,
+      scene,
+      "Sit, greet me, stand, and walk away",
+      undefined,
+      () =>
+        model({
+          response: "The seated performance is ready",
+          steps: [{ type: "edit", commands }, { type: "save" }],
+        }),
+    );
+    const edit = result.steps[0];
+    if (edit.type !== "edit") throw Error("Expected edit");
+    const next = applyCommands(scene, edit.commands);
+    expect(next.entities[0].clips.map((c) => c.motionId)).toEqual([
+      "sit",
+      "talk",
+      "stand",
+      "walk",
+    ]);
+    expect(next.entities[0].clips[0].targetId).toBe("seat");
+  });
+
   it("accepts a measured route followed by targeted actions through the SDK contract", async () => {
     const scene = starterScene(),
       actor = scene.entities[0],

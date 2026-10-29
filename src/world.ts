@@ -18,6 +18,7 @@ import {
 } from "../shared/scene";
 import { entityPose, type Pose } from "../shared/animation";
 import { defaultLadder } from "../shared/ladder";
+import { measureSeatBody, applySeatSupport } from "./seating";
 import { sampleWithTransitions } from "./transitions";
 const material = (color: string) =>
   new T.MeshStandardMaterial({ color, roughness: 0.85 });
@@ -401,6 +402,7 @@ export function applyEntityPose(
   group.scale.setScalar(e.scale);
   group.visible = e.visible;
   group.userData.climb = pose.climb;
+  group.userData.seat = pose.seat;
   group.userData.motionWarning =
     e.visible &&
     e.clips.some(
@@ -440,6 +442,7 @@ export function applyAnimatedEntityPose(
   sampleWithTransitions(group, entity, scene, time, (sampleTime) =>
     applyUnblendedEntityPose(group, entity, scene, sampleTime),
   );
+  applySeatSupport(group, entity);
 }
 function applyUnblendedEntityPose(
   group: T.Group,
@@ -450,7 +453,25 @@ function applyUnblendedEntityPose(
   const mixer = group.userData.mixer as T.AnimationMixer | undefined;
   mixer?.stopAllAction();
   const bones = group.userData.bones as Record<string, T.Bone> | undefined;
+  if (
+    !group.userData.seatBody &&
+    entity.clips.some(
+      (c) =>
+        allMotions(scene).find((m) => m.id === c.motionId)?.kind === "sit" &&
+        c.targetId,
+    )
+  ) {
+    applyEntityPose(group, entity, scene, 0, false, {
+      root: [...entity.position],
+      heading: entity.rotation,
+      rotations: Object.fromEntries(boneNames.map((n) => [n, [0, 0, 0]])),
+    });
+    group.userData.seatBody = measureSeatBody(group);
+  }
   const pose = entityPose(entity, scene, time, {
+    seatBody: group.userData.seatBody,
+    canSit:
+      !!group.userData.seatBody && !humanoidWarning(group, entity.name, false),
     canClimb:
       !!bones &&
       !humanoidWarning(group, entity.name, false) &&
