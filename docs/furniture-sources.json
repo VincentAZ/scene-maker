@@ -1,0 +1,1125 @@
+{
+  "source_url": "https://opengameart.org/content/furniture-kit",
+  "download_url": "https://opengameart.org/sites/default/files/kenney_furniturePack.zip",
+  "archive_sha256": "68afa4e6dc8a53942379fb47f1e84ec735d46b77bb1c1ceb968e245693dde067",
+  "scale": 0.2,
+  "forward_rotation_degrees": 180,
+  "models": [
+    {
+      "source": "loungeSofa",
+      "name": "Two-seat sofa",
+      "collection": "Living",
+      "source_sha256": "38dcb2da712205b8e5fed6a00051f5e737b14b2c77997fe51378b8e9ea67a538",
+      "file": "lounge-sofa.glb",
+      "dimensions_m": [
+        1.96,
+        0.92,
+        0.82
+      ]
+    },
+    {
+      "source": "loungeSofaLong",
+      "name": "Long sofa",
+      "collection": "Living",
+      "source_sha256": "bbc91d1b01537dbc847685560265b6fcd72a21333c8aab7f8906a5addf8dbd20",
+      "file": "lounge-sofa-long.glb",
+      "dimensions_m": [
+        1.96,
+        0.92,
+        1.64
+      ]
+    },
+    {
+      "source": "loungeSofaCorner",
+      "name": "Corner sofa",
+      "collection": "Living",
+      "source_sha256": "9b94f7f617f8b726e930ca0c90f0319c5eadb01ade2d3e1f55f0f89bb4db7850",
+      "file": "lounge-sofa-corner.glb",
+      "dimensions_m": [
+        1.96,
+        0.92,
+        1.96
+      ]
+    },
+    {
+      "source": "loungeSofaOttoman",
+      "name": "Ottoman",
+      "collection": "Living",
+      "source_sha256": "ee50f3c013ff06950e57580e9d2c1ca2723f2796ebcb97653772e0906e55f1eb",
+      "file": "lounge-sofa-ottoman.glb",
+      "dimensions_m": [
+        0.87966,
+        0.46,
+        0.9
+      ]
+    },
+    {
+      "source": "loungeChair",
+      "name": "Lounge armchair",
+      "collection": "Living",
+      "source_sha256": "7c38f348efe44ddb318fa09783254e21dccea3031f71e296ed4a587fde4733c1",
+      "file": "lounge-chair.glb",
+      "dimensions_m": [
+        0.98,
+        0.92,
+        0.82
+      ]
+    },
+    {
+      "source": "loungeChairRelax",
+      "name": "Reclining chair",
+      "collection": "Living",
+      "source_sha256": "b8b4cd2c30bd423cdb6fefffa4835dd65b73dc0fe0c27e1a4b8bc67b3c939374",
+      "file": "lounge-chair-relax.glb",
+      "dimensions_m": [
+        0.98,
+        1.26,
+        1.34939
+      ]
+    },
+    {
+      "source": "chair",
+      "name": "Dining chair",
+      "collection": "Living",
+      "source_sha256": "395ba37182de517f58a2b0993ffcf4ae01a858285e269191509c6e2f1fd406f2",
+      "file": "chair.glb",
+      "dimensions_m": [
+        0.4,
+        0.94,
+        0.4
+      ]
+    },
+    {
+      "source": "chairCushion",
+      "name": "Cushioned chair",
+      "collection": "Living",
+      "source_sha256": "afc684f28ab2e4ee3fe9cd59a92f03103e4f62c74ae785029fdd672fc6914cdd",
+      "file": "chair-cushion.glb",
+      "dimensions_m": [
+        0.4,
+        0.92,
+        0.4
+      ]
+    },
+    {
+      "source": "chairRounded",
+      "name": "Rounded chair",
+      "collection": "Living",
+      "source_sha256": "a33ce0e60e6c026ecac76a14b74119cc19f30e7bbf7448d8cccd467cad1ff322",
+      "file": "chair-rounded.glb",
+      "dimensions_m": [
+        0.4,
+        0.91,
+        0.4
+      ]
+    },
+    {
+      "source": "bench",
+      "name": "Wooden bench",
+      "collection": "Living",
+      "source_sha256": "82a7509d4520f5c665a7862f46eb9f8b07569335e7df493012ae33f80c6d634b",
+      "file": "bench.glb",
+      "dimensions_m": [
+        0.8,
+        0.94,
+        0.4
+      ]
+    },
+    {
+      "source": "benchCushion",
+      "name": "Cushioned bench",
+      "collection": "Living",
+      "source_sha256": "c9230d31b3a38f44422b50b43a400c53aa40e1cd3409a3b30a2df4544f483d8f",
+      "file": "bench-cushion.glb",
+      "dimensions_m": [
+        0.8,
+        0.92,
+        0.4
+      ]
+    },
+    {
+      "source": "benchCushionLow",
+      "name": "Low bench",
+      "collection": "Living",
+      "source_sha256": "99c03e50d1e42506088e697e24d0838fcbe6bc01632e2162f3a2fe438d7e45eb",
+      "file": "bench-cushion-low.glb",
+      "dimensions_m": [
+        0.84,
+        0.4,
+        0.44
+      ]
+    },
+    {
+      "source": "tableCoffee",
+      "name": "Coffee table",
+      "collection": "Living",
+      "source_sha256": "8c81c31a74aadc1e89e334eb1ac43380f41c14f47e5dd9a6b029ebf74850adda",
+      "file": "table-coffee.glb",
+      "dimensions_m": [
+        1.32199,
+        0.46,
+        0.8
+      ]
+    },
+    {
+      "source": "tableCoffeeGlass",
+      "name": "Glass coffee table",
+      "collection": "Living",
+      "source_sha256": "6c4a3b0fdeb535122ba55fd64731780da88df86d4913bd3d853c23f706c4270d",
+      "file": "table-coffee-glass.glb",
+      "dimensions_m": [
+        1.32199,
+        0.46,
+        0.8
+      ]
+    },
+    {
+      "source": "tableCoffeeSquare",
+      "name": "Square coffee table",
+      "collection": "Living",
+      "source_sha256": "04005c5d7d03409e7d80208b92f5a1685a26b0aacd46088dd12abe3eb76af282",
+      "file": "table-coffee-square.glb",
+      "dimensions_m": [
+        0.8,
+        0.46,
+        0.8
+      ]
+    },
+    {
+      "source": "tableCoffeeGlassSquare",
+      "name": "Square glass table",
+      "collection": "Living",
+      "source_sha256": "44fe7d625853baa25a81d45de3baed42ca195593f5d28517c202ad8543232e77",
+      "file": "table-coffee-glass-square.glb",
+      "dimensions_m": [
+        0.8,
+        0.46,
+        0.8
+      ]
+    },
+    {
+      "source": "table",
+      "name": "Dining table",
+      "collection": "Living",
+      "source_sha256": "cf5dae65dbf6d2251f66776d1718e01ae3997996072d1e5860cb9059b9cd7ddf",
+      "file": "table.glb",
+      "dimensions_m": [
+        1.68298,
+        0.65347,
+        0.89475
+      ]
+    },
+    {
+      "source": "tableRound",
+      "name": "Round dining table",
+      "collection": "Living",
+      "source_sha256": "134d31b5360d02e3516c327ae0487f142be722efd3ca9de554a217acd6181da5",
+      "file": "table-round.glb",
+      "dimensions_m": [
+        1.38564,
+        0.73347,
+        1.6
+      ]
+    },
+    {
+      "source": "tableCloth",
+      "name": "Dressed dining table",
+      "collection": "Living",
+      "source_sha256": "51004f990d830c0b159e0d8d1607fa4358585ddfff1d5c5f96ab860e355c109a",
+      "file": "table-cloth.glb",
+      "dimensions_m": [
+        1.68298,
+        0.65347,
+        0.89475
+      ]
+    },
+    {
+      "source": "tableGlass",
+      "name": "Glass dining table",
+      "collection": "Living",
+      "source_sha256": "948438557c596241f315b249a53bed3b4f5849b79269f6136384678bb04746d7",
+      "file": "table-glass.glb",
+      "dimensions_m": [
+        1.68298,
+        0.65347,
+        0.89475
+      ]
+    },
+    {
+      "source": "desk",
+      "name": "Writing desk",
+      "collection": "Work",
+      "source_sha256": "fff1cb3b8ad7460c17eb0106a61f0fc42c5cc95719f7fc9ea5edddff66e1ccd2",
+      "file": "desk.glb",
+      "dimensions_m": [
+        1.46895,
+        0.76882,
+        0.7846
+      ]
+    },
+    {
+      "source": "deskCorner",
+      "name": "Corner desk",
+      "collection": "Work",
+      "source_sha256": "ab9934c5abd235d86b4a46236eed33c1c64d633cd9e67474506ae0989fdf50e4",
+      "file": "desk-corner.glb",
+      "dimensions_m": [
+        1.94895,
+        0.76882,
+        1.94895
+      ]
+    },
+    {
+      "source": "chairDesk",
+      "name": "Office chair",
+      "collection": "Work",
+      "source_sha256": "7c2f8d1dcc10149a231e87d695b28cec6673a9c05bf590d4cbb03b7093a38869",
+      "file": "chair-desk.glb",
+      "dimensions_m": [
+        0.6699,
+        1.2152,
+        0.6286
+      ]
+    },
+    {
+      "source": "laptop",
+      "name": "Laptop",
+      "collection": "Work",
+      "source_sha256": "5ed023a7ed76491913d3712d445739e1ed04ea886bfba789ceabf878b91c54b2",
+      "file": "laptop.glb",
+      "dimensions_m": [
+        0.528,
+        0.32362,
+        0.48013
+      ]
+    },
+    {
+      "source": "computerScreen",
+      "name": "Computer monitor",
+      "collection": "Work",
+      "source_sha256": "3695b954a1eda02df54c629df83f044cbe239702a4b9f07b3fccdb799303cb13",
+      "file": "computer-screen.glb",
+      "dimensions_m": [
+        0.78538,
+        0.58857,
+        0.20801
+      ]
+    },
+    {
+      "source": "computerKeyboard",
+      "name": "Keyboard",
+      "collection": "Work",
+      "source_sha256": "57c691103fd3b392edb9e697a0a653ff77b614bac5bf9205720ede75af4f004f",
+      "file": "computer-keyboard.glb",
+      "dimensions_m": [
+        0.5644,
+        0.05511,
+        0.23638
+      ]
+    },
+    {
+      "source": "computerMouse",
+      "name": "Computer mouse",
+      "collection": "Work",
+      "source_sha256": "9f4d9cf33703c5e6385650172b6f7acdf962c65551463c6214093ee181b73b29",
+      "file": "computer-mouse.glb",
+      "dimensions_m": [
+        0.0994,
+        0.04714,
+        0.17021
+      ]
+    },
+    {
+      "source": "speaker",
+      "name": "Tall speaker",
+      "collection": "Work",
+      "source_sha256": "18d87811e4936c67f725e673ebbc6c65c97d841851fad48dcdf26b1c86d55bc5",
+      "file": "speaker.glb",
+      "dimensions_m": [
+        0.296,
+        1.2728,
+        0.296
+      ]
+    },
+    {
+      "source": "speakerSmall",
+      "name": "Desktop speaker",
+      "collection": "Work",
+      "source_sha256": "2ff5c68db052fbc2f4533c999deb8df38d8e297b4fa4c993601066d371ee464f",
+      "file": "speaker-small.glb",
+      "dimensions_m": [
+        0.296,
+        0.59596,
+        0.2664
+      ]
+    },
+    {
+      "source": "radio",
+      "name": "Radio",
+      "collection": "Work",
+      "source_sha256": "0606c95a247530477ad5372d279b48d64b0fe4c2e5b46a811d557c9e74487533",
+      "file": "radio.glb",
+      "dimensions_m": [
+        0.63,
+        0.45638,
+        0.195
+      ]
+    },
+    {
+      "source": "televisionModern",
+      "name": "Flat-screen TV",
+      "collection": "Work",
+      "source_sha256": "a2ba8f9e7d980bfe4fde6eb64c43ecf584b692b49c55df0fa73e5ce0b5ee7afc",
+      "file": "television-modern.glb",
+      "dimensions_m": [
+        1.3696,
+        0.9095,
+        0.2568
+      ]
+    },
+    {
+      "source": "televisionVintage",
+      "name": "Vintage television",
+      "collection": "Work",
+      "source_sha256": "295f8b87d04aa04b6f5a6b5f579b30f826b107c52b47c3fb03a20d5736aa2da2",
+      "file": "television-vintage.glb",
+      "dimensions_m": [
+        0.82,
+        0.54,
+        0.54
+      ]
+    },
+    {
+      "source": "kitchenCabinet",
+      "name": "Kitchen counter",
+      "collection": "Kitchen",
+      "source_sha256": "4107d85c412f0fd3c1b537b62375c7d2a8ad6132ccb4df64c938c17a5c3ec969",
+      "file": "kitchen-cabinet.glb",
+      "dimensions_m": [
+        0.86,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "source": "kitchenCabinetDrawer",
+      "name": "Kitchen drawers",
+      "collection": "Kitchen",
+      "source_sha256": "4f9bae3f79dc56fbcac0cdc8cb3431132882631606eae51afd5f7c31f0c2d008",
+      "file": "kitchen-cabinet-drawer.glb",
+      "dimensions_m": [
+        0.86,
+        0.94352,
+        0.64
+      ]
+    },
+    {
+      "source": "kitchenCabinetCornerInner",
+      "name": "Corner kitchen counter",
+      "collection": "Kitchen",
+      "source_sha256": "368af3b8921d3bdd9e613edcf2d23dcb12b1ede5b8a6463b166b593b64d752f8",
+      "file": "kitchen-cabinet-corner-inner.glb",
+      "dimensions_m": [
+        0.92,
+        0.9,
+        0.92
+      ]
+    },
+    {
+      "source": "kitchenCabinetUpper",
+      "name": "Wall cabinet",
+      "collection": "Kitchen",
+      "source_sha256": "22ad5a2402be7b73a46bc04b24fbf0bb0cd663afd9842e8d2f16a0f3379692a1",
+      "file": "kitchen-cabinet-upper.glb",
+      "dimensions_m": [
+        0.86,
+        0.78,
+        0.44
+      ]
+    },
+    {
+      "source": "kitchenCabinetUpperDouble",
+      "name": "Double wall cabinet",
+      "collection": "Kitchen",
+      "source_sha256": "9345e90a81b0bb9e2ae563ef767374c7adfc0eb05c29f3d9cd13a1ea8cf8c143",
+      "file": "kitchen-cabinet-upper-double.glb",
+      "dimensions_m": [
+        0.86,
+        0.78,
+        0.44
+      ]
+    },
+    {
+      "source": "kitchenCabinetUpperLow",
+      "name": "Low wall cabinet",
+      "collection": "Kitchen",
+      "source_sha256": "95ea94e6b98934dc1f977e284944d0bc5938d426bff01f67b8f7bc7f661296cd",
+      "file": "kitchen-cabinet-upper-low.glb",
+      "dimensions_m": [
+        0.86,
+        0.39,
+        0.44
+      ]
+    },
+    {
+      "source": "kitchenSink",
+      "name": "Kitchen sink",
+      "collection": "Kitchen",
+      "source_sha256": "8de3393c6d7137fe380697e6902ba1b4ca1909adc33eedc3ba1cb64b0d6976b8",
+      "file": "kitchen-sink.glb",
+      "dimensions_m": [
+        0.86,
+        0.98,
+        0.9
+      ]
+    },
+    {
+      "source": "kitchenStove",
+      "name": "Gas stove",
+      "collection": "Kitchen",
+      "source_sha256": "30b7837f5de10140f71ca97c494193d49918fb51e748e1f1475944a1b0a415af",
+      "file": "kitchen-stove.glb",
+      "dimensions_m": [
+        0.86,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "source": "kitchenStoveElectric",
+      "name": "Electric stove",
+      "collection": "Kitchen",
+      "source_sha256": "3f6b3ac89088b843605879ee51455ce88e99ab464096e03ec5de409d13b1d17c",
+      "file": "kitchen-stove-electric.glb",
+      "dimensions_m": [
+        0.86,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "source": "kitchenFridge",
+      "name": "Refrigerator",
+      "collection": "Kitchen",
+      "source_sha256": "ed8d65c515800d95de78cb24e8656c7da606fc44e596fc71fb6c0fb136237d9d",
+      "file": "kitchen-fridge.glb",
+      "dimensions_m": [
+        0.86,
+        1.84,
+        0.58387
+      ]
+    },
+    {
+      "source": "kitchenFridgeSmall",
+      "name": "Mini fridge",
+      "collection": "Kitchen",
+      "source_sha256": "14b665b940d0e800f6de27e2cbabd31db322f56e940d156aaa52d374ba667c16",
+      "file": "kitchen-fridge-small.glb",
+      "dimensions_m": [
+        0.86,
+        1.20049,
+        0.58387
+      ]
+    },
+    {
+      "source": "kitchenMicrowave",
+      "name": "Microwave",
+      "collection": "Kitchen",
+      "source_sha256": "37e1fedd75c45f84f6de26dfe46e7ce138a0af8a3b2ff6b6e75c86b84a52d919",
+      "file": "kitchen-microwave.glb",
+      "dimensions_m": [
+        0.58,
+        0.36,
+        0.46
+      ]
+    },
+    {
+      "source": "kitchenCoffeeMachine",
+      "name": "Coffee machine",
+      "collection": "Kitchen",
+      "source_sha256": "dba4ce8c5575858f6618e10b1e984dc58dd43fbe51a0207bf5b69f773f6046d3",
+      "file": "kitchen-coffee-machine.glb",
+      "dimensions_m": [
+        0.37908,
+        0.35498,
+        0.48033
+      ]
+    },
+    {
+      "source": "kitchenBlender",
+      "name": "Kitchen blender",
+      "collection": "Kitchen",
+      "source_sha256": "db53acf7495b774c5193c1b12dfd35fee029b17384d26b71726c7fe228300b62",
+      "file": "kitchen-blender.glb",
+      "dimensions_m": [
+        0.27165,
+        0.45504,
+        0.21824
+      ]
+    },
+    {
+      "source": "kitchenBar",
+      "name": "Breakfast bar",
+      "collection": "Kitchen",
+      "source_sha256": "999e9f43edcb3d56fe5d913c6f4f749e387fa353946c2315835769779b6b6247",
+      "file": "kitchen-bar.glb",
+      "dimensions_m": [
+        0.86,
+        0.84,
+        0.42
+      ]
+    },
+    {
+      "source": "stoolBar",
+      "name": "Bar stool",
+      "collection": "Kitchen",
+      "source_sha256": "38edfdef963cb6136e9b2483e2ce92394cbbb23b160dbaff90f7cc1c24ab8c0f",
+      "file": "stool-bar.glb",
+      "dimensions_m": [
+        0.53088,
+        0.87,
+        0.45976
+      ]
+    },
+    {
+      "source": "stoolBarSquare",
+      "name": "Square bar stool",
+      "collection": "Kitchen",
+      "source_sha256": "8b5c18565274fa6bb45ca18abf0f90896f00a446d6810364406b8de4b70d355e",
+      "file": "stool-bar-square.glb",
+      "dimensions_m": [
+        0.307,
+        0.81,
+        0.29525
+      ]
+    },
+    {
+      "source": "bedDouble",
+      "name": "Double bed",
+      "collection": "Bed & bath",
+      "source_sha256": "150a643fd4b7dc60d49368069d7fe3b785f36d5b1ecbf1cd13db40eb0f12bb2e",
+      "file": "bed-double.glb",
+      "dimensions_m": [
+        1.912,
+        0.75,
+        2.25
+      ]
+    },
+    {
+      "source": "bedSingle",
+      "name": "Single bed",
+      "collection": "Bed & bath",
+      "source_sha256": "1befe39e92d994b75ebcf62a2500ddad54075358c1ff42fefd23750b29bb40e6",
+      "file": "bed-single.glb",
+      "dimensions_m": [
+        1.142,
+        0.75,
+        2.25
+      ]
+    },
+    {
+      "source": "bedBunk",
+      "name": "Bunk beds",
+      "collection": "Bed & bath",
+      "source_sha256": "2d0a04e5089c1645f511b22f975f8806e4fd80277db18ec1548501f03114763b",
+      "file": "bed-bunk.glb",
+      "dimensions_m": [
+        1.142,
+        1.7,
+        2.19
+      ]
+    },
+    {
+      "source": "cabinetBed",
+      "name": "Bedside cabinet",
+      "collection": "Bed & bath",
+      "source_sha256": "99d9835defe5fa07b6bc145bbffb8a71c82e8ae2f928e808beabe1c36c9e1a43",
+      "file": "cabinet-bed.glb",
+      "dimensions_m": [
+        0.532,
+        0.4664,
+        0.43
+      ]
+    },
+    {
+      "source": "cabinetBedDrawer",
+      "name": "Bedside drawers",
+      "collection": "Bed & bath",
+      "source_sha256": "48b39cb0f360101b3d3bbb049696305878cec7ae708842e43696e461e251827b",
+      "file": "cabinet-bed-drawer.glb",
+      "dimensions_m": [
+        0.532,
+        0.5264,
+        0.4346
+      ]
+    },
+    {
+      "source": "sideTable",
+      "name": "Side table",
+      "collection": "Bed & bath",
+      "source_sha256": "0fb74936202c504c6b77ce88729eb9ced89eb616afc645ee282d19a5a73a74cc",
+      "file": "side-table.glb",
+      "dimensions_m": [
+        1.06895,
+        0.76882,
+        0.44
+      ]
+    },
+    {
+      "source": "sideTableDrawers",
+      "name": "Side table with drawers",
+      "collection": "Bed & bath",
+      "source_sha256": "58567c7f8717ea1207c14cd237f376d935f3f0dc8be0d61af72a1834b10ce020",
+      "file": "side-table-drawers.glb",
+      "dimensions_m": [
+        1.06895,
+        0.76882,
+        0.4446
+      ]
+    },
+    {
+      "source": "bathroomCabinet",
+      "name": "Bathroom cabinet",
+      "collection": "Bed & bath",
+      "source_sha256": "0562d663e71f9a65697c26c2b49f8a8f2e685d2537e6645999cb1fce25e0336d",
+      "file": "bathroom-cabinet.glb",
+      "dimensions_m": [
+        0.46,
+        0.78,
+        0.26
+      ]
+    },
+    {
+      "source": "bathroomMirror",
+      "name": "Bathroom mirror",
+      "collection": "Bed & bath",
+      "source_sha256": "4371015845dedbdeb76a4b60c93918f45a566a40f5d926d54b57cb48fa70e170",
+      "file": "bathroom-mirror.glb",
+      "dimensions_m": [
+        0.60268,
+        0.86925,
+        0.2888
+      ]
+    },
+    {
+      "source": "bathroomSink",
+      "name": "Bathroom sink",
+      "collection": "Bed & bath",
+      "source_sha256": "73441c2ee482b1ec61ed8eaaf37855ef7f90682f5b7deebf4cf69ad1a34a5ad2",
+      "file": "bathroom-sink.glb",
+      "dimensions_m": [
+        0.68,
+        1.12,
+        0.58
+      ]
+    },
+    {
+      "source": "bathtub",
+      "name": "Bathtub",
+      "collection": "Bed & bath",
+      "source_sha256": "7675a79edab21c6deb397368ae5fd724eb72cb916150aa7cdc08814182463366",
+      "file": "bathtub.glb",
+      "dimensions_m": [
+        2.38,
+        0.84,
+        1.12
+      ]
+    },
+    {
+      "source": "shower",
+      "name": "Shower",
+      "collection": "Bed & bath",
+      "source_sha256": "ccd84726c2c6bef2cc13c9c9913504218cb1e62d3d72991b89c8068a6018d53a",
+      "file": "shower.glb",
+      "dimensions_m": [
+        1.12358,
+        2.18807,
+        1.16358
+      ]
+    },
+    {
+      "source": "toilet",
+      "name": "Toilet",
+      "collection": "Bed & bath",
+      "source_sha256": "7d7fed29abd37b6be0350b091b668a935d844fc8242363f9946d2bf33ad5e79a",
+      "file": "toilet.glb",
+      "dimensions_m": [
+        0.6251,
+        0.90193,
+        0.95435
+      ]
+    },
+    {
+      "source": "washer",
+      "name": "Washing machine",
+      "collection": "Bed & bath",
+      "source_sha256": "88e009a857fdc19ea039a95af0ef315aeb402b0a6cecb26efa53c81815fccc2c",
+      "file": "washer.glb",
+      "dimensions_m": [
+        0.78,
+        0.94,
+        0.78
+      ]
+    },
+    {
+      "source": "dryer",
+      "name": "Clothes dryer",
+      "collection": "Bed & bath",
+      "source_sha256": "da984cf5cc934816975ba52cbc9fbeb5290dc05dfe0d0ef4a3386c8852fc0cc2",
+      "file": "dryer.glb",
+      "dimensions_m": [
+        0.78,
+        0.94,
+        0.76
+      ]
+    },
+    {
+      "source": "washerDryerStacked",
+      "name": "Laundry stack",
+      "collection": "Bed & bath",
+      "source_sha256": "3f707e63816f2ed65ab7f1694e8d2137daa29197c167c8c6c494946f765db09a",
+      "file": "washer-dryer-stacked.glb",
+      "dimensions_m": [
+        0.78,
+        1.88,
+        0.78
+      ]
+    },
+    {
+      "source": "bookcaseOpen",
+      "name": "Open bookcase",
+      "collection": "Storage",
+      "source_sha256": "31beea66f34e64660c870e39c52ed2e81984939c88f4bd763c7dce56e9ef76a9",
+      "file": "bookcase-open.glb",
+      "dimensions_m": [
+        0.8,
+        1.76,
+        0.5
+      ]
+    },
+    {
+      "source": "bookcaseOpenLow",
+      "name": "Low bookcase",
+      "collection": "Storage",
+      "source_sha256": "3adda946b7e1ba419c68b7f4f381c94315cea4a8922a203cb14a918bc48a19d3",
+      "file": "bookcase-open-low.glb",
+      "dimensions_m": [
+        0.8,
+        0.8,
+        0.5
+      ]
+    },
+    {
+      "source": "bookcaseClosed",
+      "name": "Tall bookcase",
+      "collection": "Storage",
+      "source_sha256": "ed7b2ace7e701a9605f88966bb17108fa80b0a30686080d2916463d8734486b6",
+      "file": "bookcase-closed.glb",
+      "dimensions_m": [
+        0.8,
+        1.7,
+        0.5
+      ]
+    },
+    {
+      "source": "bookcaseClosedWide",
+      "name": "Wide bookcase",
+      "collection": "Storage",
+      "source_sha256": "98ecf0efc67f96209007f87b10705b1504f7f36c3c49b3a9278a64ed1d95f8ac",
+      "file": "bookcase-closed-wide.glb",
+      "dimensions_m": [
+        1.6,
+        1.58,
+        0.5
+      ]
+    },
+    {
+      "source": "bookcaseClosedDoors",
+      "name": "Bookcase with doors",
+      "collection": "Storage",
+      "source_sha256": "25453bcc476f48040f933a9f2545759b3a9fe39f1baa5c7905f2389e1965dd2b",
+      "file": "bookcase-closed-doors.glb",
+      "dimensions_m": [
+        0.8,
+        1.7,
+        0.5
+      ]
+    },
+    {
+      "source": "cabinetTelevision",
+      "name": "Media cabinet",
+      "collection": "Storage",
+      "source_sha256": "6fe50f7d179e25b2c964565c942efdf00cf022d970aef6d8dc43f103fa356b58",
+      "file": "cabinet-television.glb",
+      "dimensions_m": [
+        1.6,
+        0.62,
+        0.5
+      ]
+    },
+    {
+      "source": "cabinetTelevisionDoors",
+      "name": "Closed media cabinet",
+      "collection": "Storage",
+      "source_sha256": "028d87267acb0fda4a0cb90e93a9290f60a9682f20a9007dd643aa8efddd9868",
+      "file": "cabinet-television-doors.glb",
+      "dimensions_m": [
+        1.6,
+        0.62,
+        0.52
+      ]
+    },
+    {
+      "source": "cardboardBoxClosed",
+      "name": "Sealed carton",
+      "collection": "Storage",
+      "source_sha256": "efeb76afdd71205526f7287735eb882341bec5c00925274e47c0e2f91c76ca4b",
+      "file": "cardboard-box-closed.glb",
+      "dimensions_m": [
+        0.425,
+        0.562,
+        0.425
+      ]
+    },
+    {
+      "source": "cardboardBoxOpen",
+      "name": "Open carton",
+      "collection": "Storage",
+      "source_sha256": "efb9ff5f7b9add312c4df303d0d164ac958c1fe3171992efb7e8b83550e17280",
+      "file": "cardboard-box-open.glb",
+      "dimensions_m": [
+        0.74375,
+        0.562,
+        0.425
+      ]
+    },
+    {
+      "source": "trashcan",
+      "name": "Waste bin",
+      "collection": "Storage",
+      "source_sha256": "6dfa042b5e6d5a9057218a0292380f29e68341913b2e27c32d1977a1c9f8fe7e",
+      "file": "trashcan.glb",
+      "dimensions_m": [
+        0.41539,
+        0.85573,
+        0.46825
+      ]
+    },
+    {
+      "source": "coatRack",
+      "name": "Wall coat rack",
+      "collection": "Storage",
+      "source_sha256": "82c825685dd196d02c09c7d1a851241d9886a3284d01c92fc83dbc94af401e7c",
+      "file": "coat-rack.glb",
+      "dimensions_m": [
+        0.896,
+        0.56,
+        0.2688
+      ]
+    },
+    {
+      "source": "coatRackStanding",
+      "name": "Standing coat rack",
+      "collection": "Storage",
+      "source_sha256": "85533b464044d4728fb8c12c6170be5eaf2ee9bf76f390a7a0aaac7e6b1354c7",
+      "file": "coat-rack-standing.glb",
+      "dimensions_m": [
+        0.5456,
+        1.54,
+        0.5456
+      ]
+    },
+    {
+      "source": "lampRoundFloor",
+      "name": "Round floor light",
+      "collection": "Details",
+      "source_sha256": "f2e46531dd98352951689c59b5f2a90b8b4b2a2b4482630a09c569423a7aabc4",
+      "file": "lamp-round-floor.glb",
+      "dimensions_m": [
+        0.30408,
+        1.72,
+        0.35112
+      ]
+    },
+    {
+      "source": "lampSquareFloor",
+      "name": "Square floor light",
+      "collection": "Details",
+      "source_sha256": "c4b35656f587cacf2ccf57d1c0216541923890e878cec0d0f58ff71cd4a71bfc",
+      "file": "lamp-square-floor.glb",
+      "dimensions_m": [
+        0.24,
+        1.72,
+        0.24
+      ]
+    },
+    {
+      "source": "lampRoundTable",
+      "name": "Round table light",
+      "collection": "Details",
+      "source_sha256": "cf867b4944b7086baec85e7617e8496b6011657cf3edd5d3e0b7301e25653d22",
+      "file": "lamp-round-table.glb",
+      "dimensions_m": [
+        0.30408,
+        0.6285,
+        0.35112
+      ]
+    },
+    {
+      "source": "lampSquareTable",
+      "name": "Square table light",
+      "collection": "Details",
+      "source_sha256": "10af72c09d7e63f914c2a1398e3f3c069ec988f5e6e7beb8e0d6d96e2a388bb8",
+      "file": "lamp-square-table.glb",
+      "dimensions_m": [
+        0.24,
+        0.58,
+        0.24
+      ]
+    },
+    {
+      "source": "plantSmall1",
+      "name": "Small succulent",
+      "collection": "Details",
+      "source_sha256": "39fe6c2793a23d0a7d60526f0390be9994c285565caf697ac87c4ce5b7cc3101",
+      "file": "plant-small1.glb",
+      "dimensions_m": [
+        0.18932,
+        0.28,
+        0.18932
+      ]
+    },
+    {
+      "source": "plantSmall2",
+      "name": "Leafy pot",
+      "collection": "Details",
+      "source_sha256": "146a9799904b6a20610c764f755991fd926fddda84ca1466a1f203ec19143971",
+      "file": "plant-small2.glb",
+      "dimensions_m": [
+        0.18932,
+        0.28,
+        0.18932
+      ]
+    },
+    {
+      "source": "plantSmall3",
+      "name": "Flower pot",
+      "collection": "Details",
+      "source_sha256": "95eaca90cf46d5b96ff0ec7b4bfe6e863fa9f6f04b54692b17d51b627a57dd56",
+      "file": "plant-small3.glb",
+      "dimensions_m": [
+        0.196,
+        0.29,
+        0.16974
+      ]
+    },
+    {
+      "source": "pottedPlant",
+      "name": "Tall potted plant",
+      "collection": "Details",
+      "source_sha256": "cf66928b943e30ef5c1f06145419ca2cda534249bb4d77831ae723532c4f8de3",
+      "file": "potted-plant.glb",
+      "dimensions_m": [
+        0.42412,
+        1.30803,
+        0.48292
+      ]
+    },
+    {
+      "source": "rugRectangle",
+      "name": "Rectangular rug",
+      "collection": "Details",
+      "source_sha256": "0cdd8cea357bc267c9f121b4e7d32513c08f1b179522d95c6632bf2306d38f79",
+      "file": "rug-rectangle.glb",
+      "dimensions_m": [
+        3.14,
+        0.02,
+        1.84
+      ]
+    },
+    {
+      "source": "rugRound",
+      "name": "Round rug",
+      "collection": "Details",
+      "source_sha256": "ca071d25535237ee190da696b63ef56d8ca2e3d33a181eee756725a62ffc70fa",
+      "file": "rug-round.glb",
+      "dimensions_m": [
+        1.84,
+        0.02,
+        1.84
+      ]
+    },
+    {
+      "source": "rugRounded",
+      "name": "Rounded rug",
+      "collection": "Details",
+      "source_sha256": "feaebd51056a70fc9ec8167dd52fb672ff8f21e25fdfcc020e5e15570d33df64",
+      "file": "rug-rounded.glb",
+      "dimensions_m": [
+        3.14,
+        0.02,
+        1.84
+      ]
+    },
+    {
+      "source": "rugSquare",
+      "name": "Square rug",
+      "collection": "Details",
+      "source_sha256": "586756faa819203ee6852d9b76e8e37b2892d35e051ea6a87d049fafdd806053",
+      "file": "rug-square.glb",
+      "dimensions_m": [
+        1.80865,
+        0.02,
+        1.84
+      ]
+    },
+    {
+      "source": "books",
+      "name": "Stack of books",
+      "collection": "Details",
+      "source_sha256": "91fd64f5fd821b5046724ffa18974e8964b85bfbd4a0d89687d2283966394f5f",
+      "file": "books.glb",
+      "dimensions_m": [
+        0.3009,
+        0.2078,
+        0.189
+      ]
+    },
+    {
+      "source": "bear",
+      "name": "Teddy bear",
+      "collection": "Details",
+      "source_sha256": "ab1ac2449bf5641c47c6601c5be8efead91e1e3473c7858753bd50f34b88e752",
+      "file": "bear.glb",
+      "dimensions_m": [
+        0.77942,
+        0.9,
+        0.495
+      ]
+    },
+    {
+      "source": "pillow",
+      "name": "Cushion",
+      "collection": "Details",
+      "source_sha256": "75dea57d540193b72f976e0ac551a7e6f202287375a03868054855aaa79a31c3",
+      "file": "pillow.glb",
+      "dimensions_m": [
+        0.46,
+        0.44433,
+        0.17697
+      ]
+    },
+    {
+      "source": "pillowLong",
+      "name": "Long cushion",
+      "collection": "Details",
+      "source_sha256": "2eda0a2ac555e704809a1f158163c46b27ae9acc24fb23d4530e69c1cd83f423",
+      "file": "pillow-long.glb",
+      "dimensions_m": [
+        0.77315,
+        0.44433,
+        0.17697
+      ]
+    }
+  ]
+}

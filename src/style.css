@@ -2637,6 +2637,12 @@ label > span {
   gap: 26px;
   padding: 26px;
 }
+.set-library-note {
+  margin: 0 0 15px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: #7b8870;
+}
 .character-maker label {
   margin: 0;
 }

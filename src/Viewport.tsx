@@ -354,7 +354,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
                 live.current.onError(
                   libraryEntry(a)
                     ? `Could not load ${e.name}. Try reloading the studio.`
-                    : `Could not load ${e.name}. Reimport the character from your files.`,
+                    : `Could not load ${e.name}. Reload the studio or reimport the asset.`,
                 );
             });
         } else

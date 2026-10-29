@@ -1,7 +1,18 @@
 import type { Asset } from "../shared/scene";
 import { libraryEntry } from "../shared/characterLibrary";
+import { furnitureEntry } from "../shared/furnitureLibrary";
+import { setLayout } from "../shared/setLayouts";
 export function AssetArt({ asset }: { asset: Asset }) {
-  const entry = libraryEntry(asset);
+  const entry = libraryEntry(asset) || furnitureEntry(asset);
+  if (setLayout(asset.id))
+    return (
+      <img
+        src={`/library/sets/${asset.id}.png`}
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+    );
   if (asset.thumbnail)
     return <img src={asset.thumbnail} alt="" loading="lazy" decoding="async" />;
   if (entry)

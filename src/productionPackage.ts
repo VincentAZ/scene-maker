@@ -5,6 +5,7 @@ import {
   libraryCharacters,
   libraryAssetURLs,
 } from "../shared/characterLibrary";
+import { furnitureAssets, furnitureURLs } from "../shared/furnitureLibrary";
 
 const adapters = {
   "blender_import.py": "blender_import.py",
@@ -35,7 +36,25 @@ export async function productionPackage(
     ...scene.customAssets.map((asset) => asset.design?.baseId),
   ]);
   const libraryAssets = libraryCharacters.filter((asset) => used.has(asset.id));
+  const furniture = furnitureAssets.filter((asset) => used.has(asset.id));
   const files = [
+    ...furniture.map((asset) => ({
+      url: asset.url!,
+      destination: "assets/furniture/" + asset.url!.split("/").pop(),
+      error: `Cannot package ${asset.name}. The library file is missing.`,
+    })),
+    ...(furniture.length ||
+    scene.customAssets.some(
+      (asset) => asset.url && furnitureURLs.has(asset.url),
+    )
+      ? [
+          {
+            url: "/library/furniture/LICENSE.txt",
+            destination: "assets/furniture/LICENSE.txt",
+            error: "The furniture library license could not be loaded.",
+          },
+        ]
+      : []),
     ...libraryAssets.map((asset) => ({
       url: asset.url!,
       destination: "assets/quaternius/" + asset.url!.split("/").pop(),

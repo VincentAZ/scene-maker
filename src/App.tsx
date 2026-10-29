@@ -45,6 +45,11 @@ import JSZip from "jszip";
 import { productionPackage } from "./productionPackage";
 import { CharacterCreator } from "./CharacterCreator";
 import { characterCollection, libraryEntry } from "../shared/characterLibrary";
+import {
+  furnitureCollections,
+  furnitureEntry,
+} from "../shared/furnitureLibrary";
+import { setLayout } from "../shared/setLayouts";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
@@ -386,10 +391,8 @@ export default function App() {
     setModal("path");
   }
   const entity = scene.entities.find((e) => e.id === selected);
-  const isCharacter =
-    entity &&
-    allAssets(scene).find((a) => a.id === entity.assetId)?.category ===
-      "characters";
+  const selectedAsset = allAssets(scene).find((a) => a.id === entity?.assetId);
+  const isCharacter = selectedAsset?.category === "characters";
   const cast = scene.entities.filter(
     (e) =>
       allAssets(scene).find((a) => a.id === e.assetId)?.category ===
@@ -837,12 +840,24 @@ export default function App() {
         (filter !== "My assets" ||
           scene.customAssets.some((c) => c.id === a.id)) &&
         (["All", "My assets"].includes(filter) ||
-          characterCollection(a) === filter) &&
+          (tab === "characters"
+            ? characterCollection(a)
+            : furnitureEntry(a)?.collection || "Essentials") === filter) &&
         (a.name + " " + a.style + " " + a.description)
           .toLowerCase()
           .includes(search.toLowerCase()),
     )
-    .sort((a, b) => Number(!!libraryEntry(b)) - Number(!!libraryEntry(a)));
+    .sort(
+      (a, b) =>
+        Number(!!(libraryEntry(b) || furnitureEntry(b) || setLayout(b.id))) -
+        Number(!!(libraryEntry(a) || furnitureEntry(a) || setLayout(a.id))),
+    );
+  const collectionFilters =
+    tab === "characters"
+      ? characterFilters
+      : tab === "props"
+        ? ["All", ...furnitureCollections, "Essentials", "My assets"]
+        : ["All", "My assets"];
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -953,18 +968,12 @@ export default function App() {
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 >
-                  {(tab === "characters"
-                    ? characterFilters
-                    : ["All", "My assets"]
-                  ).map((f) => (
+                  {collectionFilters.map((f) => (
                     <option key={f}>{f}</option>
                   ))}
                 </select>
                 <div className="filters">
-                  {(tab === "characters"
-                    ? characterFilters
-                    : ["All", "My assets"]
-                  ).map((f) => (
+                  {collectionFilters.map((f) => (
                     <button
                       key={f}
                       className={filter === f ? "active" : ""}
@@ -991,6 +1000,12 @@ export default function App() {
                 {tab === "motions" ? allMotions(scene).length : filtered.length}
               </span>
             </div>
+            {tab === "environments" && (
+              <p className="set-library-note">
+                Furnished sets bring editable props. Switching sets replaces
+                that furniture; your cast and props you added stay.
+              </p>
+            )}
             {tab === "motions" ? (
               <div className="motion-library">
                 {allMotions(scene)
@@ -1069,7 +1084,7 @@ export default function App() {
                       <span className="add-badge">
                         <Plus size={13} />
                       </span>
-                      {a.url && !libraryEntry(a) && (
+                      {a.url && !libraryEntry(a) && !furnitureEntry(a) && (
                         <span className="imported-badge">YOURS</span>
                       )}
                     </div>
@@ -1078,8 +1093,10 @@ export default function App() {
                       {a.category === "characters"
                         ? a.style
                         : a.category === "environments"
-                          ? "Complete set"
-                          : "Scene prop"}
+                          ? setLayout(a.id)
+                            ? `${setLayout(a.id)!.props.length} editable props`
+                            : "Scene backdrop"
+                          : furnitureEntry(a)?.collection || "Scene prop"}
                     </span>
                   </button>
                 ))}
@@ -1316,9 +1333,12 @@ export default function App() {
                 <span className="kbd">Scroll</span> to explore
               </span>
               <span>
-                {scene.environment === "cafe"
-                  ? "Corner café"
-                  : assets.find((a) => a.id === scene.environment)?.name}{" "}
+                {scene.environment === "room" &&
+                scene.entities.some((item) => item.setDressing)
+                  ? "Furnished room"
+                  : scene.environment === "cafe"
+                    ? "Corner café"
+                    : assets.find((a) => a.id === scene.environment)?.name}{" "}
                 <span className="dot-separator">/</span> {cast.length}{" "}
                 characters
               </span>
@@ -1616,6 +1636,7 @@ export default function App() {
                             ...structuredClone(entity),
                             id,
                             name: entity.name + " copy",
+                            setDressing: false,
                             position: [
                               entity.position[0] + 0.6,
                               entity.position[1],
@@ -1644,18 +1665,30 @@ export default function App() {
                         {entity.visible ? "Hide" : "Show"}
                       </button>
                     </div>
-                    <h3>Make it yours</h3>
-                    <label className="color-label">
-                      Signature color
-                      <input
-                        aria-label="Object color"
-                        type="color"
-                        value={entity.color}
-                        onChange={(e) =>
-                          update(entity.id, { color: e.target.value })
+                    {entity.setDressing && (
+                      <button
+                        className="secondary full"
+                        onClick={() =>
+                          update(entity.id, { setDressing: false })
                         }
-                      />
-                    </label>
+                      >
+                        Keep when switching sets
+                      </button>
+                    )}
+                    <h3>Make it yours</h3>
+                    {!selectedAsset?.url && (
+                      <label className="color-label">
+                        Signature color
+                        <input
+                          aria-label="Object color"
+                          type="color"
+                          value={entity.color}
+                          onChange={(e) =>
+                            update(entity.id, { color: e.target.value })
+                          }
+                        />
+                      </label>
+                    )}
                     <label>
                       Position
                       <div className="coordinates">

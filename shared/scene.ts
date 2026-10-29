@@ -3,6 +3,8 @@ import { interactionSessions } from "./interactions";
 import { ladderProfile } from "./ladder";
 import { libraryAssetURLs, libraryCharacters } from "./characterLibrary";
 import { characterDesignSchema, supportsGlasses } from "./characterDesign";
+import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
+import { setAssets, setLayout } from "./setLayouts";
 export const providers = [
   "openai",
   "anthropic",
@@ -148,8 +150,9 @@ export const assetSchema = z
       .refine(
         (url) =>
           /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
-          libraryAssetURLs.has(url),
-        "Choose an uploaded file or an existing library character.",
+          libraryAssetURLs.has(url) ||
+          furnitureURLs.has(url),
+        "Choose an uploaded file or an existing library asset.",
       )
       .optional(),
     description: z.string().max(1000).default(""),
@@ -214,6 +217,7 @@ export const entitySchema = z.object({
   model: z.string().max(200),
   clips: z.array(clipSchema).max(100),
   ending: z.enum(["hold", "rest"]).optional(),
+  setDressing: z.boolean().optional(),
 });
 export type Entity = z.infer<typeof entitySchema>;
 export const dialogueLineSchema = z.object({
@@ -235,6 +239,7 @@ export const sceneSchema = z.object({
     "park",
     "office",
     "street",
+    "room",
   ]),
   lighting: z.enum(["golden", "daylight", "moonlight"]),
   mission: z.string().max(4000),
@@ -352,6 +357,7 @@ export const environments: Asset[] = [
   "park",
   "office",
   "street",
+  "room",
 ].map((id) => ({
   id,
   name: (
@@ -362,6 +368,7 @@ export const environments: Asset[] = [
       park: "Quiet garden",
       office: "Creative office",
       street: "City corner",
+      room: "Empty room",
     } as Record<string, string>
   )[id],
   style: id,
@@ -375,7 +382,9 @@ export const assets = [
   ...characters,
   ...libraryCharacters,
   ...props,
+  ...furnitureAssets,
   ...environments,
+  ...setAssets,
 ];
 export const motions: Motion[] = [
   ["idle", "Breathe", 3, 0],
@@ -410,12 +419,49 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
     if (!e) throw Error("That scene object no longer exists.");
     return e;
   };
+  const clearDressing = () => {
+    const ids = new Set(
+      s.entities
+        .filter((entity) => entity.setDressing)
+        .map((entity) => entity.id),
+    );
+    s.entities = s.entities.filter((entity) => !ids.has(entity.id));
+    for (const entity of s.entities)
+      for (const clip of entity.clips)
+        if (clip.targetId && ids.has(clip.targetId)) delete clip.targetId;
+  };
   for (const cmd of commands) {
     if (cmd.type === "add") {
       const a = allAssets(s).find((a) => a.id === cmd.assetId);
       if (!a) throw Error("Asset not found.");
       if (a.category === "environments") {
+        clearDressing();
         s.environment = a.style as Scene["environment"];
+        const layout = setLayout(a.id);
+        if (layout) {
+          for (const placed of layout.props) {
+            const source = allAssets(s).find(
+              (asset) => asset.id === placed.assetId,
+            );
+            if (!source || source.category !== "props")
+              throw Error("A prop for this set is missing.");
+            s.entities.push({
+              id: uid(),
+              assetId: source.id,
+              name: source.name,
+              position: [...placed.position],
+              rotation: placed.rotation,
+              scale: placed.scale,
+              color: source.color,
+              visible: true,
+              personality: "",
+              provider: null,
+              model: "",
+              clips: [],
+              setDressing: true,
+            });
+          }
+        }
         continue;
       }
       s.entities.push({
@@ -476,7 +522,11 @@ export function applyCommands(scene: Scene, input: unknown): Scene {
       if (i >= 0 && j >= 0 && j < e.clips.length)
         [e.clips[i], e.clips[j]] = [e.clips[j], e.clips[i]];
     }
-    if (cmd.type === "scene") Object.assign(s, cmd.changes);
+    if (cmd.type === "scene") {
+      if (cmd.changes.environment && cmd.changes.environment !== s.environment)
+        clearDressing();
+      Object.assign(s, cmd.changes);
+    }
     if (cmd.type === "createAsset") {
       if (allAssets(s).some((a) => a.id === cmd.asset.id))
         throw Error("Choose a unique asset ID.");
