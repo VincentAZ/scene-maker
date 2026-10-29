@@ -4,35 +4,26 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 const exec = promisify(execFile);
-export const MAX_FILE = 200_000;
-const roots = new Set(["src", "shared", "server", "tests", "docs"]);
-const rootFiles = new Set([
-  "README.md",
-  "AGENTS.md",
-  "index.html",
-  "vite.config.ts",
-  "tsconfig.json",
-  "tsconfig.app.json",
-  "tsconfig.node.json",
-]);
+export const MAX_FILE = 2_000_000;
+/** Directories never listed or copied: build output, dependencies and git internals. */
+const skipped = new Set([".git", "node_modules", "dist", ".data"]);
+/**
+ * Validate a workspace-relative path. Any file in the checkout may be read or
+ * edited except git internals; traversal, absolute paths and control
+ * characters are rejected.
+ */
 export function codePath(name: string) {
   const bits = name.split("/");
   if (
-    !/^[a-zA-Z0-9_./@()[\] -]+$/.test(name) ||
+    !name ||
+    /[\0\r\n]/.test(name) ||
     name.includes("\\") ||
-    bits.some((b) => !b || b === "." || b === ".." || b.startsWith(".")) ||
+    bits.some((b) => !b || b === "." || b === "..") ||
     path.isAbsolute(name)
   )
-    throw Error("Use a relative source-file path.");
-  if (
-    !rootFiles.has(name) &&
-    !(roots.has(bits[0]) && /\.(tsx?|jsx?|css|json|md|html)$/.test(name))
-  )
-    throw Error(
-      "Only application source, tests and documentation can be edited. Dependencies, credentials and repository configuration are excluded.",
-    );
-  if (/(^|\/)(credentials?|secrets?|connections)\.json$/i.test(name))
-    throw Error("Credential files cannot be accessed.");
+    throw Error("Use a relative path inside the checkout.");
+  if (bits[0] === ".git")
+    throw Error("Git internals cannot be edited directly. Use the git tools.");
   return name;
 }
 export function safeFile(root: string, name: string) {
@@ -46,46 +37,35 @@ export function safeFile(root: string, name: string) {
   }
   return target;
 }
-export function sourceFiles(root: string): string[] {
+export function sourceFiles(root: string, under = ""): string[] {
   const result: string[] = [];
   function walk(dir: string, prefix = "") {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const name = prefix + entry.name;
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        if (
-          (!prefix && roots.has(name)) ||
-          (prefix &&
-            !entry.name.startsWith(".") &&
-            entry.name !== "node_modules")
-        )
-          walk(path.join(dir, entry.name), name + "/");
-      } else {
-        try {
-          codePath(name);
-          result.push(name);
-        } catch {
-          /* excluded */
-        }
-      }
+        if (!skipped.has(entry.name)) walk(path.join(dir, entry.name), name + "/");
+      } else result.push(name);
     }
   }
-  walk(root);
+  const start = under ? safeFile(root, under) : root;
+  if (!fs.existsSync(start)) throw Error("Directory not found.");
+  walk(start, under ? under.replace(/\/?$/, "/") : "");
   return result.sort();
 }
 export function readSource(root: string, name: string) {
-  // Dependencies are visible as metadata only, never editable.
-  const target =
-    name === "package.json" ? path.join(root, name) : safeFile(root, name);
-  if (fs.lstatSync(target).isSymbolicLink())
-    throw Error("Symbolic links cannot be accessed.");
+  const target = safeFile(root, name);
+  if (!fs.existsSync(target)) throw Error(`File not found: ${name}`);
   if (fs.statSync(target).size > MAX_FILE)
-    throw Error("File is too large. Use focused source files.");
-  return fs.readFileSync(target, "utf8");
+    throw Error("File is too large to read whole. Use runCommand with head, sed or grep.");
+  const content = fs.readFileSync(target);
+  if (content.includes(0))
+    throw Error("Binary file. Use runCommand to inspect it.");
+  return content.toString("utf8");
 }
 export function writeSource(root: string, name: string, content: string) {
-  if (Buffer.byteLength(content) > MAX_FILE || content.includes("\0"))
-    throw Error("Source file is too large or contains binary data.");
+  if (Buffer.byteLength(content) > MAX_FILE)
+    throw Error("Content is too large for one write. Split it or use runCommand.");
   const target = safeFile(root, name);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, content, { mode: 0o600 });
@@ -97,8 +77,8 @@ export async function git(root: string, args: string[], signal?: AbortSignal) {
     {
       cwd: root,
       signal,
-      timeout: 60_000,
-      maxBuffer: 4 * 1024 * 1024,
+      timeout: 120_000,
+      maxBuffer: 16 * 1024 * 1024,
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",
@@ -107,6 +87,21 @@ export async function git(root: string, args: string[], signal?: AbortSignal) {
     },
   );
   return stdout.trimEnd();
+}
+/** Paths with uncommitted changes in a checkout, including untracked files git does not ignore. */
+async function dirtyPaths(root: string) {
+  const raw = await git(root, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+    "--no-renames",
+  ]);
+  const entries = raw.split("\0").filter(Boolean);
+  return entries.map((entry) => ({
+    deleted: entry[1] === "D" || entry[0] === "D",
+    name: entry.slice(3),
+  }));
 }
 export async function snapshot(
   source: string,
@@ -119,15 +114,7 @@ export async function snapshot(
     (await git(source, ["branch", "--show-current"], signal)) || "main";
   await git(
     source,
-    [
-      "clone",
-      "--quiet",
-      "--no-hardlinks",
-      "--no-checkout",
-      "--",
-      source,
-      target,
-    ],
+    ["clone", "--quiet", "--no-hardlinks", "--no-checkout", "--", source, target],
     signal,
   );
   await git(target, ["checkout", "--quiet", "-b", branch, base], signal);
@@ -145,10 +132,21 @@ export async function snapshot(
       () => "studio@localhost",
     )) || "studio@localhost",
   ]);
-  const files = sourceFiles(source);
-  for (const name of sourceFiles(target))
-    if (!files.includes(name)) fs.unlinkSync(safeFile(target, name));
-  for (const name of files) writeSource(target, name, readSource(source, name));
+  // Carry every uncommitted change across so the agent works on what the studio runs.
+  for (const { name, deleted } of await dirtyPaths(source)) {
+    let from: string, to: string;
+    try {
+      from = safeFile(source, name);
+      to = safeFile(target, name);
+    } catch {
+      continue;
+    }
+    if (deleted || !fs.existsSync(from)) fs.rmSync(to, { force: true });
+    else {
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+    }
+  }
   await stageSources(target);
   const baselineFiles = (await git(target, ["diff", "--cached", "--name-only"]))
     .split("\n")
@@ -167,30 +165,8 @@ export async function snapshot(
   };
 }
 export async function stageSources(root: string) {
-  const changed = await git(root, [
-    "status",
-    "--porcelain=v1",
-    "-z",
-    "--untracked-files=all",
-  ]);
-  // Disable rename detection: every path is independently checked before staging.
-  const files = [
-    ...new Set(
-      (await git(root, ["diff", "--name-only", "--no-renames", "HEAD"]))
-        .split("\n")
-        .filter(Boolean)
-        .concat(sourceFiles(root)),
-    ),
-  ];
-  for (const name of files) {
-    try {
-      codePath(name);
-    } catch {
-      continue;
-    }
-    await git(root, ["add", "-A", "--", name]);
-  }
-  return changed;
+  await git(root, ["add", "-A", "--", "."]);
+  return git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
 }
 export function reviewHash(diff: string) {
   return createHash("sha256").update(diff).digest("hex");
@@ -278,8 +254,8 @@ export async function sandboxCheck(
       sandboxArgs(checkout, dependencies, command),
       {
         signal,
-        timeout: 120_000,
-        maxBuffer: 2 * 1024 * 1024,
+        timeout: 15 * 60_000,
+        maxBuffer: 8 * 1024 * 1024,
         killSignal: "SIGKILL",
       },
     );

@@ -16,6 +16,14 @@ export type CodingTask = {
   baseBranch: string;
   status: CodingStatus;
   created: number;
+  /** When the current run began working. */
+  started?: number;
+  /** Last activity from the run, for liveness display. */
+  updated?: number;
+  /** Model turns completed in the current run. */
+  step?: number;
+  /** Configured step limit; 0 means unlimited. */
+  maxSteps?: number;
   provider: string;
   model: string;
   summary: string;
@@ -29,10 +37,23 @@ export type CodingTask = {
   checkedReview?: string;
   checks: { name: string; ok: boolean; output: string }[];
   commit?: string;
+  /** The agent pushed the branch itself. */
+  pushed?: boolean;
+  /** The agent merged the branch into the running studio and restarted it. */
+  deployed?: boolean;
   previewUrl?: string;
   compareUrl?: string;
   pullRequestUrl?: string;
 };
+export type McpServerConfig =
+  | {
+      transport: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+      cwd?: string;
+    }
+  | { transport: "http" | "sse"; url: string; headers?: Record<string, string> };
 export type CodingInfo = {
   repository: string;
   remote: string;
@@ -40,7 +61,12 @@ export type CodingInfo = {
   reason?: string;
   provider: string | null;
   model: string;
+  mcpServers: string[];
+  maxSteps: number;
+  timeoutMinutes: number;
   tasks: CodingTask[];
 };
 export const codingBusy = (s: CodingStatus) =>
   ["preparing", "working", "checking", "publishing"].includes(s);
+/** Activity lines the model wrote itself carry this prefix. */
+export const NARRATION = "Assistant: ";

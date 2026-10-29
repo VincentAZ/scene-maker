@@ -9,7 +9,8 @@ import { z } from "zod";
 import { dataDir, atomicWrite } from "./storage";
 import { modelFor, type Config } from "./ai";
 import { providerErrorMessage } from "./providerErrors";
-import { runCodingAgent } from "./codingAgent";
+import { runCodingAgent, codingStepLimit } from "./codingAgent";
+import { deployBranch } from "./codingDeploy";
 import {
   git,
   snapshot,
@@ -36,7 +37,10 @@ type Dependencies = {
   check?: typeof sandboxCheck;
   remote?: string;
   probeSandbox?: () => Promise<void>;
+  deploy?: typeof deployBranch;
 };
+export const codingTimeoutMinutes = () =>
+  Math.max(0, Number(process.env.SCENE_MAKER_CODING_TIMEOUT_MINUTES) || 0);
 export class CodingService {
   readonly tasks = new Map<string, CodingTask>();
   private running = new Map<string, AbortController>();
@@ -49,7 +53,11 @@ export class CodingService {
       const file = path.join(options.tasksDir, entry, "task.json");
       if (!fs.existsSync(file)) continue;
       const task = JSON.parse(fs.readFileSync(file, "utf8")) as CodingTask;
-      if (codingBusy(task.status)) {
+      if (codingBusy(task.status) && task.deployed) {
+        task.status = "pushed";
+        task.summary ||= "Deployed to the running studio.";
+        task.events = [...task.events, "The studio restarted with this change."];
+      } else if (codingBusy(task.status)) {
         task.status = "failed";
         task.error =
           "The studio restarted during this task. Review its changes and retry.";
@@ -73,8 +81,18 @@ export class CodingService {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     atomicWrite(path.join(dir, "task.json"), task);
   }
-  private event(task: CodingTask, message: string) {
-    task.events = [...task.events.slice(-79), message.slice(0, 500)];
+  private event(
+    task: CodingTask,
+    message: string,
+    progress?: { step: number; maxSteps: number },
+  ) {
+    task.updated = Date.now();
+    if (progress) {
+      task.step = progress.step;
+      task.maxSteps = progress.maxSteps;
+    }
+    if (message)
+      task.events = [...task.events.slice(-399), message.slice(0, 2000)];
     this.save(task);
   }
   async remote() {
@@ -132,6 +150,9 @@ export class CodingService {
       model: config.assistant
         ? config.providers[config.assistant]?.model || ""
         : "",
+      mcpServers: Object.keys(config.mcpServers || {}),
+      maxSteps: codingStepLimit(),
+      timeoutMinutes: codingTimeoutMinutes(),
       tasks: [...this.tasks.values()].sort((a, b) => b.created - a.created),
     };
   }
@@ -159,6 +180,10 @@ export class CodingService {
         baseBranch: "",
         status: "preparing",
         created: Date.now(),
+        started: Date.now(),
+        updated: Date.now(),
+        step: 0,
+        maxSteps: codingStepLimit(),
         provider: info.provider!,
         model: info.model,
         summary: "",
@@ -199,6 +224,10 @@ export class CodingService {
     task.error = undefined;
     task.previewUrl = undefined;
     task.checkedReview = undefined;
+    task.started = Date.now();
+    task.updated = Date.now();
+    task.step = 0;
+    task.maxSteps = codingStepLimit();
     const controller = new AbortController();
     this.running.set(id, controller);
     this.save(task);
@@ -237,7 +266,10 @@ export class CodingService {
     controller: AbortController,
     prepare: boolean,
   ) {
-    const timeout = setTimeout(() => controller.abort(), 15 * 60_000);
+    const minutes = codingTimeoutMinutes();
+    const timeout = minutes
+      ? setTimeout(() => controller.abort(), minutes * 60_000)
+      : undefined;
     const signal = controller.signal;
     try {
       if (prepare) {
@@ -254,21 +286,66 @@ export class CodingService {
       }
       signal.throwIfAborted();
       task.status = "working";
+      task.started = Date.now();
       this.event(task, `Implementing with ${task.provider} · ${task.model}`);
       const feedback = task.checks
         .filter((c) => !c.ok)
         .map((c) => `${c.name}: ${c.output}`)
         .join("\n");
+      const remote = await this.remote();
       task.summary = await (this.options.generate || runCodingAgent)(
         config,
         this.checkout(task.id),
         task.prompt + (feedback ? "\nPrevious checks:\n" + feedback : ""),
         signal,
-        (message) => this.event(task, message),
+        (message, progress) => this.event(task, message, progress),
+        undefined,
+        {
+          remote: remote || undefined,
+          branch: task.branch,
+          mcpServers: config.mcpServers,
+          dependencies: path.join(this.options.root, "node_modules"),
+          onCommit: (commit) => {
+            task.commit = commit;
+            this.save(task);
+          },
+          onPush: (commit) => {
+            task.commit = commit;
+            task.pushed = true;
+            const repo = githubRepository(remote);
+            task.compareUrl = repo
+              ? `https://github.com/${repo}/compare/${encodeURIComponent(task.baseBranch)}...${encodeURIComponent(task.branch)}?expand=1`
+              : undefined;
+            this.save(task);
+          },
+          deploy: async () => {
+            const result = await (this.options.deploy || deployBranch)(
+              this.options.root,
+              this.checkout(task.id),
+              task.branch,
+              signal,
+            );
+            task.commit = await git(this.checkout(task.id), ["rev-parse", "HEAD"]);
+            task.deployed = true;
+            await this.refresh(task);
+            this.event(task, result);
+            return result;
+          },
+        },
       );
       signal.throwIfAborted();
       await this.refresh(task);
-      if (!task.files.length)
+      if (task.deployed || task.pushed) {
+        task.status = "pushed";
+        this.event(
+          task,
+          task.deployed
+            ? "Deployed. The studio restarts with this change."
+            : "The branch is pushed. Checks run in the studio sandbox were skipped because the agent verified and pushed itself.",
+        );
+        return;
+      }
+      if (!task.files.length && !task.commit)
         throw Error(
           "The assistant made no source changes. Refine the request and try again.",
         );
@@ -342,13 +419,15 @@ export class CodingService {
     } catch (error) {
       task.status = signal.aborted ? "cancelled" : "failed";
       task.error = signal.aborted
-        ? "Task stopped. Partial changes are kept for review."
+        ? minutes && Date.now() - (task.started || 0) >= minutes * 60_000
+          ? `Stopped after the configured ${minutes}-minute limit. Partial changes are kept for review.`
+          : "Task stopped. Partial changes are kept for review."
         : providerErrorMessage(error) ||
           (error as Error).message.slice(0, 1000);
       await this.refresh(task).catch(() => {});
       this.save(task);
     } finally {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       this.running.delete(task.id);
     }
   }
@@ -508,7 +587,7 @@ export function codingRouter(
   router.get("/", async (_req, res) => res.json(await service.info()));
   router.post("/tasks", async (req, res) => {
     const { prompt } = z
-      .object({ prompt: z.string().trim().min(4).max(6000) })
+      .object({ prompt: z.string().trim().min(4).max(60_000) })
       .parse(req.body);
     res.status(202).json(await service.start(prompt));
   });
@@ -520,7 +599,7 @@ export function codingRouter(
   );
   router.post("/tasks/:id/retry", async (req, res) => {
     const { prompt } = z
-      .object({ prompt: z.string().trim().min(4).max(6000) })
+      .object({ prompt: z.string().trim().min(4).max(60_000) })
       .parse(req.body);
     res.status(202).json(await service.retry(String(req.params.id), prompt));
   });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Code2,
   ArrowUp,
@@ -6,9 +6,60 @@ import {
   GitBranch,
   Square,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { api } from "./api";
-import { codingBusy, type CodingInfo, type CodingTask } from "../shared/coding";
+import {
+  codingBusy,
+  NARRATION,
+  type CodingInfo,
+  type CodingTask,
+} from "../shared/coding";
+function duration(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600),
+    m = Math.floor((total % 3600) / 60),
+    s = total % 60;
+  const mm = String(m).padStart(h ? 2 : 1, "0"),
+    ss = String(s).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+const phases: Record<string, string> = {
+  preparing: "Preparing a private checkout",
+  working: "Engineer working",
+  checking: "Running checks",
+  publishing: "Pushing branch",
+};
+function Progress({ task, now }: { task: CodingTask; now: number }) {
+  const started = task.started || task.created;
+  const idle = task.updated ? now - task.updated : 0;
+  const last = task.events[task.events.length - 1] || "";
+  const current = last.startsWith(NARRATION) ? last.slice(NARRATION.length) : last;
+  return (
+    <div className="coding-progress" role="status" aria-live="polite">
+      <div className="coding-progress-head">
+        <Loader2 size={16} className="spin" aria-hidden />
+        <strong>{phases[task.status] || task.status}</strong>
+        <span className="coding-progress-meta">
+          {duration(now - started)}
+          {task.status === "working" && task.step
+            ? ` · step ${task.step}${task.maxSteps ? ` of ${task.maxSteps}` : ""}`
+            : ""}
+        </span>
+      </div>
+      {current && <p className="coding-now">{current}</p>}
+      <p className="coding-progress-note">
+        {idle > 45_000
+          ? `Waiting on the model for ${duration(idle)}. Long turns with extended thinking can take a few minutes; nothing is stuck unless this keeps climbing.`
+          : task.status === "working"
+            ? "The engineer narrates each step below. Stop at any time; partial work is kept."
+            : task.status === "checking"
+              ? "TypeScript, tests and the production build run in an isolated sandbox."
+              : ""}
+      </p>
+    </div>
+  );
+}
 export function CodingAssistant() {
   const [info, setInfo] = useState<CodingInfo | null>(null);
   const [selected, setSelected] = useState("");
@@ -18,6 +69,8 @@ export function CodingAssistant() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [fullDiff, setFullDiff] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const log = useRef<HTMLOListElement>(null);
   const task = info?.tasks.find((t) => t.id === selected) ?? info?.tasks[0];
   async function load() {
     const next = await api<CodingInfo>("/api/coding");
@@ -33,7 +86,7 @@ export function CodingAssistant() {
       } catch (e) {
         if (active) setError((e as Error).message);
       }
-      if (active) timer = setTimeout(refresh, 2000);
+      if (active) timer = setTimeout(refresh, 1500);
     };
     void refresh();
     return () => {
@@ -41,10 +94,21 @@ export function CodingAssistant() {
       clearTimeout(timer);
     };
   }, []);
+  const running = info?.tasks.some((t) => codingBusy(t.status));
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
   useEffect(() => {
     setAcknowledged(false);
     setPreviewUrl("");
   }, [task?.id, task?.review]);
+  const eventCount = task?.events.length || 0;
+  useEffect(() => {
+    const list = log.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [eventCount, task?.id]);
   async function action(fn: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -59,7 +123,6 @@ export function CodingAssistant() {
   }
   const post = <T,>(url: string, body = {}) =>
     api<T>(url, { method: "POST", body: JSON.stringify(body) });
-  const running = info?.tasks.some((t) => codingBusy(t.status));
   const canPublish =
     task &&
     (task.status === "ready" || (task.status === "failed" && !!task.commit));
@@ -69,14 +132,26 @@ export function CodingAssistant() {
         <Code2 size={24} />
         <h2>Build your studio.</h2>
         <p>
-          Describe a feature or fix. Review the code, try the preview, then push
-          a branch.
+          Describe a feature or fix. The studio engineer reads, edits, runs the
+          checks, and can commit, push and deploy when you ask it to.
         </p>
       </div>
       <div className="coding-provider">
         {info?.provider
           ? `${info.provider} · ${info.model}`
           : "Connect an AI provider in Studio settings."}
+        {info && (
+          <span className="coding-limits">
+            {info.maxSteps ? `${info.maxSteps} steps` : "Unlimited steps"} ·{" "}
+            {info.timeoutMinutes
+              ? `${info.timeoutMinutes} min limit`
+              : "No time limit"}{" "}
+            ·{" "}
+            {info.mcpServers.length
+              ? `MCP: ${info.mcpServers.join(", ")}`
+              : "No MCP servers"}
+          </span>
+        )}
       </div>
       {info?.reason && (
         <p role="status" className="coding-notice">
@@ -100,13 +175,13 @@ export function CodingAssistant() {
           id="coding-prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          maxLength={6000}
-          placeholder="Add rotation handles to selected assets…"
+          maxLength={60000}
+          placeholder="Add rotation handles to selected assets, run the checks, then commit and push…"
           rows={4}
         />
         <p className="muted">
-          Relevant source files are sent to your selected provider. Uses your
-          existing API connection.
+          Source files, command output and MCP results are sent to your
+          selected provider. Uses your existing API connection.
         </p>
         <button
           className="primary"
@@ -158,26 +233,50 @@ export function CodingAssistant() {
       )}
       {task && (
         <article className="coding-task">
-          <div className="row">
-            <strong>
-              {task.status === "ready"
-                ? "Ready for review"
-                : task.status === "pushed"
-                  ? "Branch pushed"
-                  : task.status}
-            </strong>
-            {codingBusy(task.status) && task.status !== "publishing" && (
-              <button
-                className="text-button"
-                disabled={busy}
-                onClick={() =>
-                  void action(() => post(`/api/coding/tasks/${task.id}/stop`))
+          {codingBusy(task.status) ? (
+            <div className="row coding-status-row">
+              <Progress task={task} now={now} />
+              {task.status !== "publishing" && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() =>
+                    void action(() =>
+                      post(`/api/coding/tasks/${task.id}/stop`),
+                    )
+                  }
+                >
+                  <Square size={12} /> Stop
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="row">
+              <strong
+                className={
+                  task.status === "failed" ? "coding-state-failed" : ""
                 }
               >
-                <Square size={12} /> Stop
-              </button>
-            )}
-          </div>
+                {task.status === "ready"
+                  ? "Ready for review"
+                  : task.status === "pushed"
+                    ? task.deployed
+                      ? "Deployed to the studio"
+                      : "Branch pushed"
+                    : task.status === "failed"
+                      ? "Failed"
+                      : task.status === "cancelled"
+                        ? "Stopped"
+                        : task.status}
+              </strong>
+              {task.started && task.updated && (
+                <span className="coding-progress-meta">
+                  ran {duration(task.updated - task.started)}
+                  {task.step ? ` · ${task.step} steps` : ""}
+                </span>
+              )}
+            </div>
+          )}
           <h3>{task.prompt}</h3>
           <p className="coding-branch">
             <GitBranch size={14} />
@@ -190,11 +289,17 @@ export function CodingAssistant() {
             </p>
           )}
           <details open={codingBusy(task.status)}>
-            <summary>Activity</summary>
-            <ol className="coding-events">
-              {task.events.map((event, i) => (
-                <li key={i}>{event}</li>
-              ))}
+            <summary>Activity · {task.events.length}</summary>
+            <ol className="coding-events" ref={log}>
+              {task.events.map((event, i) =>
+                event.startsWith(NARRATION) ? (
+                  <li key={i} className="coding-narration">
+                    {event.slice(NARRATION.length)}
+                  </li>
+                ) : (
+                  <li key={i}>{event}</li>
+                ),
+              )}
             </ol>
           </details>
           {!!task.checks.length && (
@@ -322,6 +427,11 @@ export function CodingAssistant() {
             <div className="coding-actions">
               <p>
                 Commit <code>{task.commit?.slice(0, 12)}</code>
+                {task.deployed
+                  ? " · merged into the studio checkout and live after restart"
+                  : task.pushed
+                    ? " · pushed by the engineer"
+                    : ""}
               </p>
               {task.compareUrl && (
                 <a href={task.compareUrl} target="_blank" rel="noreferrer">
@@ -333,17 +443,19 @@ export function CodingAssistant() {
                   Open pull request <ExternalLink size={13} />
                 </a>
               ) : (
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() =>
-                    void action(() =>
-                      post(`/api/coding/tasks/${task.id}/pull-request`),
-                    )
-                  }
-                >
-                  Create draft pull request
-                </button>
+                !task.deployed && (
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() =>
+                      void action(() =>
+                        post(`/api/coding/tasks/${task.id}/pull-request`),
+                      )
+                    }
+                  >
+                    Create draft pull request
+                  </button>
+                )
               )}
             </div>
           )}
@@ -353,7 +465,7 @@ export function CodingAssistant() {
         <div className="coding-empty">
           <GitBranch size={26} />
           <p>Your first coding task starts here.</p>
-          <span>Private checkout → checks → review → branch</span>
+          <span>Private checkout → engineer → checks → review → branch</span>
         </div>
       )}
     </section>

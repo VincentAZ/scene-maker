@@ -68,24 +68,31 @@ async function settled(task: CodingTask) {
   expect(codingBusy(task.status), task.error).toBe(false);
   return task;
 }
-it("rejects traversal, hidden files, credentials and dependency edits", () => {
+it("rejects traversal and git internals but allows every other checkout file", () => {
   for (const p of [
     "../secrets.ts",
     "/tmp/x.ts",
     "src/../../x.ts",
-    "src/.env.ts",
     "src/x\ny.ts",
-    "src/secret.json",
-    "server/connections.json",
-    "package.json",
-    "package-lock.json",
     ".git/config",
-    "node_modules/x.ts",
-    "public/x.js",
+    "",
+    "src//x.ts",
   ])
     expect(() => codePath(p), p).toThrow();
-  expect(codePath("src/nested/example.tsx")).toBe("src/nested/example.tsx");
+  for (const p of [
+    "src/nested/example.tsx",
+    "package.json",
+    "package-lock.json",
+    "src/.env.ts",
+    "public/x.js",
+    "scripts/tool.py",
+  ])
+    expect(codePath(p), p).toBe(p);
   expect(readSource(root, "package.json")).toContain("fixture");
+  writeSource(root, "public/x.js", "ok");
+  expect(sourceFiles(root)).toContain("public/x.js");
+  expect(sourceFiles(root)).not.toContain(".git/HEAD");
+  expect(sourceFiles(root).some((f) => f.startsWith("node_modules/"))).toBe(false);
 });
 it("rejects both live and dangling symlink escapes", () => {
   fs.symlinkSync(path.join(dir, "missing"), path.join(root, "src/link.ts"));
@@ -320,9 +327,182 @@ it("executes the real AI SDK tool loop, blocks traversal, and edits source", asy
   expect(result).toBe("Updated the example.");
   expect(readSource(root, "src/example.ts")).toContain("value = 4");
   expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain(
-    "relative source-file path",
+    "relative path inside the checkout",
   );
   expect(events).toContain("Updated src/example.ts");
+});
+
+const usage = {
+  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 1, text: 1, reasoning: 0 },
+};
+const toolCall = (name: string, input: object, id: string, text = "") => ({
+  content: [
+    ...(text ? [{ type: "text" as const, text }] : []),
+    {
+      type: "tool-call" as const,
+      toolCallId: id,
+      toolName: name,
+      input: JSON.stringify(input),
+    },
+  ],
+  finishReason: { unified: "tool-calls" as const, raw: undefined },
+  usage,
+  warnings: [],
+});
+const finalText = (text: string) => ({
+  content: [{ type: "text" as const, text }],
+  finishReason: { unified: "stop" as const, raw: undefined },
+  usage,
+  warnings: [],
+});
+
+it("narrates steps, reports progress, runs commands, commits and pushes on its own", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { runCodingAgent } = await import("../server/codingAgent");
+  const model = new MockLanguageModelV4({
+    doGenerate: [
+      toolCall("runCommand", { command: "echo hello-from-shell && git status --short" }, "run", "Checking the workspace first."),
+      toolCall("editFile", { path: "src/example.ts", oldText: "value = 1", newText: "value = 5" }, "edit", "Applying the change."),
+      toolCall("gitCommit", { message: "Set value to 5" }, "commit", "Committing the verified change."),
+      toolCall("gitPush", {}, "push"),
+      finalText("Done: value is 5, committed and pushed."),
+    ],
+  });
+  const events: string[] = [];
+  const progress: number[] = [];
+  const pushes: string[] = [];
+  const result = await runCodingAgent(
+    config,
+    root,
+    "Set value to 5, commit and push",
+    new AbortController().signal,
+    (text, p) => {
+      if (text) events.push(text);
+      if (p) progress.push(p.step);
+    },
+    () => model,
+    { remote, branch: "studio/test-branch", onPush: (c) => pushes.push(c) },
+  );
+  expect(result).toContain("committed and pushed");
+  expect(events).toContain("Assistant: Checking the workspace first.");
+  expect(events.some((e) => e.startsWith("Running: echo hello-from-shell"))).toBe(true);
+  expect(events.some((e) => e.startsWith("Committed "))).toBe(true);
+  expect(events.some((e) => e.startsWith("Pushed studio/test-branch"))).toBe(true);
+  expect(progress).toEqual([1, 2, 3, 4, 5]);
+  const run = JSON.stringify(model.doGenerateCalls[1].prompt);
+  expect(run).toContain("hello-from-shell");
+  expect(run).toContain('"exitCode":0');
+  expect(pushes).toHaveLength(1);
+  expect(await git(remote, ["rev-parse", "refs/heads/studio/test-branch"])).toBe(pushes[0]);
+  expect(await git(root, ["log", "-1", "--format=%s"])).toBe("Set value to 5");
+});
+
+it("has no step limit unless one is configured", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { runCodingAgent } = await import("../server/codingAgent");
+  const many = Array.from({ length: 40 }, (_, i) =>
+    toolCall("readFile", { path: "src/example.ts" }, `read-${i}`),
+  );
+  const model = new MockLanguageModelV4({ doGenerate: [...many, finalText("Read it forty times.")] });
+  const signal = new AbortController().signal;
+  expect(await runCodingAgent(config, root, "Read a lot", signal, () => {}, () => model)).toBe(
+    "Read it forty times.",
+  );
+  const limited = new MockLanguageModelV4({ doGenerate: [...many, finalText("never")] });
+  await expect(
+    runCodingAgent(config, root, "Read a lot", signal, () => {}, () => limited, { maxSteps: 3 }),
+  ).rejects.toThrow("limit of 3 steps");
+});
+
+it("connects configured MCP servers and exposes their tools to the engineer", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { runCodingAgent } = await import("../server/codingAgent");
+  const model = new MockLanguageModelV4({
+    doGenerate: [
+      toolCall("fixture__echo", { text: "ping" }, "mcp"),
+      finalText("The server answered."),
+    ],
+  });
+  const events: string[] = [];
+  const result = await runCodingAgent(
+    config,
+    root,
+    "Use the fixture server",
+    new AbortController().signal,
+    (text) => text && events.push(text),
+    () => model,
+    {
+      mcpServers: {
+        fixture: {
+          transport: "stdio",
+          command: process.execPath,
+          args: [path.resolve("tests/fixtures/mcp-server.mjs")],
+        },
+      },
+    },
+  );
+  expect(result).toBe("The server answered.");
+  expect(events).toContain("Connected MCP server fixture (1 tools)");
+  expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain("echo: ping");
+});
+
+it("marks agent-pushed and agent-deployed tasks without re-running sandbox checks", async () => {
+  let checks = 0;
+  const deployed: string[] = [];
+  const s = service({
+    check: async () => {
+      checks++;
+      return { ok: true, output: "" };
+    },
+    deploy: async (_root, _checkout, branch) => {
+      deployed.push(branch);
+      return "deployed " + branch;
+    },
+    generate: async (_config, checkout, _prompt, _signal, _emit, _model, options) => {
+      writeSource(checkout, "src/example.ts", "export const value = 7;\n");
+      await git(checkout, ["add", "-A"]);
+      await git(checkout, ["commit", "-m", "Set 7"]);
+      const commit = await git(checkout, ["rev-parse", "HEAD"]);
+      options?.onCommit?.(commit);
+      await git(checkout, ["push", "--", options!.remote!, `${commit}:refs/heads/${options!.branch}`]);
+      options?.onPush?.(commit);
+      await options?.deploy?.();
+      return "Pushed and deployed.";
+    },
+  });
+  const task = await settled(await s.start("Set value to 7, push and deploy"));
+  expect(task.status, task.error).toBe("pushed");
+  expect(task.pushed).toBe(true);
+  expect(task.deployed).toBe(true);
+  expect(task.commit).toBeTruthy();
+  expect(checks).toBe(0);
+  expect(deployed).toEqual([task.branch]);
+  expect(await git(remote, ["rev-parse", `refs/heads/${task.branch}`])).toBe(task.commit);
+  expect(task.diff).toContain("value = 7");
+  // A restart during a deployed task reports success rather than failure.
+  task.status = "working";
+  fs.writeFileSync(path.join(dir, ".tasks", task.id, "task.json"), JSON.stringify(task));
+  expect(service().get(task.id).status).toBe("pushed");
+});
+
+it("merges a committed task branch into the studio checkout for self-deploy", async () => {
+  const { deployBranch } = await import("../server/codingDeploy");
+  fs.writeFileSync(path.join(root, "package.json"), '{"name":"fixture","scripts":{"build":"echo built"}}');
+  fs.writeFileSync(path.join(root, "start.sh"), "#!/bin/sh\nexit 0\n");
+  await git(root, ["add", "-A"]);
+  await git(root, ["commit", "-m", "Add build"]);
+  const s = service();
+  const task = await settled(await s.start("Change the example value"));
+  await git(s.checkout(task.id), ["commit", "-m", "Set 2"]);
+  const result = await deployBranch(root, s.checkout(task.id), task.branch, new AbortController().signal);
+  expect(result).toContain("rebuilt");
+  expect(readSource(root, "src/example.ts")).toContain("value = 2");
+  expect(await git(root, ["branch", "--show-current"])).toBe("main");
+  writeSource(root, "src/example.ts", "dirty");
+  await expect(
+    deployBranch(root, s.checkout(task.id), task.branch, new AbortController().signal),
+  ).rejects.toThrow("uncommitted");
 });
 
 it("round-trips a coding task through the HTTP API and publishes the reviewed diff", async () => {

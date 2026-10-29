@@ -142,6 +142,14 @@ function connectionSummary(c: Config) {
     assistant: c.assistant,
     blender: c.blender,
     speech: speech.summary(c),
+    mcpServers: Object.fromEntries(
+      Object.entries(c.mcpServers || {}).map(([name, server]) => [
+        name,
+        server.transport === "stdio"
+          ? { transport: "stdio", command: [server.command, ...(server.args || [])].join(" "), env: Object.keys(server.env || {}) }
+          : { transport: server.transport, url: server.url, headers: Object.keys(server.headers || {}) },
+      ]),
+    ),
     providers: Object.fromEntries(
       providers.map((p) => [
         p,
@@ -179,9 +187,35 @@ app.put("/api/connections", (req, res) => {
         assistant: z.enum(providers).nullable().optional(),
         blender: z.string().min(1).max(1000).optional(),
         elevenlabsKey: z.string().trim().max(1000).optional(),
+        mcpServers: z
+          .record(
+            z.string().trim().min(1).max(60),
+            z.discriminatedUnion("transport", [
+              z.object({
+                transport: z.literal("stdio"),
+                command: z.string().trim().min(1).max(1000),
+                args: z.array(z.string().max(2000)).max(100).optional(),
+                env: z.record(z.string(), z.string().max(4000)).optional(),
+                cwd: z.string().max(1000).optional(),
+              }),
+              z.object({
+                transport: z.enum(["http", "sse"]),
+                url: z.string().url().max(2000),
+                headers: z.record(z.string(), z.string().max(4000)).optional(),
+              }),
+            ]),
+          )
+          .optional(),
+        removeMcpServer: z.string().trim().min(1).max(60).optional(),
       })
       .parse(req.body),
     c = config();
+  if (body.mcpServers !== undefined)
+    c.mcpServers = { ...c.mcpServers, ...body.mcpServers };
+  if (body.removeMcpServer && c.mcpServers) {
+    delete c.mcpServers[body.removeMcpServer];
+    if (!Object.keys(c.mcpServers).length) c.mcpServers = undefined;
+  }
   if (body.elevenlabsKey !== undefined)
     c.speech = {
       ...c.speech,

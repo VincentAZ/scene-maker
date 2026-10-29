@@ -16,6 +16,22 @@ PROFILE="${XDG_DATA_HOME:-$HOME/.local/share}/scene-maker/browser"
 
 running() { curl -fs -o /dev/null "$URL/api/health"; }
 
+if [ "${1:-}" = --restart ]; then
+  # Used by the studio engineer after a self-deploy: stop whatever answers on the port, then start again
+  # without opening another window; the open app window reconnects on its own.
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    kill "$(cat "$PIDFILE")" || true
+  fi
+  for _ in $(seq 1 30); do running || break; sleep 1; done
+  rm -f "$PIDFILE"
+  mkdir -p "$DATA"
+  echo "Restarting Scene Maker service at $URL (log: $LOG)" >>"$LOG"
+  PORT="$PORT" nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
+  echo $! >"$PIDFILE"
+  for _ in $(seq 1 60); do running && break; sleep 1; done
+  exit 0
+fi
+
 if [ "${1:-}" = --stop ]; then
   if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     kill "$(cat "$PIDFILE")" && echo "Scene Maker service stopped."

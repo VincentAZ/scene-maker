@@ -1,4 +1,5 @@
 import { effectiveThinking, type ThinkingLevel } from "../shared/thinking";
+import type { McpServerConfig } from "../shared/coding";
 import { generateText, Output } from "ai";
 import { providerErrorMessage } from "./providerErrors";
 import {
@@ -45,6 +46,8 @@ export type Config = {
   blender: string;
   /** Speech-only services; OpenAI voices reuse the OpenAI provider key. */
   speech?: { elevenlabs?: { key: string } };
+  /** MCP servers the studio engineer connects to for every coding task. */
+  mcpServers?: Record<string, McpServerConfig>;
 };
 export function thinkingFor(
   config: Config,

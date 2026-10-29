@@ -21,7 +21,29 @@ export type ConnectionsData = {
     elevenlabs: boolean;
     piper: { engine: boolean; voices: number };
   };
+  mcpServers?: Record<
+    string,
+    {
+      transport: string;
+      command?: string;
+      url?: string;
+      env?: string[];
+      headers?: string[];
+    }
+  >;
 };
+const mcpExample = `{
+  "filesystem": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/me/assets"]
+  },
+  "remote-tools": {
+    "transport": "http",
+    "url": "https://example.com/mcp",
+    "headers": { "Authorization": "Bearer …" }
+  }
+}`;
 export const providerNames: Record<Provider, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
@@ -55,6 +77,9 @@ export function Connections({
   const [engine, setEngine] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState("");
   const [assistantBusy, setAssistantBusy] = useState(false);
+  const [mcpText, setMcpText] = useState("");
+  const [mcpStatus, setMcpStatus] = useState("");
+  const [mcpBusy, setMcpBusy] = useState(false);
   async function load() {
     try {
       const d = await api<ConnectionsData>("/api/connections");
@@ -199,6 +224,82 @@ export function Connections({
           onChanged={onChanged}
           onError={onError}
         />
+      </details>
+      <details className="connection-details">
+        <summary>MCP servers for the studio engineer</summary>
+        <p className="muted small">
+          Every coding task connects to these servers and can call their tools.
+          Add or update servers as JSON keyed by name; saved entries keep their
+          secrets on this computer.
+        </p>
+        {!!Object.keys(data.mcpServers || {}).length && (
+          <ul className="mcp-list">
+            {Object.entries(data.mcpServers || {}).map(([name, server]) => (
+              <li key={name}>
+                <strong>{name}</strong>{" "}
+                <span className="small">
+                  {server.transport} · {server.command || server.url}
+                </span>
+                <button
+                  className="text-button"
+                  disabled={mcpBusy}
+                  onClick={async () => {
+                    setMcpBusy(true);
+                    try {
+                      await save({ removeMcpServer: name });
+                      setMcpStatus(`Removed ${name}`);
+                    } catch (e) {
+                      onError((e as Error).message);
+                    } finally {
+                      setMcpBusy(false);
+                    }
+                  }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <label>
+          Add or update servers
+          <textarea
+            value={mcpText}
+            rows={8}
+            spellCheck={false}
+            onChange={(e) => {
+              setMcpText(e.target.value);
+              setMcpStatus("");
+            }}
+            placeholder={mcpExample}
+          />
+        </label>
+        <div className="row">
+          <button
+            className="secondary"
+            disabled={mcpBusy || !mcpText.trim()}
+            onClick={async () => {
+              setMcpBusy(true);
+              try {
+                const parsed = JSON.parse(mcpText) as unknown;
+                if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+                  throw Error("Enter a JSON object keyed by server name.");
+                await save({ mcpServers: parsed });
+                setMcpText("");
+                setMcpStatus(`Saved ${Object.keys(parsed).join(", ")}`);
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setMcpBusy(false);
+              }
+            }}
+          >
+            {mcpBusy ? "Saving…" : "Save servers"}
+          </button>
+          <span className="small" role="status">
+            {mcpStatus}
+          </span>
+        </div>
       </details>
       <details className="connection-details">
         <summary>Production tools</summary>

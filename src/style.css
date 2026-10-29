@@ -4245,3 +4245,94 @@ label > span {
   font-size: 11px;
   overflow-x: auto;
 }
+
+/* Studio engineer progress */
+.coding-limits {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #7f8d71;
+  text-transform: none;
+}
+.coding-status-row {
+  align-items: flex-start;
+}
+.coding-progress {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-transform: none;
+}
+.coding-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.coding-progress-head .spin {
+  color: #5c7a3f;
+  flex: none;
+}
+.coding-progress-meta {
+  font-size: 11px;
+  color: #7f8d71;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-transform: none;
+}
+.coding-now {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid #a7c48a;
+  background: #f5f8ef;
+  border-radius: 0 7px 7px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.coding-progress-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #7f8d71;
+}
+.coding-state-failed {
+  color: #943f32;
+}
+.coding-events {
+  max-height: 260px;
+}
+.coding-events .coding-narration {
+  color: #35492b;
+  font-style: italic;
+  margin: 4px 0;
+  line-height: 1.5;
+}
+.mcp-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  display: grid;
+  gap: 6px;
+}
+.mcp-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.mcp-list li .small {
+  overflow-wrap: anywhere;
+}
+.connections textarea {
+  width: 100%;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 10px;
+  border: 1px solid #d8dece;
+  border-radius: 8px;
+  background: #fff;
+  color: #303b2d;
+  resize: vertical;
+}
