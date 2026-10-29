@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  appendSpeech,
+  reviseDialogue,
+  performanceActionSchema,
+} from "./conversation";
+import {
   commandSchema,
   applyCommands,
   starterScene,
@@ -11,6 +16,21 @@ import {
   allMotions,
 } from "./scene";
 export const studioStepSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("dialogue"),
+    characterId: z.string(),
+    dialogue: z.string().trim().min(1).max(1800),
+    performance: z.array(performanceActionSchema).min(1).max(4),
+  }),
+  z.object({
+    type: z.literal("reviseDialogue"),
+    index: z.number().int().min(0).max(299),
+    text: z.string().trim().min(1).max(1800),
+  }),
+  z.object({
+    type: z.literal("removeDialogue"),
+    index: z.number().int().min(0).max(299),
+  }),
   z.object({
     type: z.literal("edit"),
     commands: z.array(commandSchema).min(1).max(100),
@@ -82,6 +102,7 @@ export const studioStepSchema = z.discriminatedUnion("type", [
       "createCharacter",
       "details",
       "assistant",
+      "dialogue",
     ]),
     category: z.enum(["characters", "props"]).optional(),
   }),
@@ -154,6 +175,19 @@ export function validatePlan(
       current = applyCommands(current, step.commands, {
         deferInteractionTiming: pendingRoutes.has(current.id),
       });
+    if (step.type === "dialogue")
+      current = appendSpeech(current, step.characterId, step, {
+        deferInteractionTiming: pendingRoutes.has(current.id),
+      });
+    if (step.type === "reviseDialogue" || step.type === "removeDialogue")
+      current = reviseDialogue(
+        current,
+        step.index,
+        step.type === "reviseDialogue" ? step.text : undefined,
+        {
+          deferInteractionTiming: pendingRoutes.has(current.id),
+        },
+      );
     if (step.type === "walkTo") {
       const actor = current.entities.find((e) => e.id === step.actorId),
         target = current.entities.find((e) => e.id === step.targetId);

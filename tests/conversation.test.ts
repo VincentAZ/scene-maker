@@ -311,6 +311,36 @@ const request = (scene: Scene, signal?: AbortSignal) =>
   });
 
 describe("HTTP conversation stream", () => {
+  it("streams complete performance links for captions and sequential speakers", async () => {
+    const scene = starterScene();
+    const output = generated("Hello, and welcome to our story.");
+    output.content[0].text = JSON.stringify({
+      dialogue: "Hello, and welcome to our story.",
+      performance: [
+        { motionId: "wave", duration: 2 },
+        { motionId: "bow", duration: 2 },
+      ],
+    });
+    resolveModel = () => new MockLanguageModelV4({ doGenerate: output });
+    let latest = scene;
+    await readConversationStream(await request(scene), (event) => {
+      if (event.type === "turn") latest = validateScene(event.scene);
+    });
+    expect(latest.transcript.map((line) => line.clipIds?.length)).toEqual([
+      2, 2,
+    ]);
+    expect(dialogueTiming(latest, latest.transcript[0])).toEqual({
+      start: 7,
+      end: 11,
+    });
+    expect(dialogueTiming(latest, latest.transcript[1])).toEqual({
+      start: 11,
+      end: 15,
+    });
+    expect(dialogueSubtitles(latest)).toContain(
+      "00:00:11,000 --> 00:00:15,000",
+    );
+  });
   it("delivers the first turn while the next provider is still pending", async () => {
     const s = starterScene();
     s.entities[1].model = "wait";

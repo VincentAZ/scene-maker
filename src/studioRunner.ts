@@ -29,6 +29,12 @@ export class StudioPlanError extends Error {
 }
 export function describeStep(step: StudioStep): string {
   switch (step.type) {
+    case "dialogue":
+      return "Added dialogue and actions";
+    case "reviseDialogue":
+      return "Revised the dialogue";
+    case "removeDialogue":
+      return "Removed the dialogue; actions kept";
     case "edit":
       return "Updated the scene";
     case "newProject":

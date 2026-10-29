@@ -236,6 +236,7 @@ export const dialogueLineSchema = z.object({
   name: z.string(),
   text: z.string().max(8000),
   clipId: z.string().optional(),
+  clipIds: z.array(z.string()).min(1).max(5).optional(),
 });
 export type DialogueLine = z.infer<typeof dialogueLineSchema>;
 export const sceneSchema = z.object({
@@ -554,8 +555,40 @@ export function applyCommands(
       const e = find(cmd.id),
         i = e.clips.findIndex((c) => c.id === cmd.clipId),
         j = i + (cmd.direction === "earlier" ? -1 : 1);
-      if (i >= 0 && j >= 0 && j < e.clips.length)
-        [e.clips[i], e.clips[j]] = [e.clips[j], e.clips[i]];
+      if (i >= 0 && j >= 0 && j < e.clips.length) {
+        // Clips of one dialogue line stay contiguous so its caption span
+        // cannot overlap another line: within a line the two clips swap,
+        // across a boundary the whole line moves past the neighbouring block.
+        const group = (clip: (typeof e.clips)[number]) => {
+          const line = s.transcript.findIndex(
+            (l) =>
+              l.characterId === e.id &&
+              (l.clipIds ?? (l.clipId ? [l.clipId] : [])).includes(clip.id),
+          );
+          return line >= 0 ? `line:${line}` : `clip:${clip.id}`;
+        };
+        const groups = e.clips.map(group);
+        if (groups[i] === groups[j])
+          [e.clips[i], e.clips[j]] = [e.clips[j], e.clips[i]];
+        else {
+          let start = i,
+            end = i;
+          while (start > 0 && groups[start - 1] === groups[i]) start--;
+          while (end + 1 < groups.length && groups[end + 1] === groups[i])
+            end++;
+          const block = e.clips.splice(start, end - start + 1);
+          if (cmd.direction === "earlier") {
+            let at = start - 1;
+            while (at > 0 && groups[at - 1] === groups[start - 1]) at--;
+            e.clips.splice(at, 0, ...block);
+          } else {
+            let at = end + 1;
+            while (at + 1 < groups.length && groups[at + 1] === groups[end + 1])
+              at++;
+            e.clips.splice(at - block.length + 1, 0, ...block);
+          }
+        }
+      }
     }
     if (cmd.type === "scene") {
       if (cmd.changes.environment && cmd.changes.environment !== s.environment)
@@ -583,14 +616,22 @@ export function applyCommands(
     }
   }
   // Keep dialogue as editable history if its character/action is removed.
-  for (const line of s.transcript)
-    if (
-      line.clipId &&
-      !s.entities
-        .find((e) => e.id === line.characterId)
-        ?.clips.some((c) => c.id === line.clipId)
-    )
+  for (const line of s.transcript) {
+    const actor = s.entities.find((e) => e.id === line.characterId);
+    if (line.clipIds) {
+      const remaining = line.clipIds.filter((id) =>
+        actor?.clips.some((c) => c.id === id),
+      );
+      if (remaining.length) {
+        line.clipIds = remaining;
+        line.clipId = remaining[0];
+      } else {
+        delete line.clipIds;
+        delete line.clipId;
+      }
+    } else if (line.clipId && !actor?.clips.some((c) => c.id === line.clipId))
       delete line.clipId;
+  }
   return validateScene(s, options);
 }
 export function validateScene(
@@ -675,7 +716,19 @@ export function validateScene(
       }
     }
   }
-  const linked = s.transcript.filter((line) => line.clipId);
+  const linked = s.transcript.flatMap((line) =>
+    (line.clipIds || (line.clipId ? [line.clipId] : [])).map((id) => ({
+      characterId: line.characterId,
+      clipId: id,
+    })),
+  );
+  if (
+    s.transcript.some(
+      (line) =>
+        line.clipIds && (!line.clipId || !line.clipIds.includes(line.clipId)),
+    )
+  )
+    throw Error("The dialogue’s first action must belong to its performance.");
   if (!unique(linked.map((line) => `${line.characterId}:${line.clipId}`)))
     throw Error("An action can have only one dialogue line.");
   for (const line of linked)

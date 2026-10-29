@@ -3956,3 +3956,65 @@ label > span {
     grid-template-columns: 1fr;
   }
 }
+.dialogue-composer {
+  margin: 18px 0;
+  padding: 18px;
+  background: #f4f6ee;
+  border: 1px solid #dce4d2;
+  border-radius: 12px;
+}
+.dialogue-composer fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.dialogue-composer h3 {
+  margin: 0 0 12px;
+}
+.dialogue-performance {
+  display: grid;
+  gap: 10px;
+}
+.dialogue-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 85px 28px;
+  gap: 8px;
+  align-items: center;
+}
+.dialogue-action label {
+  margin: 0;
+}
+.dialogue-target {
+  grid-column: 1 / -1;
+}
+.dialogue-error {
+  color: #a33e28;
+  font-size: 12px;
+}
+.dialogue-composer > fieldset > p {
+  margin: 12px 0;
+}
+.dialogue-performance-summary {
+  font-size: 11px;
+  color: #526846;
+  margin: 5px 0;
+}
+.dialogue-line-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.dialogue-line-edit textarea {
+  margin-bottom: 8px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

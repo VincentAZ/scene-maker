@@ -65,7 +65,9 @@ import {
   dialogueTiming,
   appendSpeech,
   setDialoguePath,
+  reviseDialogue,
 } from "../shared/conversation";
+import { DialogueComposer } from "./DialogueComposer";
 import {
   readConversationStream,
   mergeConversationTurn,
@@ -97,7 +99,6 @@ import {
   readConversationPreferences,
   saveConversationPreferences,
 } from "./conversationPreferences";
-import { ManualDialogue } from "./ManualDialogue";
 import { ConversationAside } from "./ConversationAside";
 import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
@@ -601,9 +602,11 @@ export default function App() {
   const dialogueClips = useMemo(
     () =>
       new Set(
-        scene.transcript
-          .filter((line) => line.clipId)
-          .map((line) => `${line.characterId}:${line.clipId}`),
+        scene.transcript.flatMap((line) =>
+          (line.clipIds || (line.clipId ? [line.clipId] : [])).map(
+            (id) => `${line.characterId}:${id}`,
+          ),
+        ),
       ),
     [scene.transcript],
   );
@@ -734,6 +737,20 @@ export default function App() {
       { type: "edit" | "newProject" | "copyProject" | "openProject" | "save" }
     >,
   ) {
+    if (step.type === "dialogue") {
+      change(appendSpeech(sceneRef.current, step.characterId, step));
+      return;
+    }
+    if (step.type === "reviseDialogue" || step.type === "removeDialogue") {
+      change(
+        reviseDialogue(
+          sceneRef.current,
+          step.index,
+          step.type === "reviseDialogue" ? step.text : undefined,
+        ),
+      );
+      return;
+    }
     if (step.type === "walkTo") {
       setPlaying(false);
       cancelConversationForEdit();
@@ -850,6 +867,7 @@ export default function App() {
         setModal("import");
       } else if (step.panel === "settings") setModal("settings");
       else if (step.panel === "createCharacter") setModal("character");
+      else if (step.panel === "dialogue") setModal("conversation");
       else {
         setRightTab(step.panel);
         setPanel(true);
@@ -1972,14 +1990,11 @@ export default function App() {
               Turns play in the scene as they arrive. Collapse this panel to
               watch, or pause to change the direction.
             </p>
-            <ManualDialogue
-              cast={cast}
+            <DialogueComposer
+              scene={scene}
               disabled={busy || !!castProgress}
-              onSpeak={(id, text) => {
-                const next = appendSpeech(sceneRef.current, id, {
-                  dialogue: text,
-                  action: "talk",
-                });
+              onAdd={(id, speech) => {
+                const next = appendSpeech(sceneRef.current, id, speech);
                 change(next);
                 setTime(dialogueTiming(next, next.transcript.at(-1)!)!.start);
                 setPlaying(true);
@@ -1989,6 +2004,10 @@ export default function App() {
             />
             <DialogueTranscript
               scene={scene}
+              disabled={busy || !!castProgress}
+              onRevise={(index, text) =>
+                change(reviseDialogue(sceneRef.current, index, text))
+              }
               onPath={(id, clipId) =>
                 void openPathEditor(id, clipId, true).catch((e) =>
                   report(e.message),
