@@ -186,6 +186,75 @@ describe("local service boundaries", () => {
     ).toBe(400);
     expect(fs.readdirSync(path.join(dir, "uploads"))).toHaveLength(0);
   });
+  it("uploads, serves, limits and removes assistant attachments", async () => {
+    const png = fs.readFileSync("public/library/quaternius/casual-female.png");
+    const post = (data: Uint8Array | string, name: string) => {
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([typeof data === "string" ? data : new Uint8Array(data)]),
+        name,
+      );
+      return fetch(base + "/api/attachments", {
+        method: "POST",
+        headers: { "X-Scene-Maker": "1" },
+        body: form,
+      });
+    };
+    const before = fs.readdirSync(path.join(dir, "uploads"));
+    const image = await post(png, "../board.png");
+    expect(image.status).toBe(200);
+    const saved = await image.json();
+    expect(saved).toMatchObject({
+      kind: "image",
+      mime: "image/png",
+      name: "board.png",
+      size: png.length,
+    });
+    expect(saved.url).toBe(`/attachments/${saved.id}.png`);
+    const served = await fetch(base + saved.url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(
+      new Uint8Array(png),
+    );
+    // Metadata and anything outside the upload naming scheme stay private.
+    expect((await fetch(base + `/attachments/${saved.id}.json`)).status).toBe(
+      404,
+    );
+    expect(
+      (await fetch(base + "/attachments/../connections.json")).status,
+    ).toBe(404);
+    const rejected = await post("<html>not allowed</html>", "page.png");
+    expect(rejected.status).toBe(400);
+    expect((await rejected.json()).error).toContain("Attach a PDF");
+    expect(fs.readdirSync(path.join(dir, "uploads"))).toEqual(before);
+    // Offline assistant requests cannot read files; unknown IDs fail clearly.
+    const offline = await req("/api/assistant", {
+      scene: starterScene(),
+      prompt: "Match this board",
+      attachments: [saved.id],
+    });
+    expect(offline.status).toBe(200);
+    expect((await offline.json()).response).toContain(
+      "cannot read attached files",
+    );
+    const missing = await req("/api/assistant", {
+      scene: starterScene(),
+      prompt: "Match this board",
+      attachments: ["123e4567-e89b-42d3-a456-426614174000"],
+    });
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).error).toContain("no longer available");
+    const removed = await req(
+      `/api/attachments/${saved.id}`,
+      undefined,
+      "DELETE",
+    );
+    expect(removed.status).toBe(200);
+    expect((await fetch(base + saved.url)).status).toBe(404);
+    expect(fs.readdirSync(path.join(dir, "attachments"))).toEqual([]);
+  });
   it("round-trips offline assistant changes and reports missing conversation connections", async () => {
     const s = starterScene();
     const res = await req("/api/assistant", {

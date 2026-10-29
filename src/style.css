@@ -1065,6 +1065,127 @@ button svg {
   color: #607d43;
   border-radius: 7px;
 }
+/* Reference-file attachments for assistant messages and coding tasks. */
+.attachment-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+.prompt-box .attachment-button,
+.coding-assistant .attachment-button {
+  width: auto;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #f1f4ea;
+  color: #6d7f5b;
+  font-size: 9px;
+  font-weight: 600;
+}
+.coding-assistant .attachment-button {
+  font-size: 11px;
+  padding: 6px 10px;
+}
+.attachment-button:disabled {
+  opacity: 0.5;
+}
+.attachment-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.message .attachment-chips {
+  margin-top: 8px;
+}
+.attachment-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid #dce4cc;
+  border-radius: 7px;
+  background: #fff;
+}
+.attachment-chip > a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 7px;
+  color: #516342;
+  text-decoration: none;
+  font-size: 9px;
+}
+.attachment-chip img,
+.attachment-chip .attachment-icon {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #edf2e4;
+  display: grid;
+  place-items: center;
+  color: #6d7f5b;
+}
+.attachment-chip .attachment-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.attachment-chip .attachment-meta {
+  color: #98a08c;
+  white-space: nowrap;
+}
+.prompt-box .attachment-chip > button,
+.coding-assistant .attachment-chip > button,
+.attachment-chip > button {
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  color: #8a9780;
+  padding: 0;
+}
+.attachment-chip > button:hover {
+  background: #edf2e4;
+  color: #516342;
+}
+.attachment-uploading,
+.attachment-warning {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  line-height: 1.5;
+  color: #8a9780;
+}
+.attachment-warning {
+  color: #a4633a;
+}
+.coding-assistant .attachment-uploading,
+.coding-assistant .attachment-warning,
+.coding-assistant .attachment-chip > a {
+  font-size: 11px;
+}
+.prompt-box.drop-active,
+.coding-assistant form.drop-active {
+  outline: 2px dashed #a5c27f;
+  outline-offset: 3px;
+}
 .assistant-footnote {
   text-align: center;
   font-size: 7px;

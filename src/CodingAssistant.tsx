@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Code2,
   ArrowUp,
@@ -8,11 +8,16 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { api } from "./api";
+import { AttachmentChips, AttachmentPicker } from "./Attachments";
+import type { Attachment } from "../shared/attachments";
+import type { Provider } from "../shared/modelChoices";
 import { codingBusy, type CodingInfo, type CodingTask } from "../shared/coding";
 export function CodingAssistant() {
   const [info, setInfo] = useState<CodingInfo | null>(null);
   const [selected, setSelected] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const form = useRef<HTMLFormElement>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -84,14 +89,17 @@ export function CodingAssistant() {
         </p>
       )}
       <form
+        ref={form}
         onSubmit={(e) => {
           e.preventDefault();
           void action(async () => {
             const next = await post<CodingTask>("/api/coding/tasks", {
               prompt,
+              attachments: attachments.map((a) => a.id),
             });
             setSelected(next.id);
             setPrompt("");
+            setAttachments([]);
           });
         }}
       >
@@ -104,9 +112,18 @@ export function CodingAssistant() {
           placeholder="Add rotation handles to selected assets…"
           rows={4}
         />
+        <AttachmentPicker
+          attachments={attachments}
+          onChange={setAttachments}
+          provider={(info?.provider as Provider | null) ?? null}
+          disabled={busy || !info?.available}
+          dropZone={form}
+          label="Attach reference files to this task"
+        />
         <p className="muted">
-          Relevant source files are sent to your selected provider. Uses your
-          existing API connection.
+          Relevant source files and any attached references (mockups,
+          screenshots, specs, notes) are sent to your selected provider. Uses
+          your existing API connection.
         </p>
         <button
           className="primary"
@@ -123,8 +140,12 @@ export function CodingAssistant() {
             disabled={busy || running || prompt.trim().length < 4}
             onClick={() =>
               void action(async () => {
-                await post(`/api/coding/tasks/${task.id}/retry`, { prompt });
+                await post(`/api/coding/tasks/${task.id}/retry`, {
+                  prompt,
+                  attachments: attachments.map((a) => a.id),
+                });
                 setPrompt("");
+                setAttachments([]);
               })
             }
           >
@@ -179,6 +200,9 @@ export function CodingAssistant() {
             )}
           </div>
           <h3>{task.prompt}</h3>
+          {!!task.attachments?.length && (
+            <AttachmentChips attachments={task.attachments} />
+          )}
           <p className="coding-branch">
             <GitBranch size={14} />
             {task.branch}

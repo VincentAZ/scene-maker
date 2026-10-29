@@ -11,6 +11,16 @@ import { modelFor, type Config } from "./ai";
 import { providerErrorMessage } from "./providerErrors";
 import { runCodingAgent } from "./codingAgent";
 import {
+  assertAttachmentSupport,
+  type AttachmentStore,
+  type LoadedAttachment,
+} from "./attachments";
+import {
+  attachmentIdsSchema,
+  maxAttachments,
+  type Attachment,
+} from "../shared/attachments";
+import {
   git,
   snapshot,
   stageSources,
@@ -36,6 +46,8 @@ type Dependencies = {
   check?: typeof sandboxCheck;
   remote?: string;
   probeSandbox?: () => Promise<void>;
+  /** Where uploaded reference files live; omitted when attachments are unavailable. */
+  attachments?: AttachmentStore;
 };
 export class CodingService {
   readonly tasks = new Map<string, CodingTask>();
@@ -135,7 +147,26 @@ export class CodingService {
       tasks: [...this.tasks.values()].sort((a, b) => b.created - a.created),
     };
   }
-  async start(prompt: string) {
+  /** Resolve attachment metadata and check provider support before any task work. */
+  private resolveAttachments(config: Config, ids: string[]): Attachment[] {
+    if (!ids.length) return [];
+    if (ids.length > maxAttachments)
+      throw Error(`Attach up to ${maxAttachments} files per task.`);
+    if (!this.options.attachments)
+      throw Error("Attachments are not available for coding tasks.");
+    const attachments = [...new Set(ids)].map((id) =>
+      this.options.attachments!.get(id),
+    );
+    assertAttachmentSupport(config.assistant, attachments);
+    return attachments;
+  }
+  private loadAttachments(task: CodingTask): LoadedAttachment[] {
+    if (!task.attachments?.length) return [];
+    if (!this.options.attachments)
+      throw Error("Attachments are not available for coding tasks.");
+    return this.options.attachments.load(task.attachments.map((a) => a.id));
+  }
+  async start(prompt: string, attachmentIds: string[] = []) {
     if (
       this.starting ||
       [...this.tasks.values()].some((t) => codingBusy(t.status))
@@ -149,10 +180,12 @@ export class CodingService {
       if (!info.available) throw Error(info.reason);
       const config = structuredClone(this.options.config());
       modelFor(config, config.assistant); // Fail before creating a task if setup is incomplete.
+      const attachments = this.resolveAttachments(config, attachmentIds);
       const id = randomUUID();
       const task: CodingTask = {
         id,
         prompt,
+        ...(attachments.length ? { attachments } : {}),
         branch: `studio/code-${id.slice(0, 12)}`,
         base: "",
         baseline: "",
@@ -180,7 +213,7 @@ export class CodingService {
       this.starting = false;
     }
   }
-  async retry(id: string, prompt: string) {
+  async retry(id: string, prompt: string, attachmentIds: string[] = []) {
     const task = this.get(id);
     if ([...this.tasks.values()].some((t) => codingBusy(t.status)))
       throw Error("Wait for the current task to finish.");
@@ -192,9 +225,11 @@ export class CodingService {
       throw Error("Preparation did not finish. Start a new task.");
     const config = structuredClone(this.options.config());
     modelFor(config, config.assistant);
+    const attachments = this.resolveAttachments(config, attachmentIds);
     task.provider = config.assistant!;
     task.model = config.providers[config.assistant!]?.model || "";
     task.prompt = prompt;
+    task.attachments = attachments.length ? attachments : undefined;
     task.status = "working";
     task.error = undefined;
     task.previewUrl = undefined;
@@ -255,6 +290,12 @@ export class CodingService {
       signal.throwIfAborted();
       task.status = "working";
       this.event(task, `Implementing with ${task.provider} · ${task.model}`);
+      const attachments = this.loadAttachments(task);
+      if (attachments.length)
+        this.event(
+          task,
+          `Sending ${attachments.length} attached file${attachments.length === 1 ? "" : "s"}: ${attachments.map((a) => a.name).join(", ")}`,
+        );
       const feedback = task.checks
         .filter((c) => !c.ok)
         .map((c) => `${c.name}: ${c.output}`)
@@ -265,6 +306,8 @@ export class CodingService {
         task.prompt + (feedback ? "\nPrevious checks:\n" + feedback : ""),
         signal,
         (message) => this.event(task, message),
+        undefined,
+        attachments,
       );
       signal.throwIfAborted();
       await this.refresh(task);
@@ -506,11 +549,13 @@ export function codingRouter(
     next();
   });
   router.get("/", async (_req, res) => res.json(await service.info()));
+  const requestSchema = z.object({
+    prompt: z.string().trim().min(4).max(6000),
+    attachments: attachmentIdsSchema,
+  });
   router.post("/tasks", async (req, res) => {
-    const { prompt } = z
-      .object({ prompt: z.string().trim().min(4).max(6000) })
-      .parse(req.body);
-    res.status(202).json(await service.start(prompt));
+    const { prompt, attachments } = requestSchema.parse(req.body);
+    res.status(202).json(await service.start(prompt, attachments));
   });
   router.get("/tasks/:id", (req, res) =>
     res.json(service.get(String(req.params.id))),
@@ -519,10 +564,10 @@ export function codingRouter(
     res.json(service.cancel(String(req.params.id))),
   );
   router.post("/tasks/:id/retry", async (req, res) => {
-    const { prompt } = z
-      .object({ prompt: z.string().trim().min(4).max(6000) })
-      .parse(req.body);
-    res.status(202).json(await service.retry(String(req.params.id), prompt));
+    const { prompt, attachments } = requestSchema.parse(req.body);
+    res
+      .status(202)
+      .json(await service.retry(String(req.params.id), prompt, attachments));
   });
   router.post("/tasks/:id/publish", async (req, res) => {
     const body = z
@@ -547,10 +592,14 @@ export function codingRouter(
   });
   return router;
 }
-export function createCodingService(config: () => Config) {
+export function createCodingService(
+  config: () => Config,
+  attachments?: AttachmentStore,
+) {
   return new CodingService({
     root: repositoryRoot,
     tasksDir: path.join(dataDir, "coding"),
     config,
+    attachments,
   });
 }
