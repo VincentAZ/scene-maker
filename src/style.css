@@ -4915,6 +4915,156 @@ label > span {
   font-size: 11px;
   cursor: pointer;
 }
+
+/* Attachments (Code panel and scene assistant composers) */
+.attach-chips {
+  list-style: none;
+  margin: 0;
+  padding: 8px 8px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px 0 8px;
+  border: 1px solid #dfe6d4;
+  border-radius: 8px;
+  background: #f6f8f1;
+  color: #3f4d37;
+  font-size: 11px;
+  text-decoration: none;
+}
+a.attach-chip {
+  padding-right: 8px;
+}
+.attach-chip.has-thumb {
+  padding-left: 3px;
+}
+.attach-chip img {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 5px;
+}
+.attach-chip svg {
+  flex: none;
+  color: #6f8a59;
+}
+.attach-name {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-size {
+  flex: none;
+  display: inline-flex;
+  color: #97a28b;
+  font-size: 10px;
+}
+.attach-remove,
+.prompt-box .attach-remove {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #8a9580;
+  cursor: pointer;
+}
+.attach-remove:hover,
+.prompt-box .attach-remove:hover {
+  background: #e7ecdf;
+  color: #3f4d37;
+}
+.code-attach,
+.prompt-box .attach-button {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #6f7d64;
+  cursor: pointer;
+}
+.prompt-box .attach-button {
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+}
+.code-attach:hover,
+.prompt-box .attach-button:hover {
+  background: #eef3e6;
+  color: #3f4d37;
+}
+.code-composer.dragging,
+.prompt-box.dragging {
+  border-color: #7fa35f;
+  border-style: dashed;
+  background: #f7fbf0;
+}
+.attach-sent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.attach-thumb {
+  display: block;
+  overflow: hidden;
+  border: 1px solid #dfe6d4;
+  border-radius: 8px;
+  background: #fff;
+}
+.attach-thumb img {
+  display: block;
+  max-width: min(180px, 100%);
+  max-height: 140px;
+  object-fit: cover;
+}
+.prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.prompt-box .attach-chips {
+  padding: 0 0 8px;
+}
+.prompt-box .attach-chip {
+  height: 26px;
+  font-size: 9px;
+}
+.prompt-box .attach-chip img {
+  width: 20px;
+  height: 20px;
+}
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.message-images img {
+  max-width: 120px;
+  max-height: 100px;
+  object-fit: cover;
+  border-radius: 6px;
+}
 .code-new-intro {
   flex: 1;
   min-height: 0;

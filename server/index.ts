@@ -27,6 +27,7 @@ import { assistant, type Config } from "./ai";
 import { providerErrorMessage } from "./providerErrors";
 import { listProviderModels } from "./providerModels";
 import { conversationRoute } from "./conversationRoute";
+import { parseInlineImages } from "./attachments";
 import {
   validateScene,
   providers,
@@ -72,6 +73,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+// Assistant requests may carry a few reference images next to the scene.
+app.use("/api/assistant", express.json({ limit: "32mb" }));
 app.use(express.json({ limit: "8mb" }));
 app.use(
   "/library",
@@ -357,6 +360,7 @@ app.post("/api/assistant", async (req, res) => {
           .max(1000)
           .optional()
           .parse(req.body.stagingFeedback),
+        images: parseInlineImages(req.body.images),
       },
     );
     for (const command of result.steps.flatMap((step) =>

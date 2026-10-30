@@ -7,6 +7,7 @@ import {
   experimental_createSteering as createSteering,
   type ModelMessage,
   type ToolSet,
+  type UserContent,
 } from "ai";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
@@ -68,13 +69,17 @@ export type AgentOptions = {
   maxRetries?: number;
   /** Earlier conversation of this task; the prompt is appended as the next user turn. */
   history?: ModelMessage[];
+  /** The next user turn as content parts (words and attachments), used instead of the prompt. */
+  content?: UserContent;
   /** Receives the conversation after every completed step, for persistence. */
   onHistory?: (messages: ModelMessage[]) => void;
   /**
    * Receives a function that delivers a user message to the running engineer
    * at the next step boundary. It resolves false when the run ended first.
    */
-  onSteer?: (steer: ((text: string) => Promise<boolean>) | undefined) => void;
+  onSteer?: (
+    steer: ((message: string | UserContent) => Promise<boolean>) | undefined,
+  ) => void;
 };
 const MAX_DEPTH = 3;
 const OUTPUT_LIMIT = 24_000;
@@ -635,6 +640,7 @@ export async function runCodingAgent(
             deploy: undefined,
             mcpServers: undefined,
             history: undefined,
+            content: undefined,
             onHistory: undefined,
             onSteer: undefined,
           },
@@ -702,17 +708,23 @@ Progress feedback matters: the person watches a live transcript. Before each bat
   // step instead of failing the task; nothing the engineer did is repeated.
   const history: ModelMessage[] = [
     ...(options.history || []),
-    { role: "user", content: prompt },
+    { role: "user", content: options.content ?? prompt },
   ];
   let outages = 0;
   try {
     let result;
     for (;;) {
       const steering = createSteering();
-      options.onSteer?.(async (text) => {
-        const outcome = await steering.steer(text);
+      options.onSteer?.(async (message) => {
+        const outcome = await steering.steer(
+          typeof message === "string" ? message : { role: "user", content: message },
+        );
         if (outcome.type !== "delivered") return false;
-        history.push({ role: "user", content: text });
+        history.push({ role: "user", content: message });
+        const text =
+          typeof message === "string"
+            ? message
+            : message.find((part) => part.type === "text")?.text || "";
         emit({ type: "steered", text });
         return true;
       });

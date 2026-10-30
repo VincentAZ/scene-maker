@@ -115,6 +115,13 @@ import { Connections } from "./Connections";
 import { CharacterModelPicker } from "./CharacterModelPicker";
 import { UpdateCheck } from "./UpdateCheck";
 import { RestartStudio } from "./RestartStudio";
+import {
+  AttachButton,
+  PendingChips,
+  pastedFiles,
+  useFileDrop,
+  useImageAttachments,
+} from "./Attachments";
 import { api, download } from "./api";
 type Tab = "characters" | "props" | "environments" | "motions";
 const characterFilters = [
@@ -126,7 +133,13 @@ const characterFilters = [
   "Mannequins",
   "My assets",
 ];
-type Message = { role: "user" | "assistant"; text: string; mode?: string };
+type Message = {
+  role: "user" | "assistant";
+  text: string;
+  mode?: string;
+  /** Reference images sent with a request, as data URLs for display. */
+  images?: string[];
+};
 const welcomeMessage: Message = {
   role: "assistant",
   text: "Every great scene starts with a little “what if”. Tell me what you have in mind, and let’s make it happen.",
@@ -301,6 +314,8 @@ export default function App() {
   const report = useCallback((text: string) => {
     setError(text);
   }, []);
+  const images = useImageAttachments(report);
+  const imageDrop = useFileDrop(images.add);
   const toast = (text: string) => {
     setNotice(text);
     setTimeout(() => setNotice(""), 4000);
@@ -650,10 +665,22 @@ export default function App() {
     } else toast(`${asset.name} is ready`);
   }
   async function ask(text = prompt) {
-    if (!text.trim() || busy || modelSwitchBusy) return;
+    const attached = images.items.filter((i) => i.image);
+    if (images.items.some((i) => i.status === "uploading")) return;
+    if ((!text.trim() && !attached.length) || busy || modelSwitchBusy) return;
     setPrompt("");
+    images.clear();
     setClearedMessages(null);
-    setMessages((m) => [...m, { role: "user", text }]);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        text,
+        images: attached.length
+          ? attached.map((i) => i.preview || "")
+          : undefined,
+      },
+    ]);
     setBusy(true);
     const starting = sceneRef.current;
     try {
@@ -661,14 +688,22 @@ export default function App() {
         method: "POST",
         body: JSON.stringify({
           scene: starting,
-          prompt: text,
+          prompt: text.trim() || "Use the attached reference image.",
+          images: attached.map((i) => ({
+            name: i.name,
+            mediaType: i.image!.mediaType,
+            data: i.image!.data,
+          })),
           selected,
           playhead: time,
           stagingFeedback: interactionWarning,
           history: messages
             .filter((m) => m.mode !== "welcome" && m.mode !== "error")
             .slice(-20)
-            .map(({ role, text }) => ({ role, text })),
+            .map(({ role, text, images }) => ({
+              role,
+              text: text || (images ? "(Sent reference images.)" : ""),
+            })),
         }),
       });
       if (
@@ -2195,7 +2230,14 @@ export default function App() {
                       )}
                       {m.mode === "offline" && <span>OFFLINE HELPER</span>}
                     </div>
-                    <p>{m.text}</p>
+                    {m.text && <p>{m.text}</p>}
+                    {m.images && (
+                      <div className="message-images">
+                        {m.images.map((src, j) => (
+                          <img key={j} src={src} alt="Attached reference" />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {messages.length === 1 && (
@@ -2229,18 +2271,26 @@ export default function App() {
                 <div ref={chatEnd} />
               </div>
               <form
-                className="prompt-box"
+                className={`prompt-box${imageDrop.dragging ? " dragging" : ""}`}
+                {...imageDrop.handlers}
                 onSubmit={(e) => {
                   e.preventDefault();
                   void ask();
                 }}
               >
+                <PendingChips items={images.items} onRemove={images.remove} />
                 <textarea
                   id="assistant-prompt"
                   aria-label="Ask the scene assistant"
                   placeholder="What are we creating today?"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
+                  onPaste={(e) => {
+                    const files = pastedFiles(e);
+                    if (!files.length) return;
+                    e.preventDefault();
+                    images.add(files);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -2252,12 +2302,24 @@ export default function App() {
                   <span>
                     <Sparkles size={12} /> Imagine. Ask. Create.
                   </span>
-                  <button
-                    aria-label="Send message"
-                    disabled={busy || modelSwitchBusy || !prompt.trim()}
-                  >
-                    <ArrowUp size={17} />
-                  </button>
+                  <div className="prompt-actions">
+                    <AttachButton
+                      onFiles={images.add}
+                      accept="image/*"
+                      label="Attach reference images (or drop or paste them here)"
+                    />
+                    <button
+                      aria-label="Send message"
+                      disabled={
+                        busy ||
+                        modelSwitchBusy ||
+                        images.items.some((i) => i.status === "uploading") ||
+                        (!prompt.trim() && !images.items.length)
+                      }
+                    >
+                      <ArrowUp size={17} />
+                    </button>
+                  </div>
                 </div>
               </form>
               <p className="assistant-footnote">
