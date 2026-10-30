@@ -12,10 +12,13 @@ type Provider = (typeof providers)[number];
  *   (https://developers.openai.com/siwc/token-sharing-open-source).
  * Anthropic, Google, xAI and Moonshot have no sanctioned way for other apps to
  * use their consumer subscriptions, so their panels explain that instead.
+ * LM Studio runs models on this computer: it needs a server address, not a key.
  */
 export type ProviderAccess = {
-  /** The provider's official page for creating API keys. */
+  /** The provider's official page for creating API keys (or, for a local server, its setup guide). */
   keyUrl: string;
+  /** A local server: the saved credential is its address, with this default. */
+  localAddress?: string;
   signIn?: "openrouter" | "chatgpt";
   /** Why a subscription can't be used here, with a link to the source. */
   subscriptionNote?: { text: string; url: string; link: string };
@@ -61,6 +64,10 @@ export const providerAccess: Record<Provider, ProviderAccess> = {
   openrouter: {
     keyUrl: "https://openrouter.ai/settings/keys",
     signIn: "openrouter",
+  },
+  lmstudio: {
+    keyUrl: "https://lmstudio.ai/docs/developer/core/server",
+    localAddress: "http://127.0.0.1:1234",
   },
 };
 

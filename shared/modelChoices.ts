@@ -11,7 +11,10 @@ export type ModelChoice = ProviderModel & {
 // Ordered fallbacks are intersected with the account catalogue. Never synthesize
 // an identifier or promote an unknown/specialized model based on its version.
 // Sources and maintenance policy: docs/MODEL_CHOICES.md.
-const candidates: Record<Exclude<Provider, "openrouter">, string[][]> = {
+const candidates: Record<
+  Exclude<Provider, "openrouter" | "lmstudio">,
+  string[][]
+> = {
   openai: [
     ["gpt-6.1-sol", "gpt-6-sol", "gpt-5-mini", "gpt-4.1", "gpt-4o"],
     ["gpt-6-astra", "gpt-5.5", "gpt-5.4", "gpt-5.2", "gpt-5.1", "gpt-5"],
@@ -84,6 +87,8 @@ export function studioModelChoices(
   provider: Provider,
   models: ProviderModel[],
 ): ModelChoice[] {
+  // Local models are whatever the person downloaded; there is no shortlist.
+  if (provider === "lmstudio") return [];
   const available = new Map(models.map((model) => [model.id, model]));
   const lists =
     provider === "openrouter"

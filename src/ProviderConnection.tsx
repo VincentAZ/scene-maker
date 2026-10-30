@@ -49,6 +49,8 @@ export function ProviderConnection({
 }) {
   const saved = data.providers[provider];
   const access = providerAccess[provider];
+  // LM Studio's "key" is its server address, which has a usable default.
+  const local = access.localAddress;
   const [key, setKey] = useState("");
   const [model, setModel] = useState(saved?.model || "");
   const [thinking, setThinking] = useState<ThinkingLevel>(
@@ -67,6 +69,7 @@ export function ProviderConnection({
   const [signingIn, setSigningIn] = useState<string | null>(null);
   const requestId = useRef(0);
   const poll = useRef<number | undefined>(undefined);
+  const draft = key.trim() || (local && !saved?.connected ? local : "");
   const dirty =
     !!key ||
     model !== (saved?.model || "") ||
@@ -89,7 +92,9 @@ export function ProviderConnection({
       ? `Signed in with ChatGPT${saved.account ? ` as ${saved.account}` : ""}`
       : saved?.method === "openrouter"
         ? "Signed in with OpenRouter"
-        : "Connected with an API key";
+        : local
+          ? `Connected to LM Studio${saved?.address ? ` at ${saved.address}` : ""}`
+          : "Connected with an API key";
 
   async function loadModels() {
     const id = ++requestId.current;
@@ -103,14 +108,14 @@ export function ProviderConnection({
           method: "POST",
           body: JSON.stringify({
             provider,
-            ...(key.trim() ? { key: key.trim() } : {}),
+            ...(draft ? { key: draft } : {}),
           }),
         },
       );
       if (id !== requestId.current) return;
       setModels(result.models);
       // Character defaults must keep using the saved credential until Save succeeds.
-      if (!key) onCatalog(provider, result.models);
+      if (!draft) onCatalog(provider, result.models);
     } catch (e) {
       if (id === requestId.current) setError((e as Error).message);
     } finally {
@@ -134,7 +139,6 @@ export function ProviderConnection({
     setTest(null);
     setError("");
     try {
-      const draft = key.trim();
       const result = await api<TestResult>("/api/connections/test", {
         method: "POST",
         body: JSON.stringify({ provider, ...(draft ? { key: draft } : {}) }),
@@ -243,7 +247,7 @@ export function ProviderConnection({
     try {
       await onSave({
         provider,
-        ...(key.trim() ? { key: key.trim() } : {}),
+        ...(draft ? { key: draft } : {}),
         model,
         thinking: thinkingChoices(provider, model).includes(thinking)
           ? thinking
@@ -283,7 +287,9 @@ export function ProviderConnection({
                 ? `Saved model: ${savedName || "none selected"}. ${inUse ? "Selected for the studio assistant." : "Not selected for the studio assistant."}`
                 : access.signIn
                   ? "Sign in below, or paste an API key, then choose a model."
-                  : "Paste your key, load the model list, then choose a model."}
+                  : local
+                    ? "Start LM Studio’s server, load its models, then choose one."
+                    : "Paste your key, load the model list, then choose a model."}
         </p>
         {saved?.connected && !dirty && (
           <p className="small connection-verified">
@@ -369,15 +375,28 @@ export function ProviderConnection({
           </a>
         </p>
       )}
+      {local && (
+        <p className="integration-note">
+          Runs on this computer with the models you download in LM Studio, at no
+          API cost. Start its server from the Developer tab or with “lms server
+          start”. Load the model with a context length of 32,768 or more. Local
+          models plan scenes less reliably than hosted ones; they suit character
+          dialogue best.
+        </p>
+      )}
       <div className="connection-key-label">
         <label htmlFor={`${provider}-key`}>
-          1. API key{" "}
+          {local ? "1. Server address" : "1. API key"}{" "}
           <span>
             {saved?.connected && saved.method === "key"
-              ? "Saved · no need to paste again"
+              ? local
+                ? "Saved"
+                : "Saved · no need to paste again"
               : signedIn
                 ? "Optional · signed in"
-                : "Required"}
+                : local
+                  ? "Default shown"
+                  : "Required"}
           </span>
         </label>
         <a
@@ -386,21 +405,24 @@ export function ProviderConnection({
           target="_blank"
           rel="noreferrer"
         >
-          Get an API key <ExternalLink size={11} />
+          {local ? "LM Studio server guide" : "Get an API key"}{" "}
+          <ExternalLink size={11} />
         </a>
       </div>
       <input
         id={`${provider}-key`}
-        type="password"
-        autoComplete="new-password"
+        type={local ? "url" : "password"}
+        autoComplete={local ? "off" : "new-password"}
         value={key}
         disabled={saving || !!signingIn}
         placeholder={
-          signedIn
-            ? "Signed in — paste an API key only to switch to it"
-            : saved?.connected
-              ? "Key saved — paste here only to replace it"
-              : `Paste your ${name} API key`
+          local
+            ? saved?.address || local
+            : signedIn
+              ? "Signed in — paste an API key only to switch to it"
+              : saved?.connected
+                ? "Key saved — paste here only to replace it"
+                : `Paste your ${name} API key`
         }
         onChange={(e) => {
           requestId.current++;
@@ -415,7 +437,7 @@ export function ProviderConnection({
         <button
           className="secondary"
           onClick={() => void loadModels()}
-          disabled={busy || (!key.trim() && !saved?.connected)}
+          disabled={busy || (!draft && !saved?.connected)}
         >
           {loading
             ? "Loading models…"
@@ -426,14 +448,16 @@ export function ProviderConnection({
         <button
           className="text-button"
           onClick={() => void testConnection()}
-          disabled={busy || (!key.trim() && !saved?.connected)}
+          disabled={busy || (!draft && !saved?.connected)}
         >
           {testing ? "Testing…" : "Test connection"}
         </button>
         <span className="small">
           {models
             ? `Connected to ${name}. Choose your assistant below.`
-            : "Uses your key to read the provider’s model list."}
+            : local
+              ? "Reads the models downloaded in LM Studio."
+              : "Uses your key to read the provider’s model list."}
         </span>
       </div>
       {test && (
@@ -442,11 +466,11 @@ export function ProviderConnection({
           role={test.ok ? "status" : "alert"}
         >
           {test.ok
-            ? `${key.trim() ? "This key works" : "Connection works"}: ${
+            ? `${draft ? (local ? "This address works" : "This key works") : "Connection works"}: ${
                 test.models === undefined
                   ? `${name} accepted it.`
                   : `${name} returned ${test.models} model${test.models === 1 ? "" : "s"}.`
-              }${key.trim() ? " Save below to keep it." : ""}`
+              }${draft ? " Save below to keep it." : ""}`
             : test.error}
         </p>
       )}
@@ -472,7 +496,9 @@ export function ProviderConnection({
         <p className="model-picker-empty">
           {loading
             ? "Finding available models…"
-            : "Connect your key to see assistant suggestions."}
+            : local
+              ? "Load models to choose one of your downloaded models."
+              : "Connect your key to see assistant suggestions."}
         </p>
       )}
       <ThinkingControl

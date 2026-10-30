@@ -2,7 +2,7 @@ import type { Provider } from "./ai";
 import { connectionTestMessage } from "./providerErrors";
 
 export type ProviderModel = { id: string; name: string };
-export const modelEndpoints: Record<Provider, string> = {
+export const modelEndpoints: Record<Exclude<Provider, "lmstudio">, string> = {
   openai: "https://api.openai.com/v1/models",
   anthropic: "https://api.anthropic.com/v1/models?limit=1000",
   google:
@@ -19,12 +19,87 @@ function keyMismatch(provider: Provider, key: string) {
     return "This looks like an OpenRouter API key. Choose the OpenRouter tab and enter it there, or replace it with a key from the selected provider.";
 }
 
+/**
+ * LM Studio's OpenAI-compatible base URL from the address the person typed:
+ * "127.0.0.1:1234", "http://localhost:1234" and ".../v1" all work.
+ * https://lmstudio.ai/docs/developer/openai-compat
+ */
+export function lmStudioBaseUrl(address: string) {
+  const raw = address.trim();
+  let url: URL | undefined;
+  try {
+    url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`);
+  } catch {
+    // Reported below.
+  }
+  if (
+    !raw ||
+    !url ||
+    !/^https?:$/.test(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  )
+    throw Error(
+      "Enter LM Studio’s server address, such as http://127.0.0.1:1234.",
+    );
+  const path = url.pathname.replace(/\/+$/, "").replace(/\/v1$/, "");
+  return `${url.origin}${path}/v1`;
+}
+
+/** Models LM Studio has downloaded; it loads one on first use. */
+async function listLMStudioModels(
+  address: string,
+  request: typeof fetch,
+): Promise<ProviderModel[]> {
+  const base = lmStudioBaseUrl(address);
+  let response: Response;
+  try {
+    response = await request(`${base}/models`, {
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
+  } catch {
+    throw Error(
+      `Could not reach LM Studio at ${new URL(base).host}. Open LM Studio and start its server (Developer → Start server, or run “lms server start”), then try again.`,
+    );
+  }
+  if (!response.ok)
+    throw Error(
+      response.status === 401 || response.status === 403
+        ? "LM Studio refused the request. Turn off authentication for its server, then try again."
+        : "LM Studio could not list its models. Check that its server is running, then try again.",
+    );
+  const body = await response.json().catch(() => null);
+  if (!Array.isArray(body?.data))
+    throw Error(
+      "This address did not answer like LM Studio. Check the server address and port.",
+    );
+  const models: ProviderModel[] = [];
+  for (const entry of body.data) {
+    const id = entry?.id;
+    if (typeof id !== "string" || !id || id.length > 200) continue;
+    // Embedding models share the list but cannot chat.
+    if (entry.type === "embeddings" || /embed/i.test(id)) continue;
+    if (!models.some((model) => model.id === id)) models.push({ id, name: id });
+  }
+  if (!models.length)
+    throw Error(
+      "LM Studio has no chat models downloaded yet. Download one in LM Studio, then load models again.",
+    );
+  return models.sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true }),
+  );
+}
+
 // Catalogue reads only: no generation, test prompts, or credentials in URLs/logs.
 export async function listProviderModels(
   provider: Provider,
   key: string,
   request: typeof fetch = fetch,
 ): Promise<ProviderModel[]> {
+  if (provider === "lmstudio") return listLMStudioModels(key, request);
   if (!key.trim()) throw Error("Paste an API key first.");
   const mismatch = keyMismatch(provider, key);
   if (mismatch) throw Error(mismatch);
@@ -201,6 +276,15 @@ export async function testProviderConnection(
   key: string,
   request: typeof fetch = fetch,
 ): Promise<ConnectionTest> {
+  if (provider === "lmstudio")
+    try {
+      return {
+        ok: true,
+        models: (await listLMStudioModels(key, request)).length,
+      };
+    } catch (error) {
+      return { ok: false, error: (error as Error).message };
+    }
   if (!key.trim()) return { ok: false, error: "Paste an API key first." };
   const mismatch = keyMismatch(provider, key.trim());
   if (mismatch) return { ok: false, error: mismatch };

@@ -90,7 +90,11 @@ function detailOf(e: ProviderError): Detail {
   let requestId: string | undefined;
   try {
     const body = JSON.parse(e.responseBody || "{}");
-    detail = body.error || detail;
+    // LM Studio wraps its engine's error as a plain string.
+    detail =
+      typeof body.error === "string"
+        ? { message: body.error }
+        : body.error || detail;
     if (typeof body.request_id === "string") requestId = body.request_id;
   } catch {
     /* use status instead */
@@ -114,6 +118,9 @@ const BILLING_CODES = [
 const BILLING_MESSAGE =
   /credit balance|billing|purchase credits|insufficient[_ ](quota|credits?|funds|balance)|spending limit|exceeded your current quota/i;
 const CONTEXT_CODES = ["context_length_exceeded", "prompt_too_long"];
+/** LM Studio: the model was loaded with a context smaller than the request. */
+const LOADED_CONTEXT =
+  /\((\d+) tokens\) exceeds the available context size \((\d+) tokens\)/;
 const CONTEXT_MESSAGE =
   /prompt is too long|exceeds? (the )?(model'?s? )?(maximum )?context|context[_ ]length|context window|maximum context|too many (input )?tokens|input length and `?max_tokens`? exceed/i;
 const COMPATIBILITY_MESSAGE =
@@ -149,6 +156,9 @@ export function providerErrorMessage(error: unknown): string | undefined {
     return "The model rejected the studio’s response format (invalid_json_schema). This is an app compatibility error. Update the studio or choose another model in Connections.";
   if (BILLING_CODES.includes(code || "") || BILLING_MESSAGE.test(message))
     return "Your provider account has no available API credit or has reached its spending limit. Check billing and limits in your provider account, then try again.";
+  const loaded = message.match(LOADED_CONTEXT);
+  if (loaded)
+    return `The model is loaded with room for ${loaded[2]} tokens, but this request needs ${loaded[1]}. In LM Studio, load the model with a larger context length (32,768 or more), then try again.`;
   if (contextOverflowError(error)) {
     const counts = message.match(/(\d[\d,]*) tokens? > (\d[\d,]*)/);
     const detail = counts ? ` (${counts[1]} tokens, limit ${counts[2]})` : "";

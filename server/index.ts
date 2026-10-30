@@ -249,6 +249,8 @@ function connectionSummary(c: Config) {
             ...(chatgpt
               ? { account: chatgpt.email, planUsage: chatgpt.planUsage }
               : {}),
+            // A local server address is not a secret.
+            ...(p === "lmstudio" && connected ? { address: entry.key } : {}),
           },
         ];
       }),
