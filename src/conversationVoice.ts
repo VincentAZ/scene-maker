@@ -4,6 +4,7 @@ import { SpeechTransport } from "./speechTransport";
 import { AudioLineTransport, type SynthesisResult } from "./audioTransport";
 import { VoiceTransport } from "./voiceTransport";
 import { api } from "./api";
+import { routeRecordingAudio } from "./recordingAudio";
 
 export function useConversationVoice(
   scene: Scene,
@@ -33,7 +34,7 @@ export function useConversationVoice(
           method: "POST",
           body: JSON.stringify(request),
         }),
-      (url) => new Audio(url),
+      (url) => routeRecordingAudio(new Audio(url)),
       report,
     );
     // Without browser speech synthesis, synthesized voices still work and

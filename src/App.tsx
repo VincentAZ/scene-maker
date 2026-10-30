@@ -41,6 +41,8 @@ import {
   Film,
   Lightbulb,
   PanelRightClose,
+  Circle,
+  Square,
 } from "lucide-react";
 import JSZip from "jszip";
 import { AssistantModelMenu } from "./AssistantModelMenu";
@@ -102,6 +104,12 @@ import {
 import { ConversationAside } from "./ConversationAside";
 import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
+import {
+  SceneRecorder,
+  recordingFileName,
+  recordingToMp4,
+} from "./sceneRecorder";
+import { armRecordingAudio, disarmRecordingAudio } from "./recordingAudio";
 import {
   useBrowserVoices,
   useVoiceCatalog,
@@ -305,6 +313,68 @@ export default function App() {
     setNotice(text);
     setTimeout(() => setNotice(""), 4000);
   };
+  // Recording the viewport during playback; the take ends when playback stops.
+  const recorder = useRef<SceneRecorder | null>(null);
+  const [recording, setRecording] = useState<"idle" | "recording" | "saving">(
+    "idle",
+  );
+  const sceneEnd = Math.max(
+    0,
+    ...scene.entities.map((e) => e.clips.reduce((t, c) => t + c.duration, 0)),
+  );
+  const startRecording = () => {
+    if (recording !== "idle" || recorder.current) return;
+    const surface = viewport.current?.recordingSurface();
+    if (!surface) {
+      report("Wait for the scene to finish loading, then record again.");
+      return;
+    }
+    const audio = voiceEnabled ? armRecordingAudio() : null;
+    let take: SceneRecorder;
+    try {
+      take = new SceneRecorder(surface, audio);
+    } catch (error) {
+      disarmRecordingAudio();
+      report((error as Error).message);
+      return;
+    }
+    recorder.current = take;
+    viewport.current?.onFrame(() => take.drawFrame());
+    // Restart the current voice line so its audio joins the recording.
+    voice.stop();
+    if (sceneEnd > 0 && time >= sceneEnd) setTime(0);
+    setRecording("recording");
+    setPlaying(true);
+  };
+  const finishRecording = useCallback(async () => {
+    const take = recorder.current;
+    if (!take) return;
+    recorder.current = null;
+    viewport.current?.onFrame(null);
+    disarmRecordingAudio();
+    setRecording("saving");
+    try {
+      const mp4 = await recordingToMp4(await take.stop());
+      download(mp4, recordingFileName(sceneRef.current.name), "video/mp4");
+      setNotice("Recording saved as MP4.");
+      setTimeout(() => setNotice(""), 4000);
+    } catch (error) {
+      report((error as Error).message);
+    } finally {
+      setRecording("idle");
+    }
+  }, [report]);
+  useEffect(() => {
+    if (recording === "recording" && !playing) void finishRecording();
+  }, [recording, playing, finishRecording]);
+  useEffect(
+    () => () => {
+      recorder.current?.stop().catch(() => {});
+      recorder.current = null;
+      disarmRecordingAudio();
+    },
+    [],
+  );
   const saveQueue = useRef<ProjectSaveQueue | null>(null);
   if (!saveQueue.current)
     saveQueue.current = new ProjectSaveQueue(
@@ -1649,7 +1719,10 @@ export default function App() {
               thinkingId={castProgress?.characterId}
               advanceTime={voice.advance}
               onPlaybackState={voice.playbackState}
-              stopAtEnd={scene.transcript.length > 0}
+              stopAtEnd={
+                scene.transcript.length > 0 ||
+                (recording === "recording" && sceneEnd > 0)
+              }
               onEnded={() => {
                 if (!conversationController.current) setPlaying(false);
               }}
@@ -1684,9 +1757,16 @@ export default function App() {
               </div>
             )}
             <div className="stage-top">
-              <span className="view-label">
-                <span className="status-dot" /> LIVE PREVIEW
-              </span>
+              {recording === "idle" ? (
+                <span className="view-label">
+                  <span className="status-dot" /> LIVE PREVIEW
+                </span>
+              ) : (
+                <span className="view-label recording-label" role="status">
+                  <span className="recording-dot" />
+                  {recording === "recording" ? "RECORDING" : "SAVING MP4…"}
+                </span>
+              )}
               <div className="stage-pill">
                 <Sun size={14} />
                 <select
@@ -1805,6 +1885,35 @@ export default function App() {
                     <Pause size={15} fill="currentColor" />
                   ) : (
                     <Play size={15} fill="currentColor" />
+                  )}
+                </button>
+                <button
+                  className={`icon-button record-button${recording === "recording" ? " active" : ""}`}
+                  aria-label={
+                    recording === "recording"
+                      ? "Stop recording"
+                      : "Record scene as MP4"
+                  }
+                  title={
+                    recording === "recording"
+                      ? "Stop recording and save the MP4"
+                      : recording === "saving"
+                        ? "Saving MP4…"
+                        : "Record the scene while it plays and save it as an MP4"
+                  }
+                  disabled={recording === "saving"}
+                  onClick={() =>
+                    recording === "recording"
+                      ? setPlaying(false)
+                      : startRecording()
+                  }
+                >
+                  {recording === "recording" ? (
+                    <Square size={13} fill="currentColor" />
+                  ) : recording === "saving" ? (
+                    <LoaderCircle size={15} className="spin" />
+                  ) : (
+                    <Circle size={14} fill="currentColor" />
                   )}
                 </button>
                 <span className="timecode">

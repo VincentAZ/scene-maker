@@ -5,6 +5,7 @@ import { runShell } from "./codingAgent";
 import { codingPreview } from "./codingPreview";
 import { createSpeechService } from "./speech";
 import { checkForUpdates, versionInfo } from "./updates";
+import { recordingsRouter } from "./recordings";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -449,6 +450,13 @@ app.post("/api/exports", upload.single("file"), (req, res) => {
   fs.renameSync(f.path, path.join(dataDir, "exports", name));
   res.json({ url: "/exports/" + name });
 });
+app.use(
+  "/api/recordings",
+  recordingsRouter({
+    uploads: path.join(dataDir, "uploads"),
+    ffmpeg: () => process.env.FFMPEG_PATH || "ffmpeg",
+  }),
+);
 app.post("/api/import", upload.single("file"), async (req, res) => {
   const f = req.file;
   if (!f) throw Error("Choose a GLB or FBX file.");

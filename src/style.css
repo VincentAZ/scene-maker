@@ -4992,3 +4992,30 @@ label > span {
   padding: 10px;
   border-radius: 8px;
 }
+.record-button {
+  color: #b5483c;
+}
+.record-button.active {
+  background: #b5483c22;
+}
+.record-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.recording-label {
+  color: #8e2f25;
+}
+.recording-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d0443a;
+  flex-shrink: 0;
+  animation: recording-pulse 1.2s ease-in-out infinite;
+}
+@keyframes recording-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}

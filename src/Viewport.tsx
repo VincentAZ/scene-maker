@@ -9,6 +9,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { exportSnapshot } from "./exportSnapshot";
+import type { RecordingSurface } from "./sceneRecorder";
 import { bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
@@ -37,6 +38,10 @@ export type ViewportHandle = {
   suppressAssetClick: () => boolean;
   seatingBody: (actorId: string) => SeatBody | undefined;
   screenshot: () => void;
+  /** The live canvas and dialogue overlay, for recording the view. */
+  recordingSurface: () => RecordingSurface | null;
+  /** Called after every rendered frame while set (for recordings). */
+  onFrame: (listener: (() => void) | null) => void;
   exportGLB: () => Promise<ArrayBuffer>;
   reset: () => void;
   frame: (
@@ -107,6 +112,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       live = useRef(props);
     live.current = props;
     const readyKey = useRef("");
+    const frameListener = useRef<(() => void) | null>(null);
+    const bubbleOverlay = useRef<HTMLElement | null>(null);
     const requestedModelKey = modelKey(props.scene);
     const context = useRef<{
       renderer: T.WebGLRenderer;
@@ -155,6 +162,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       bubbleLayer.className = "scene-bubble-layer";
       bubbleLayer.setAttribute("aria-label", "In-scene conversation");
       host.current.appendChild(bubbleLayer);
+      bubbleOverlay.current = bubbleLayer;
       const bubbles = new Map<string, HTMLDivElement>();
       const projectBubbles = (time: number) => {
         const lines = dialogueAt(live.current.scene, time).map((l) => ({
@@ -487,11 +495,13 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         if (controls.enabled) controls.update();
         renderer.render(world, camera);
         projectBubbles(elapsed);
+        frameListener.current?.();
       };
       frame = requestAnimationFrame(loop);
       return () => {
         cancelAnimationFrame(frame);
         bubbleLayer.remove();
+        bubbleOverlay.current = null;
         resize.disconnect();
         window.removeEventListener("keydown", cancelGizmo);
         renderer.domElement.removeEventListener(
@@ -832,6 +842,17 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             c.camera.position.set(8, 6.5, 10);
             c.controls.target.set(0, 0.85, -0.5);
           }
+        },
+        recordingSurface() {
+          const c = context.current;
+          if (!c || !bubbleOverlay.current) return null;
+          return {
+            canvas: c.renderer.domElement,
+            overlay: bubbleOverlay.current,
+          };
+        },
+        onFrame(listener) {
+          frameListener.current = listener;
         },
         screenshot() {
           const c = context.current;
