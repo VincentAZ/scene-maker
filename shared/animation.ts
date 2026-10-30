@@ -127,6 +127,7 @@ export function entityPose(
   options: {
     nativeRoot?: (
       motion: Motion,
+      clip: Entity["clips"][number],
     ) =>
       | { start: Point; delta: Point; heading?: number; startHeading?: number }
       | undefined;
@@ -247,7 +248,8 @@ export function entityPose(
       continue;
     }
     p.climb = undefined;
-    const native = m.kind === "imported" ? options.nativeRoot?.(m) : undefined;
+    const native =
+      m.kind === "imported" ? options.nativeRoot?.(m, clip) : undefined;
     if (time >= end) {
       const last = motionPose(m, 1);
       if (!seated) addRoot(native?.delta || last.root);

@@ -8,6 +8,7 @@ import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
 import { libraryMotions, motionSource } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
 import { thinkingLevels } from "./thinking";
+import { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE } from "./clipTiming";
 export const providers = [
   "openai",
   "anthropic",
@@ -80,7 +81,7 @@ export const motionSchema = z
     if (motion.path) {
       const points = motion.path.points;
       if (
-        !["walk", "run"].includes(motion.kind) ||
+        !["walk", "run", "imported"].includes(motion.kind) ||
         !points.length ||
         points[0].some((n) => Math.abs(n) > 1e-6) ||
         points.some(
@@ -95,7 +96,7 @@ export const motionSchema = z
         context.addIssue({
           code: "custom",
           message:
-            "Walking and running paths must start at zero, stay level, and have distinct points within 50 meters.",
+            "Locomotion paths must start at zero, stay level, and have distinct points within 50 meters.",
           path: ["path"],
         });
     }
@@ -209,10 +210,19 @@ export const assetSchema = z
       });
   });
 export type Asset = z.infer<typeof assetSchema>;
+const playbackRateSchema = z
+  .number()
+  .finite()
+  .min(MIN_PLAYBACK_RATE)
+  .max(MAX_PLAYBACK_RATE);
 export const clipSchema = z.object({
   id: z.string(),
   motionId: z.string(),
+  // Scheduled seconds, independent of imported source playback speed.
   duration: z.number().min(0.2).max(60),
+  playbackRate: playbackRateSchema.optional(),
+  // Persist the visible migration notice until the user explicitly picks a rate.
+  legacyFit: z.boolean().optional(),
   targetId: z.string().optional(),
   transition: z.enum(["smooth", "cut"]).optional(),
 });
@@ -288,6 +298,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: z.string(),
     motionId: z.string(),
     duration: z.number().min(0.2).max(60).optional(),
+    playbackRate: playbackRateSchema.optional(),
     targetId: z.string().optional(),
     transition: z.enum(["smooth", "cut"]).optional(),
   }),
@@ -451,6 +462,8 @@ export function applyCommands(
 ): Scene {
   const commands = z.array(commandSchema).max(100).parse(input);
   const s = structuredClone(scene);
+  // Freeze legacy fit speed before applying duration edits to a raw old scene.
+  materializeImportedClipTiming(s);
   const find = (id: string) => {
     const e = s.entities.find((e) => e.id === id);
     if (!e) throw Error("That scene object no longer exists.");
@@ -540,7 +553,34 @@ export function applyCommands(
         ending: "hold",
       });
     }
-    if (cmd.type === "update") Object.assign(find(cmd.id), cmd.changes);
+    if (cmd.type === "update") {
+      const entity = find(cmd.id);
+      if (cmd.changes.clips)
+        cmd.changes.clips = cmd.changes.clips.map((clip) => {
+          const motion = allMotions(s).find((m) => m.id === clip.motionId);
+          if (motion?.kind !== "imported") {
+            // Route edits may keep the clip/motion IDs while switching gait.
+            // Neither carried nor explicitly spread imported timing belongs on
+            // the resulting procedural action.
+            delete clip.playbackRate;
+            delete clip.legacyFit;
+            return clip;
+          }
+          const previous = entity.clips.find(
+            (old) => old.id === clip.id && old.motionId === clip.motionId,
+          );
+          // Old callers may send only id/motionId/duration. Preserve a rate
+          // already materialized on the matching imported clip, never refit it.
+          return clip.playbackRate === undefined
+            ? {
+                ...clip,
+                playbackRate: previous?.playbackRate ?? 1,
+                legacyFit: previous?.legacyFit,
+              }
+            : clip;
+        });
+      Object.assign(entity, cmd.changes);
+    }
     if (cmd.type === "remove") {
       find(cmd.id);
       s.entities = s.entities.filter((e) => e.id !== cmd.id);
@@ -559,6 +599,11 @@ export function applyCommands(
         id: uid(),
         motionId: m.id,
         duration: cmd.duration || m.duration,
+        ...(m.kind === "imported"
+          ? { playbackRate: cmd.playbackRate ?? 1 }
+          : cmd.playbackRate !== undefined
+            ? { playbackRate: cmd.playbackRate }
+            : {}),
         targetId: cmd.targetId,
         transition: cmd.transition || "smooth",
       });
@@ -635,6 +680,16 @@ export function applyCommands(
     if (cmd.type === "updateMotion") {
       const index = s.customMotions.findIndex((m) => m.id === cmd.motion.id);
       if (index < 0) throw Error("Only your own actions can be edited.");
+      if (
+        s.customMotions[index].kind === "imported" &&
+        cmd.motion.kind !== "imported"
+      )
+        for (const entity of s.entities)
+          for (const clip of entity.clips)
+            if (clip.motionId === cmd.motion.id) {
+              delete clip.playbackRate;
+              delete clip.legacyFit;
+            }
       s.customMotions[index] = cmd.motion;
     }
     if (cmd.type === "clear") {
@@ -661,11 +716,33 @@ export function applyCommands(
   }
   return validateScene(s, options);
 }
+/** Preserve old fitted takes as a fixed, visible speed, never a dynamic stretch. */
+function materializeImportedClipTiming(scene: Scene) {
+  const motionMap = new Map(
+    allMotions(scene).map((motion) => [motion.id, motion]),
+  );
+  for (const entity of scene.entities)
+    for (const clip of entity.clips) {
+      const motion = motionMap.get(clip.motionId);
+      if (motion?.kind !== "imported") continue;
+      if (motion.path) {
+        // Routes were introduced with distance-driven gait playback. Their
+        // duration schedules travel; it has never represented a source fit.
+        clip.playbackRate ??= 1;
+        delete clip.legacyFit;
+      } else if (clip.playbackRate === undefined) {
+        clip.playbackRate = motion.duration / clip.duration;
+        clip.legacyFit = true;
+      }
+    }
+}
+
 export function validateScene(
   input: unknown,
   options: { deferInteractionTiming?: boolean } = {},
 ): Scene {
   const s = sceneSchema.parse(input);
+  materializeImportedClipTiming(s);
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
   if (
     !unique(s.entities.map((e) => e.id)) ||
@@ -696,6 +773,11 @@ export function validateScene(
       if (!allMotions(s).some((m) => m.id === c.motionId))
         throw Error("Unknown action in scene.");
       const motion = allMotions(s).find((m) => m.id === c.motionId)!;
+      if (
+        motion.kind !== "imported" &&
+        (c.playbackRate !== undefined || c.legacyFit)
+      )
+        throw Error("Playback speed is available only for imported actions.");
       if (motion.kind === "imported") {
         const source = resolveMotionSource(s, motion.sourceAssetId);
         if (!source)

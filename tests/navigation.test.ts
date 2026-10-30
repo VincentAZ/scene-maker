@@ -420,3 +420,44 @@ it("plans around backdrop walls while excluding floor meshes from route footprin
   objects.forEach((object) => disposeObject(object));
   disposeObject(environment);
 });
+
+it("can plan geometry with an explicitly selected imported gait without losing its original identity", async () => {
+  const scene = fixture();
+  const objects = await objectsFor(scene);
+  const original = allMotions(scene).find(
+    (motion) => motion.id === "authored-walk-carry",
+  )!;
+  const motion = planObjectRoute(
+    scene,
+    objects,
+    "actor",
+    "destination",
+    "walk",
+    undefined,
+    undefined,
+    original,
+    { distance: 1.5, duration: 1 },
+  );
+  expect(motion.duration).toBeCloseTo(
+    Math.max(
+      0.5,
+      Math.round((compilePath(motion.path!).length / 1.5) * 10) / 10,
+    ),
+  );
+  expect(motion).toMatchObject({
+    kind: "imported",
+    sourceAssetId: original.sourceAssetId,
+    animationName: original.animationName,
+    distance: 0,
+    poses: [],
+  });
+  expect(motion.id).not.toBe(original.id);
+  expect(motion.path!.points.length).toBeGreaterThan(1);
+  expect(() =>
+    applyCommands(scene, [
+      { type: "createMotion", motion },
+      { type: "chain", id: "actor", motionId: motion.id },
+    ]),
+  ).not.toThrow();
+  for (const object of objects.values()) disposeObject(object);
+});

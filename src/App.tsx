@@ -50,6 +50,7 @@ import JSZip from "jszip";
 import { AssistantModelMenu } from "./AssistantModelMenu";
 import { productionPackage } from "./productionPackage";
 import { ActionPreview } from "./ActionPreview";
+import { ImportedClipTiming } from "./ImportedClipTiming";
 import { motionCollections, motionDetails } from "../shared/motionLibrary";
 import { CharacterCreator } from "./CharacterCreator";
 import { characterCollection, libraryEntry } from "../shared/characterLibrary";
@@ -2196,7 +2197,7 @@ export default function App() {
                             setRightTab("details");
                             setPanel(true);
                           }}
-                          title={`${allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${Number(c.duration.toFixed(1))}s`}
+                          title={`${allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${Number(c.duration.toFixed(1))}s${c.playbackRate !== undefined ? ` · ${Number(c.playbackRate.toFixed(4))}×${c.legacyFit ? " (legacy fit)" : ""}` : ""}`}
                         >
                           {dialogueClips.has(`${e.id}:${c.id}`) ? (
                             <MessageCircle size={12} />
@@ -2860,189 +2861,223 @@ export default function App() {
                         <span className="count">{entity.clips.length}</span>
                       </h3>
                       <div className="clip-list">
-                        {entity.clips.map((c, i) => (
-                          <div className="clip-editor" key={c.id}>
-                            <div>
-                              <span className="clip-number">
-                                {String(i + 1).padStart(2, "0")}
-                              </span>
-                              <strong>
-                                {
-                                  allMotions(scene).find(
-                                    (m) => m.id === c.motionId,
-                                  )?.name
-                                }
-                              </strong>
-                              <button
-                                aria-label={`Remove action ${i + 1}`}
-                                className="icon-button"
-                                onClick={() =>
-                                  execute([
-                                    {
-                                      type: "removeClip",
-                                      id: entity.id,
-                                      clipId: c.id,
-                                    },
-                                  ])
-                                }
-                              >
-                                <X size={13} />
-                              </button>
-                            </div>
-                            <div className="clip-controls">
-                              <button
-                                aria-label={`Move action ${i + 1} earlier`}
-                                disabled={i === 0}
-                                onClick={() =>
-                                  execute([
-                                    {
-                                      type: "reorderClip",
-                                      id: entity.id,
-                                      clipId: c.id,
-                                      direction: "earlier",
-                                    },
-                                  ])
-                                }
-                              >
-                                <ArrowLeft size={12} />
-                              </button>
-                              <button
-                                aria-label={`Move action ${i + 1} later`}
-                                disabled={i === entity.clips.length - 1}
-                                onClick={() =>
-                                  execute([
-                                    {
-                                      type: "reorderClip",
-                                      id: entity.id,
-                                      clipId: c.id,
-                                      direction: "later",
-                                    },
-                                  ])
-                                }
-                              >
-                                <ArrowRight size={12} />
-                              </button>
-                              <input
-                                aria-label={`Action ${i + 1} duration`}
-                                type="number"
-                                min=".2"
-                                max="60"
-                                step=".2"
-                                value={c.duration}
-                                onChange={(e) => {
-                                  if (Number(e.target.value) >= 0.2)
+                        {entity.clips.map((c, i) => {
+                          const motion = allMotions(scene).find(
+                            (m) => m.id === c.motionId,
+                          );
+                          return (
+                            <div className="clip-editor" key={c.id}>
+                              <div>
+                                <span className="clip-number">
+                                  {String(i + 1).padStart(2, "0")}
+                                </span>
+                                <strong>
+                                  {
+                                    allMotions(scene).find(
+                                      (m) => m.id === c.motionId,
+                                    )?.name
+                                  }
+                                </strong>
+                                <button
+                                  aria-label={`Remove action ${i + 1}`}
+                                  className="icon-button"
+                                  onClick={() =>
+                                    execute([
+                                      {
+                                        type: "removeClip",
+                                        id: entity.id,
+                                        clipId: c.id,
+                                      },
+                                    ])
+                                  }
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                              <div className="clip-controls">
+                                <button
+                                  aria-label={`Move action ${i + 1} earlier`}
+                                  disabled={i === 0}
+                                  onClick={() =>
+                                    execute([
+                                      {
+                                        type: "reorderClip",
+                                        id: entity.id,
+                                        clipId: c.id,
+                                        direction: "earlier",
+                                      },
+                                    ])
+                                  }
+                                >
+                                  <ArrowLeft size={12} />
+                                </button>
+                                <button
+                                  aria-label={`Move action ${i + 1} later`}
+                                  disabled={i === entity.clips.length - 1}
+                                  onClick={() =>
+                                    execute([
+                                      {
+                                        type: "reorderClip",
+                                        id: entity.id,
+                                        clipId: c.id,
+                                        direction: "later",
+                                      },
+                                    ])
+                                  }
+                                >
+                                  <ArrowRight size={12} />
+                                </button>
+                                <input
+                                  aria-label={`Action ${i + 1} duration`}
+                                  type="number"
+                                  min=".2"
+                                  max="60"
+                                  step=".2"
+                                  value={c.duration}
+                                  onChange={(e) => {
+                                    if (
+                                      Number(e.target.value) >= 0.2 &&
+                                      Number(e.target.value) <= 60
+                                    )
+                                      update(entity.id, {
+                                        clips: entity.clips.map((x) =>
+                                          x.id === c.id
+                                            ? {
+                                                ...x,
+                                                duration: Number(
+                                                  e.target.value,
+                                                ),
+                                              }
+                                            : x,
+                                        ),
+                                      });
+                                  }}
+                                />
+                                <span>sec</span>
+                              </div>
+                              {motion?.kind === "imported" && (
+                                <ImportedClipTiming
+                                  clip={c}
+                                  motion={motion}
+                                  index={i}
+                                  onChange={(changes) =>
+                                    update(entity.id, {
+                                      clips: entity.clips.map((clip) =>
+                                        clip.id === c.id
+                                          ? { ...clip, ...changes }
+                                          : clip,
+                                      ),
+                                    })
+                                  }
+                                />
+                              )}
+                              {i > 0 &&
+                                !contactAction(scene, c) &&
+                                !contactAction(scene, entity.clips[i - 1]) && (
+                                  <label className="clip-transition">
+                                    Into this action
+                                    <select
+                                      aria-label={`Action ${i + 1} transition`}
+                                      value={c.transition || "cut"}
+                                      onChange={(event) =>
+                                        update(entity.id, {
+                                          clips: entity.clips.map((clip) =>
+                                            clip.id === c.id
+                                              ? {
+                                                  ...clip,
+                                                  transition: event.target
+                                                    .value as "smooth" | "cut",
+                                                }
+                                              : clip,
+                                          ),
+                                        })
+                                      }
+                                    >
+                                      <option value="smooth">Smooth</option>
+                                      <option value="cut">Cut</option>
+                                    </select>
+                                  </label>
+                                )}
+                              {allMotions(scene).find(
+                                (m) => m.id === c.motionId,
+                              )?.path && (
+                                <button
+                                  className="text-button"
+                                  onClick={() =>
+                                    void openPathEditor(entity.id, c.id).catch(
+                                      (e) => report(e.message),
+                                    )
+                                  }
+                                >
+                                  <Footprints size={13} /> Edit path
+                                </button>
+                              )}
+                              {[
+                                "sip",
+                                "pick",
+                                "place",
+                                "climb",
+                                "sit",
+                              ].includes(
+                                allMotions(scene).find(
+                                  (m) => m.id === c.motionId,
+                                )?.kind || "",
+                              ) && (
+                                <select
+                                  aria-label={`Action ${i + 1} prop`}
+                                  value={c.targetId || ""}
+                                  onChange={(event) =>
                                     update(entity.id, {
                                       clips: entity.clips.map((x) =>
                                         x.id === c.id
                                           ? {
                                               ...x,
-                                              duration: Number(e.target.value),
+                                              targetId:
+                                                event.target.value || undefined,
                                             }
                                           : x,
                                       ),
-                                    });
-                                }}
-                              />
-                              <span>sec</span>
-                            </div>
-                            {i > 0 &&
-                              !contactAction(scene, c) &&
-                              !contactAction(scene, entity.clips[i - 1]) && (
-                                <label className="clip-transition">
-                                  Into this action
-                                  <select
-                                    aria-label={`Action ${i + 1} transition`}
-                                    value={c.transition || "cut"}
-                                    onChange={(event) =>
-                                      update(entity.id, {
-                                        clips: entity.clips.map((clip) =>
-                                          clip.id === c.id
-                                            ? {
-                                                ...clip,
-                                                transition: event.target
-                                                  .value as "smooth" | "cut",
-                                              }
-                                            : clip,
-                                        ),
-                                      })
-                                    }
-                                  >
-                                    <option value="smooth">Smooth</option>
-                                    <option value="cut">Cut</option>
-                                  </select>
-                                </label>
-                              )}
-                            {allMotions(scene).find((m) => m.id === c.motionId)
-                              ?.path && (
-                              <button
-                                className="text-button"
-                                onClick={() =>
-                                  void openPathEditor(entity.id, c.id).catch(
-                                    (e) => report(e.message),
-                                  )
-                                }
-                              >
-                                <Footprints size={13} /> Edit path
-                              </button>
-                            )}
-                            {["sip", "pick", "place", "climb", "sit"].includes(
-                              allMotions(scene).find((m) => m.id === c.motionId)
-                                ?.kind || "",
-                            ) && (
-                              <select
-                                aria-label={`Action ${i + 1} prop`}
-                                value={c.targetId || ""}
-                                onChange={(event) =>
-                                  update(entity.id, {
-                                    clips: entity.clips.map((x) =>
-                                      x.id === c.id
-                                        ? {
-                                            ...x,
-                                            targetId:
-                                              event.target.value || undefined,
-                                          }
-                                        : x,
-                                    ),
-                                  })
-                                }
-                              >
-                                <option value="">
-                                  {allMotions(scene).find(
-                                    (m) => m.id === c.motionId,
-                                  )?.kind === "climb"
-                                    ? "Choose a ladder…"
-                                    : allMotions(scene).find(
+                                    })
+                                  }
+                                >
+                                  <option value="">
+                                    {allMotions(scene).find(
+                                      (m) => m.id === c.motionId,
+                                    )?.kind === "climb"
+                                      ? "Choose a ladder…"
+                                      : allMotions(scene).find(
+                                            (m) => m.id === c.motionId,
+                                          )?.kind === "sit"
+                                        ? "Choose a seat…"
+                                        : "Choose a prop…"}
+                                  </option>
+                                  {scene.entities
+                                    .filter((e) => {
+                                      const asset = allAssets(scene).find(
+                                        (a) => a.id === e.assetId,
+                                      );
+                                      return (
+                                        asset?.category === "props" &&
+                                        (allMotions(scene).find(
                                           (m) => m.id === c.motionId,
-                                        )?.kind === "sit"
-                                      ? "Choose a seat…"
-                                      : "Choose a prop…"}
-                                </option>
-                                {scene.entities
-                                  .filter((e) => {
-                                    const asset = allAssets(scene).find(
-                                      (a) => a.id === e.assetId,
-                                    );
-                                    return (
-                                      asset?.category === "props" &&
-                                      (allMotions(scene).find(
-                                        (m) => m.id === c.motionId,
-                                      )?.kind !== "climb" ||
-                                        ladderProfile(asset)) &&
-                                      (allMotions(scene).find(
-                                        (m) => m.id === c.motionId,
-                                      )?.kind !== "sit" ||
-                                        seatProfile(asset))
-                                    );
-                                  })
-                                  .map((e) => (
-                                    <option value={e.id} key={e.id}>
-                                      {e.name}
-                                    </option>
-                                  ))}
-                              </select>
-                            )}
-                          </div>
-                        ))}
+                                        )?.kind !== "climb" ||
+                                          ladderProfile(asset)) &&
+                                        (allMotions(scene).find(
+                                          (m) => m.id === c.motionId,
+                                        )?.kind !== "sit" ||
+                                          seatProfile(asset))
+                                      );
+                                    })
+                                    .map((e) => (
+                                      <option value={e.id} key={e.id}>
+                                        {e.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       {entity.clips.length > 0 &&
                         !contactAction(scene, entity.clips.at(-1)!) && (
@@ -3156,7 +3191,7 @@ export default function App() {
           actor={pathEdit.actor}
           frame={pathEdit.frame}
           footprints={pathEdit.footprints}
-          onPlan={(targetId, movement) => {
+          onPlan={(targetId, movement, locomotion, measuredCycle) => {
             if (sameContent(sceneRef.current) !== pathEdit.content)
               throw Error(
                 "The scene changed. Close this route and open it again.",
@@ -3166,6 +3201,8 @@ export default function App() {
               targetId,
               movement,
               pathEdit.clipId,
+              locomotion,
+              measuredCycle,
             );
           }}
           speechDuration={

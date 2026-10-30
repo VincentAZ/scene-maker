@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   type Scene,
   type DialogueLine,
+  type Motion,
   sceneSchema,
   applyCommands,
   validateScene,
@@ -220,6 +221,10 @@ export function dialogueSubtitles(scene: Scene): string {
 // Action kinds that can be replaced by a drawn route without losing contact
 // choreography.
 const routableKinds = ["talk", "idle", "wave", "bow", "walk", "run"];
+const routableMotion = (motion: Motion | undefined) =>
+  !!motion &&
+  (routableKinds.includes(motion.kind) ||
+    (motion.kind === "imported" && !!motion.path));
 const lineClipIds = (line: DialogueLine) =>
   line.clipIds || (line.clipId ? [line.clipId] : []);
 /** The first action of a line that a drawn path can replace, if any. */
@@ -229,9 +234,8 @@ export function pathableClip(scene: Scene, line: DialogueLine): string | null {
   const motions = allMotions(scene);
   for (const id of lineClipIds(line)) {
     const clip = actor.clips.find((c) => c.id === id);
-    const kind = clip && motions.find((m) => m.id === clip.motionId)?.kind;
-    if (clip && !clip.targetId && kind && routableKinds.includes(kind))
-      return clip.id;
+    const motion = clip && motions.find((m) => m.id === clip.motionId);
+    if (clip && !clip.targetId && routableMotion(motion)) return clip.id;
   }
   return null;
 }
@@ -239,7 +243,7 @@ export function setDialoguePath(
   scene: Scene,
   characterId: string,
   clipId: string,
-  motion: import("./scene").Motion,
+  motion: Motion,
 ): Scene {
   const actor = scene.entities.find((e) => e.id === characterId);
   const line = scene.transcript.find(
@@ -250,13 +254,11 @@ export function setDialoguePath(
   // A line may span several actions: route the requested one when it can
   // travel, otherwise the line's first action that can.
   const requested = actor.clips.find((c) => c.id === clipId)!;
-  const requestedKind = allMotions(scene).find(
+  const requestedMotion = allMotions(scene).find(
     (m) => m.id === requested.motionId,
-  )?.kind;
+  );
   const routed =
-    !requested.targetId &&
-    requestedKind &&
-    routableKinds.includes(requestedKind)
+    !requested.targetId && routableMotion(requestedMotion)
       ? clipId
       : pathableClip(scene, line);
   if (!routed)
@@ -265,8 +267,8 @@ export function setDialoguePath(
     );
   const clip = actor.clips.find((c) => c.id === routed)!;
   const old = allMotions(scene).find((m) => m.id === clip.motionId)!;
-  if (!motion.path || !["walk", "run"].includes(motion.kind))
-    throw Error("Draw a walking or running path for this line.");
+  if (!motion.path || !["walk", "run", "imported"].includes(motion.kind))
+    throw Error("Draw a locomotion path for this line.");
   const reusable =
     scene.customMotions.some((m) => m.id === old.id) &&
     scene.entities.flatMap((e) => e.clips).filter((c) => c.motionId === old.id)

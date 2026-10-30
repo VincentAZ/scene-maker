@@ -139,8 +139,7 @@ export function worldToPath(point: Point, frame: PathFrame): Point {
  * Smooth curves are tessellated from compilePath's own arc-length table. */
 export function pathActionClips(motion: Motion, actions: PointAction[]) {
   const parsed = motionSchema.parse(motion);
-  if (!parsed.path)
-    throw Error("Point actions need a walking or running route.");
+  if (!parsed.path) throw Error("Point actions need a locomotion route.");
   const path = parsed.path;
   const byPoint = new Map<number, PointAction>();
   for (const action of actions) {
@@ -374,6 +373,11 @@ export function savePathCommands(
       id: index === 0 && previous ? previous.id : crypto.randomUUID(),
       motionId: part.motion.id,
       duration: part.motion.duration,
+      // Each new route fragment keeps the imported gait's explicit timing,
+      // never a legacy fit derived from its share of the travel duration.
+      ...(part.motion.kind === "imported"
+        ? { playbackRate: previous?.playbackRate ?? 1 }
+        : {}),
       transition: index === 0 ? previous?.transition : ("cut" as const),
     }));
     commands.push({

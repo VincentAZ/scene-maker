@@ -92,6 +92,7 @@ export function actionPreview(
       id: "preview-action",
       motionId: motion.id,
       duration: motion.duration,
+      ...(motion.kind === "imported" ? { playbackRate: 1 } : {}),
       targetId: motion.kind === "stand" ? undefined : targetId,
       transition: "cut",
     },

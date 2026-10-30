@@ -17,7 +17,7 @@ import {
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning } from "../src/rig";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
-import { bakeAnimation } from "../src/bakeAnimation";
+import { BAKE_SAMPLE_FPS, bakeAnimation } from "../src/bakeAnimation";
 import { exportSnapshot } from "../src/exportSnapshot";
 import { offlineCommands } from "../server/ai";
 
@@ -97,8 +97,8 @@ it("bakes a library performance into a separate rig with matching joint position
     mixer = new T.AnimationMixer(exported);
   const action = mixer.clipAction(animation).setLoop(T.LoopOnce, 1);
   action.clampWhenFinished = true;
-  // Compare exact 24fps sample instants; between samples playback interpolates.
-  for (const time of [0, 1, 2, 2.125, 3, 4]) {
+  // Compare exact bake sample instants; between samples playback interpolates.
+  for (const time of [0, 1, 2, 2 + 8 / BAKE_SAMPLE_FPS, 3, 4]) {
     sample(time);
     action.reset().play();
     mixer.setTime(time);

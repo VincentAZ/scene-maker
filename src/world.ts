@@ -1,4 +1,12 @@
 import * as T from "three";
+import { samplePath } from "../shared/path";
+import {
+  locomotionProfile,
+  sampleLocomotion,
+  locomotionScale,
+  type LocomotionProfile,
+} from "./locomotion";
+import { sourceSecondsAt, clipSourceEnd } from "../shared/clipTiming";
 import {
   applyHumanoidPose,
   nativeRootMotion,
@@ -452,6 +460,8 @@ function applyUnblendedEntityPose(
 ) {
   const mixer = group.userData.mixer as T.AnimationMixer | undefined;
   mixer?.stopAllAction();
+  group.userData.motionNotice = "";
+  group.userData.retargetReport = undefined;
   const bones = group.userData.bones as Record<string, T.Bone> | undefined;
   if (
     !group.userData.seatBody &&
@@ -485,7 +495,7 @@ function applyUnblendedEntityPose(
         "rightLeg",
         "rightShin",
       ].every((name) => bones[name]),
-    nativeRoot: (motion) => {
+    nativeRoot: (motion, scheduled) => {
       if (motion.sourceAssetId !== entity.assetId) {
         const source = motionSource(group, motion.sourceAssetId!);
         const clip =
@@ -495,7 +505,12 @@ function applyUnblendedEntityPose(
             motion.animationName!,
           );
         return source && clip
-          ? transferredRootMotion(source, group, clip)
+          ? transferredRootMotion(
+              source,
+              group,
+              clip,
+              clipSourceEnd(scheduled, clip.duration),
+            )
           : undefined;
       }
       if (!mixer) return;
@@ -503,7 +518,13 @@ function applyUnblendedEntityPose(
         group.userData.animations,
         motion.animationName || "",
       );
-      const root = native && nativeRootMotion(group, native);
+      const root =
+        native &&
+        nativeRootMotion(
+          group,
+          native,
+          clipSourceEnd(scheduled, native.duration),
+        );
       return root
         ? {
             start: root.start
@@ -522,7 +543,18 @@ function applyUnblendedEntityPose(
   });
   let start = 0;
   let current:
-    { clip: T.AnimationClip; time: number; source?: T.Group } | undefined;
+    | {
+        clip: T.AnimationClip;
+        time: number;
+        source?: T.Group;
+        route?: {
+          profile: LocomotionProfile;
+          sample: ReturnType<typeof sampleLocomotion>;
+          ratio: number;
+          heading: number;
+        };
+      }
+    | undefined;
   let missing = false;
   for (const clip of entity.clips) {
     const motion = allMotions(scene).find((m) => m.id === clip.motionId);
@@ -539,9 +571,39 @@ function applyUnblendedEntityPose(
         if (time >= start && time < start + clip.duration) {
           current = {
             clip: native,
-            time: ((time - start) * native.duration) / clip.duration,
+            time: sourceSecondsAt(clip, time - start, native.duration),
             source: source === group ? undefined : source,
           };
+          if (motion.path && source) {
+            const profile = locomotionProfile(source, native);
+            const ratio = source === group ? 1 : locomotionScale(source, group);
+            if (
+              profile &&
+              profile.distance >= 0.15 &&
+              profile.distance / profile.duration >= 0.05 &&
+              ratio > 0
+            ) {
+              const path = samplePath(
+                motion.path,
+                (time - start) / clip.duration,
+              );
+              const sample = sampleLocomotion(profile, path.travelled / ratio);
+              current.time = sample.time;
+              current.route = {
+                profile,
+                sample,
+                ratio,
+                heading: pose.heading ?? entity.rotation,
+              };
+              pose.heading =
+                current.route.heading -
+                sample.heading +
+                (source === group ? 0 : profile.startHeading);
+            } else {
+              missing = true;
+              current = undefined;
+            }
+          }
         }
       } else if (time >= start && time < start + clip.duration) missing = true;
     }
@@ -564,8 +626,32 @@ function applyUnblendedEntityPose(
       current.time,
     );
   else if (current) sampleNativeClip(group, current.clip, current.time);
+  if (current?.route && !group.userData.motionWarning) {
+    const { profile, sample, ratio, heading } = current.route;
+    const original = current.source || group;
+    original.updateWorldMatrix(true, true);
+    const hip = original.worldToLocal(
+      original.userData.bones.hips.getWorldPosition(new T.Vector3()),
+    );
+    const residual = hip.sub(sample.center);
+    residual.y = 0;
+    residual
+      .applyAxisAngle(new T.Vector3(0, 1, 0), heading - sample.heading)
+      .multiplyScalar(ratio * entity.scale);
+    group.updateWorldMatrix(true, true);
+    const actual = group.userData.bones.hips.getWorldPosition(new T.Vector3());
+    group.position.x += pose.root[0] + residual.x - actual.x;
+    group.position.z += pose.root[2] + residual.z - actual.z;
+    if (profile.warning && sample.repeated)
+      group.userData.motionNotice = [
+        group.userData.motionNotice,
+        profile.warning,
+      ]
+        .filter(Boolean)
+        .join(" ");
+  }
   if (missing)
-    group.userData.motionWarning = `The original file for ${entity.name}'s action is unavailable. Reimport it to use this motion.`;
+    group.userData.motionWarning = `The original file or a measurable foot stride for ${entity.name}'s action is unavailable. Choose an imported walking/running cycle or reimport the source.`;
 }
 // Frees GPU resources of every mesh under root. Material.dispose() does not
 // release the textures a material references, so they are released here too;

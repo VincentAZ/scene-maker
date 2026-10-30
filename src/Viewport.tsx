@@ -16,7 +16,7 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { exportSnapshot } from "./exportSnapshot";
 import { cinemaFov, frameGuide } from "./sceneRecorder";
-import { bakeAnimation } from "./bakeAnimation";
+import { animationSampleBoundaries, bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
 import { setMotionSources } from "./rig";
@@ -67,6 +67,8 @@ export type ViewportHandle = {
     targetId: string,
     kind: "walk" | "run",
     beforeClipId?: string,
+    locomotion?: Motion,
+    measuredCycle?: { distance: number; duration: number },
   ) => Motion;
 };
 type Props = {
@@ -365,9 +367,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         interactionWarning = [
           collisionWarning,
           ...interactionMessages,
-          ...Array.from(
-            objects.values(),
-            (object) => (object.userData.motionWarning as string) || "",
+          ...Array.from(objects.values(), (object) =>
+            [object.userData.motionWarning, object.userData.motionNotice]
+              .filter(Boolean)
+              .join(" "),
           ),
         ]
           .filter(Boolean)
@@ -796,7 +799,14 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             c.renderAt(live.current.time);
           }
         },
-        planRoute(actorId, targetId, kind, beforeClipId) {
+        planRoute(
+          actorId,
+          targetId,
+          kind,
+          beforeClipId,
+          locomotion,
+          measuredCycle,
+        ) {
           const c = context.current;
           if (!c) throw Error("Wait for the scene to finish loading.");
           try {
@@ -808,6 +818,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               kind,
               beforeClipId,
               c.environment.root,
+              locomotion,
+              measuredCycle,
             );
           } finally {
             c.renderAt(live.current.time);
@@ -978,10 +990,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             ],
             duration(live.current.scene),
             c.renderAt,
-            live.current.scene.entities.flatMap((entity) => {
-              let time = 0;
-              return entity.clips.map((clip) => (time += clip.duration));
-            }),
+            animationSampleBoundaries(live.current.scene, c.objects),
           );
           c.renderAt(0);
           const snapshot = exportSnapshot(c.content);

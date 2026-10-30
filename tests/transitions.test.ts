@@ -18,7 +18,7 @@ import {
 import { configureImportedRig } from "../src/rig";
 import { configureRigContacts } from "../src/ik";
 import { applyInteractions } from "../src/interactions";
-import { bakeAnimation } from "../src/bakeAnimation";
+import { BAKE_SAMPLE_FPS, bakeAnimation } from "../src/bakeAnimation";
 import { exportSnapshot } from "../src/exportSnapshot";
 
 const point = (object: T.Object3D) => object.getWorldPosition(new T.Vector3());
@@ -230,7 +230,7 @@ describe("action transitions and endings", () => {
       snapshot.updateWorldMatrix(true, true);
       const actual = point(hips),
         expected = point(f.bones.hips);
-      // Vertical gait is sampled at 24 fps; horizontal travel must stay exact.
+      // Vertical gait is sampled on the bake grid; horizontal travel must stay exact.
       expect(
         Math.hypot(actual.x - expected.x, actual.z - expected.z),
         `at ${time}`,
@@ -354,13 +354,13 @@ describe("action transitions and endings", () => {
     const root = new T.Group();
     root.add(f.group);
     const animation = bakeAnimation([f.group], 3, (time) => f.sample(time));
-    f.sample(1 + 1 / 24);
+    f.sample(1 + 1 / BAKE_SAMPLE_FPS);
     const expected = point(f.bones.rightForearm);
     f.sample(0);
     const snapshot = exportSnapshot(root),
       mixer = new T.AnimationMixer(snapshot);
     mixer.clipAction(animation).play();
-    mixer.setTime(1 + 1 / 24);
+    mixer.setTime(1 + 1 / BAKE_SAMPLE_FPS);
     snapshot.updateWorldMatrix(true, true);
     expect(
       point(

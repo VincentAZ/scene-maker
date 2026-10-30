@@ -19,6 +19,17 @@ import {
 } from "../shared/path";
 import type { Point } from "../shared/ladder";
 import type { Footprint } from "../shared/navigation";
+import { motionSource } from "../shared/motionLibrary";
+import {
+  defaultRouteLocomotion,
+  matchingRouteLocomotion,
+  routeLocomotions,
+  routeLocomotionFields,
+  routeMovement,
+  routePace,
+  type RouteGaitCycle,
+} from "./routeLocomotion";
+import { useRouteGait, type RouteGaitOverride } from "./useRouteGait";
 
 type Props = {
   scene: Scene;
@@ -27,7 +38,13 @@ type Props = {
   motion?: Motion;
   footprints?: Footprint[];
   speechDuration?: number;
-  onPlan?: (targetId: string, movement: "walk" | "run") => Motion;
+  onPlan?: (
+    targetId: string,
+    movement: "walk" | "run",
+    locomotion?: Motion,
+    measuredCycle?: RouteGaitCycle,
+  ) => Motion;
+  locomotionCycle?: RouteGaitOverride;
   onSave: (motion: Motion, pointActions?: PointAction[]) => void;
   onClose: () => void;
 };
@@ -39,6 +56,7 @@ export function PathEditor({
   footprints = [],
   speechDuration,
   onPlan,
+  locomotionCycle,
   onSave,
   onClose,
 }: Props) {
@@ -76,10 +94,22 @@ export function PathEditor({
       action.duration > 60,
   );
   const [planNotice, setPlanNotice] = useState("");
+  const locomotions = useMemo(
+    () => routeLocomotions(scene, actor, motion),
+    [scene, actor, motion],
+  );
   const [name, setName] = useState(motion?.name || `${actor.name}'s route`),
-    [kind, setKind] = useState<"walk" | "run">(
-      motion?.kind === "run" ? "run" : "walk",
+    [locomotionId, setLocomotionId] = useState(
+      () =>
+        (motion && matchingRouteLocomotion(locomotions, motion))?.id ||
+        defaultRouteLocomotion(scene, actor).id,
     );
+  const locomotion =
+    locomotions.find((candidate) => candidate.id === locomotionId) ||
+    defaultRouteLocomotion(scene, actor);
+  const kind = routeMovement(locomotion);
+  const gait = useRouteGait(scene, actor, locomotion, locomotionCycle);
+  const measuredCycle = gait.cycle;
   const [smooth, setSmooth] = useState(motion?.path?.smooth ?? true),
     [seconds, setSeconds] = useState(motion?.duration || 6),
     [manualTime, setManualTime] = useState(!!motion);
@@ -170,10 +200,18 @@ export function PathEditor({
     [path, points.length],
   );
   const length = (compiled?.length || 0) * frame.scale;
-  const pace = Math.max(
-    0.5,
-    Math.min(60, Math.round((length / (kind === "run" ? 2.6 : 1.1)) * 10) / 10),
-  );
+  const pace =
+    gait.status !== "ready"
+      ? undefined
+      : Math.max(
+          0.5,
+          Math.min(
+            60,
+            Math.round(
+              (length / routePace(locomotion, frame.scale, measuredCycle)) * 10,
+            ) / 10,
+          ),
+        );
   const duration = speechDuration ?? (manualTime ? seconds : pace);
   const drawn =
     compiled?.samples
@@ -223,10 +261,16 @@ export function PathEditor({
   };
   const submit = () => {
     try {
+      if (gait.status !== "ready") {
+        setError(
+          gait.error || "Wait for the original gait to finish measuring.",
+        );
+        return;
+      }
       const parsed = motionSchema.safeParse({
         id,
         name: name.trim(),
-        kind,
+        ...routeLocomotionFields(locomotion),
         duration,
         distance: 0,
         poses: [],
@@ -287,10 +331,15 @@ export function PathEditor({
             </label>
             <button
               className="secondary"
-              disabled={!destination}
+              disabled={!destination || gait.status !== "ready"}
               onClick={() => {
                 try {
-                  const planned = onPlan(destination, kind);
+                  const planned = onPlan(
+                    destination,
+                    kind,
+                    locomotion,
+                    measuredCycle,
+                  );
                   const route = planned.path!.points.map((p) =>
                     pathToWorld(p, frame),
                   );
@@ -510,15 +559,35 @@ export function PathEditor({
             />
           </label>
           <label>
-            Movement
+            Locomotion
             <select
-              value={kind}
-              onChange={(event) =>
-                setKind(event.target.value as "walk" | "run")
-              }
+              aria-label="Route locomotion"
+              value={locomotionId}
+              onChange={(event) => setLocomotionId(event.target.value)}
             >
-              <option value="walk">Walk</option>
-              <option value="run">Run</option>
+              <optgroup label="Authored and imported gaits">
+                {locomotions
+                  .filter((candidate) => candidate.kind === "imported")
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                      {candidate.sourceAssetId === actor.assetId
+                        ? " · original character"
+                        : candidate.sourceAssetId === motionSource.id
+                          ? " · authored"
+                          : " · imported"}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Studio procedural gaits">
+                {locomotions
+                  .filter((candidate) => candidate.kind !== "imported")
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+              </optgroup>
             </select>
           </label>
           <label>
@@ -533,7 +602,11 @@ export function PathEditor({
               max="60"
               step=".1"
               disabled={speechDuration !== undefined}
-              value={duration}
+              aria-label="Route duration"
+              placeholder={
+                gait.status === "loading" ? "Measuring…" : "Unavailable"
+              }
+              value={duration ?? ""}
               onChange={(event) => {
                 setManualTime(true);
                 setSeconds(Number(event.target.value));
@@ -541,6 +614,36 @@ export function PathEditor({
             />
           </label>
         </div>
+        {locomotion.kind === "imported" && (
+          <p className="path-note" role="note">
+            Keeps the original animation and repeats it by distance along the
+            route, rather than replacing its gait. Choose a looping forward walk
+            or run; other imported clips may not loop cleanly.
+          </p>
+        )}
+        {gait.status === "loading" && (
+          <p className="path-note" role="status">
+            Measuring the original gait for this character… Natural pace will
+            update when the source animation is ready.
+          </p>
+        )}
+        {gait.status === "error" && (
+          <div className="path-note" role="alert">
+            <p>{gait.error}</p>
+            {!locomotionCycle && (
+              <button className="text-button" onClick={gait.retry}>
+                Retry gait measurement
+              </button>
+            )}
+          </div>
+        )}
+        {gait.status === "ready" && measuredCycle && (
+          <p className="path-note" role="status">
+            Measured natural pace:{" "}
+            {routePace(locomotion, frame.scale, measuredCycle).toFixed(2)} m/s
+            {measuredCycle.warning ? ` · ${measuredCycle.warning}` : ""}
+          </p>
+        )}
         <div className="path-map-actions">
           <label className="path-smooth">
             <input
@@ -553,6 +656,7 @@ export function PathEditor({
           {speechDuration === undefined && (
             <button
               className="text-button"
+              disabled={gait.status !== "ready"}
               onClick={() => setManualTime(false)}
             >
               Use natural pace
@@ -639,7 +743,7 @@ export function PathEditor({
             ))}
             {pointActions.length > 0 && (
               <p className="path-note">
-                {Number.isFinite(actionSeconds)
+                {duration !== undefined && Number.isFinite(actionSeconds)
                   ? `${(duration + actionSeconds).toFixed(1)} seconds total · `
                   : ""}
                 Saves movement and point actions as separate sequence clips for
@@ -708,6 +812,8 @@ export function PathEditor({
             disabled={
               points.length < 2 ||
               !name.trim() ||
+              gait.status !== "ready" ||
+              duration === undefined ||
               !Number.isFinite(duration) ||
               duration < 0.2 ||
               duration > 60 ||

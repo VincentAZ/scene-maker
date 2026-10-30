@@ -312,3 +312,35 @@ describe("route point actions materialized as sequence clips", () => {
     }
   });
 });
+
+it("keeps original imported gait identity on every movement fragment between point actions", () => {
+  const imported: Motion = {
+    ...route(),
+    kind: "imported",
+    sourceAssetId: "quaternius-action-source",
+    animationName: "Walk_Carry",
+  };
+  const parts = pathActionClips(imported, actions);
+  const moving = parts.filter((part) => !part.action);
+  expect(moving).toHaveLength(4);
+  for (const part of moving) {
+    expect(part.motion).toMatchObject({
+      kind: "imported",
+      sourceAssetId: imported.sourceAssetId,
+      animationName: imported.animationName,
+      distance: 0,
+      poses: [],
+    });
+    expect(part.motion.path).toBeDefined();
+  }
+  expect(
+    moving.reduce((sum, part) => sum + part.motion.duration, 0),
+  ).toBeCloseTo(imported.duration);
+  const { scene, actor } = fixture();
+  expect(() =>
+    applyCommands(
+      scene,
+      savePathCommands(scene, actor.id, imported, undefined, actions),
+    ),
+  ).not.toThrow();
+});

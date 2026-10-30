@@ -20,6 +20,11 @@ import type { Point } from "../shared/ladder";
 import { applyAnimatedEntityPose } from "./world";
 import { reachableGrip } from "./interactions";
 import { snapshotCollider } from "./collision";
+import {
+  routeLocomotionFields,
+  routePace,
+  type RouteGaitCycle,
+} from "./routeLocomotion";
 
 export type RouteContext = {
   frame: PathFrame;
@@ -135,6 +140,8 @@ export function planObjectRoute(
   kind: "walk" | "run",
   beforeClipId?: string,
   environment?: T.Object3D | null,
+  locomotion?: Motion,
+  measuredCycle?: RouteGaitCycle,
 ): Motion {
   const target = scene.entities.find((e) => e.id === targetId),
     actor = scene.entities.find((e) => e.id === actorId);
@@ -253,7 +260,15 @@ export function planObjectRoute(
   const length = compilePath(path).length * frame.scale;
   const duration = Math.max(
     0.5,
-    Math.round((length / (kind === "run" ? 2.6 : 1.1)) * 10) / 10,
+    Math.round(
+      (length /
+        (locomotion
+          ? routePace(locomotion, frame.scale, measuredCycle)
+          : kind === "run"
+            ? 2.6
+            : 1.1)) *
+        10,
+    ) / 10,
   );
   if (duration > 60)
     throw Error(
@@ -271,7 +286,7 @@ export function planObjectRoute(
   const parsed = motionSchema.safeParse({
     id: "route-" + uid(),
     name: `${kind === "run" ? "Run" : "Walk"} to ${target.name}`.slice(0, 100),
-    kind,
+    ...(locomotion ? routeLocomotionFields(locomotion) : { kind }),
     duration,
     distance: 0,
     poses: [],

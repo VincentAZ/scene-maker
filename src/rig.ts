@@ -1,4 +1,11 @@
 import * as T from "three";
+import {
+  captureDetailBind,
+  captureDetailNeutral,
+  restoreDetailMorphs,
+  applyDetailedTransfer,
+  applyRetargetNotice,
+} from "./detailedRetarget";
 import { boneNames } from "../shared/scene";
 import { configureRigContacts, type RigContacts } from "./ik";
 
@@ -22,7 +29,7 @@ type HumanoidRig = {
   bindRoot: T.Vector3;
   bindHips: T.Vector3;
   bindFacing: T.Quaternion;
-  roots: Map<T.AnimationClip, RootMotion>;
+  roots: Map<T.AnimationClip, Map<number, RootMotion>>;
   attachmentRest: Partial<Record<BoneName, T.Vector3>>;
 };
 const rigs = new WeakMap<T.Group, HumanoidRig>();
@@ -172,6 +179,7 @@ export function configureImportedRig(
   );
   group.userData.animations = animations;
   group.userData.mixer = new T.AnimationMixer(imported);
+  captureDetailBind(group);
   const contacts = configureRigContacts(group);
   const compatible =
     boneNames.every(
@@ -236,6 +244,7 @@ export function configureImportedRig(
     data.neutralWorld[name] = inverse
       .clone()
       .multiply(bones[name].getWorldQuaternion(new T.Quaternion()));
+  captureDetailNeutral(group);
   restore(data);
   group.updateWorldMatrix(true, true);
 }
@@ -249,6 +258,7 @@ export function applyHumanoidPose(
   const data = rigs.get(group);
   if (!data) return false;
   restore(data);
+  restoreDetailMorphs(group);
   group.updateWorldMatrix(true, true);
   if (native || !data.compatible) return true;
   const bones = group.userData.bones as Record<string, T.Bone>;
@@ -295,10 +305,14 @@ export function sampleNativeClip(
 export function nativeRootMotion(
   group: T.Group,
   clip: T.AnimationClip,
+  endTime = clip.duration,
 ): RootMotion | undefined {
   const data = rigs.get(group);
   if (!data || !group.userData.bones.hips) return;
-  const cached = data.roots.get(clip);
+  endTime = Math.max(0, Math.min(clip.duration, endTime));
+  let cache = data.roots.get(clip);
+  if (!cache) data.roots.set(clip, (cache = new Map()));
+  const cached = cache.get(endTime);
   if (cached) return cached;
   const mixer = group.userData.mixer as T.AnimationMixer;
   const sample = (time: number) => {
@@ -325,9 +339,9 @@ export function nativeRootMotion(
     startHeading = facing() ?? 0;
   let heading = startHeading,
     end = start.clone();
-  const frames = Math.max(1, Math.ceil(clip.duration * 24));
+  const frames = Math.max(1, Math.ceil(endTime * 60));
   for (let frame = 1; frame <= frames; frame++) {
-    end = sample((clip.duration * frame) / frames);
+    end = sample((endTime * frame) / frames);
     const angle = facing() ?? heading;
     heading += Math.atan2(Math.sin(angle - heading), Math.cos(angle - heading));
   }
@@ -340,7 +354,7 @@ export function nativeRootMotion(
   mixer.stopAllAction();
   restore(data);
   group.updateWorldMatrix(true, true);
-  data.roots.set(clip, result);
+  cache.set(endTime, result);
   return result;
 }
 
@@ -358,7 +372,10 @@ type TransferProfile = {
   startHeading: number;
   heading: number;
 };
-const transfers = new WeakMap<T.Group, Map<T.AnimationClip, TransferProfile>>();
+const transfers = new WeakMap<
+  T.Group,
+  Map<T.AnimationClip, Map<number, TransferProfile>>
+>();
 const transferIssues = new WeakMap<T.Group, Map<T.AnimationClip, string>>();
 const sources = new WeakMap<T.Group, Map<string, T.Group>>();
 export function setMotionSources(
@@ -388,10 +405,11 @@ function canonicalRotations(group: T.Group): Rotations {
 function sampleOriginal(source: T.Group, clip: T.AnimationClip, time: number) {
   (source.userData.mixer as T.AnimationMixer).stopAllAction();
   restore(rigs.get(source)!);
+  restoreDetailMorphs(source);
   sampleNativeClip(source, clip, time);
   source.updateWorldMatrix(true, true);
 }
-function standingHeight(group: T.Group) {
+export function standingHeight(group: T.Group) {
   const data = rigs.get(group);
   if (data) return data.bindHips.y - data.bindRoot.y;
   // The same hip-to-ankle landmark as rootPoint, using fixed neutral offsets.
@@ -483,12 +501,18 @@ export function transferWarning(
   }
   return "";
 }
-function transferProfile(source: T.Group, clip: T.AnimationClip) {
+function transferProfile(
+  source: T.Group,
+  clip: T.AnimationClip,
+  endTime = clip.duration,
+) {
   let cache = transfers.get(source);
   if (!cache) transfers.set(source, (cache = new Map()));
-  const known = cache.get(clip);
+  let endpoints = cache.get(clip);
+  if (!endpoints) cache.set(clip, (endpoints = new Map()));
+  const known = endpoints.get(endTime);
   if (known) return known;
-  const original = nativeRootMotion(source, clip)!;
+  const original = nativeRootMotion(source, clip, endTime)!;
   const result = {
     start: original.start,
     delta: original.delta
@@ -497,16 +521,17 @@ function transferProfile(source: T.Group, clip: T.AnimationClip) {
     startHeading: original.startHeading,
     heading: original.heading,
   };
-  cache.set(clip, result);
+  endpoints.set(endTime, result);
   return result;
 }
 export function transferredRootMotion(
   source: T.Group,
   target: T.Group,
   clip: T.AnimationClip,
+  endTime = clip.duration,
 ) {
   if (transferWarning(source, target, clip)) return;
-  const profile = transferProfile(source, clip);
+  const profile = transferProfile(source, clip, endTime);
   return {
     start: [0, 0, 0] as [number, number, number],
     delta: profile.delta
@@ -545,6 +570,18 @@ export function applyTransferredClip(
   const scale = target.getWorldScale(new T.Vector3()).x;
   target.position.add(offset.multiplyScalar(scale).applyQuaternion(heading));
   target.updateWorldMatrix(true, true);
+  if (
+    targetData &&
+    applyDetailedTransfer(
+      source,
+      target,
+      clip,
+      initialTurn,
+      standingHeight(target) / standingHeight(source),
+    )
+  )
+    return "";
+  applyRetargetNotice(source, target, clip);
   const bones = target.userData.bones as Record<string, T.Bone>;
   for (const name of boneNames) {
     const desired = heading.clone().multiply(rotations[name]!);
