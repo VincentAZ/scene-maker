@@ -1,3 +1,56 @@
+// Errors specific to requests that use a ChatGPT plan ("Sign in with ChatGPT").
+// https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery
+const chatGPTPlanMessages: Record<string, string> = {
+  subscription_sharing_usage_limit_exceeded:
+    "Your ChatGPT plan’s usage limit for other apps was reached. Manage usage in ChatGPT settings → Usage, or connect an OpenAI API key.",
+  subscription_sharing_user_not_eligible:
+    "This ChatGPT account can’t use its plan in other apps. Connect an OpenAI API key instead.",
+  subscription_sharing_usage_unavailable:
+    "ChatGPT plan usage is temporarily unavailable. Please try again shortly.",
+  subscription_sharing_user_unavailable:
+    "ChatGPT plan usage is temporarily unavailable. Please try again shortly.",
+  subscription_sharing_unsupported_capability:
+    "This request uses a feature ChatGPT plan usage doesn’t support yet. Choose another model or connect an OpenAI API key for this feature.",
+  subscription_sharing_route_not_supported:
+    "ChatGPT plan usage doesn’t support this kind of request. Connect an OpenAI API key for this feature.",
+  subscription_sharing_invalid_user:
+    "ChatGPT did not accept this sign-in. If you disconnected Scene Maker in ChatGPT, sign in with ChatGPT again.",
+  chatpass_v2_scope_not_authorized:
+    "ChatGPT plan usage was not allowed for this sign-in. Sign in with ChatGPT again and allow it.",
+  chatpass_v2_invalid_authorization_context:
+    "ChatGPT plan usage was not allowed for this sign-in. Sign in with ChatGPT again and allow it.",
+  stream_interrupted:
+    "The connection to ChatGPT dropped before the reply finished. Please try again.",
+};
+
+/**
+ * The outcome of a connection test (a model-list request) as a plain message.
+ * Upstream bodies are only inspected for error codes, never relayed.
+ */
+export function connectionTestMessage(
+  status: number,
+  responseBody: string,
+): string {
+  if (
+    status === 400 &&
+    /API_KEY_INVALID|API key not valid|invalid.api.key|incorrect API key/i.test(
+      responseBody,
+    )
+  )
+    status = 401; // Google and xAI report a bad key as a 400.
+  if (status === 403)
+    return "The provider accepted the request but refused access. Check this key’s permissions and that the account is active.";
+  if (status === 404 || status === 400)
+    return "The provider did not recognise the request. Check that the key belongs to this provider.";
+  return (
+    providerErrorMessage({
+      name: "AI_APICallError",
+      statusCode: status,
+      responseBody,
+    }) || "The provider could not be reached. Try again shortly."
+  );
+}
+
 // Classify provider failures without exposing their raw messages, request bodies,
 // response headers, credentials, or user prompts to the browser or logs.
 export function providerErrorMessage(error: unknown): string | undefined {
@@ -23,6 +76,8 @@ export function providerErrorMessage(error: unknown): string | undefined {
     /* use status instead */
   }
   const code = detail?.code || detail?.type;
+  const plan = code ? chatGPTPlanMessages[code] : undefined;
+  if (plan) return plan;
   if (code === "invalid_json_schema")
     return "The model rejected the studio’s response format (invalid_json_schema). This is an app compatibility error. Update the studio or choose another model in Connections.";
   if (

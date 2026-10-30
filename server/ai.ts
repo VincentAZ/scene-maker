@@ -1,6 +1,7 @@
 import { effectiveThinking, type ThinkingLevel } from "../shared/thinking";
 import type { McpServerConfig } from "../shared/coding";
-import { generateText, Output } from "ai";
+import { generateText, Output, wrapLanguageModel } from "ai";
+import { chatGPTFetch } from "./chatgptTransport";
 import { providerErrorMessage } from "./providerErrors";
 import {
   assistantOutputSchema,
@@ -38,10 +39,36 @@ import {
   providers,
 } from "../shared/scene";
 export type Provider = (typeof providers)[number];
+/** A "Sign in with ChatGPT" session. The current access token lives in `key`. */
+export type ChatGPTSession = {
+  clientId: string;
+  refreshToken: string;
+  idToken: string;
+  /** Access-token expiry, in epoch milliseconds. */
+  expiresAt: number;
+  scopes: string[];
+  /** The validated ID-token subject (the ChatGPT account). */
+  account: string;
+  email?: string;
+  /** Whether the person allowed requests to use their ChatGPT plan. */
+  planUsage: boolean;
+};
+export type ProviderSettings = {
+  /** API key, OpenRouter sign-in key, or ChatGPT access token. Never sent to the browser. */
+  key: string;
+  model: string;
+  thinking?: ThinkingLevel;
+  /** How the credential was obtained. Missing means a pasted API key. */
+  method?: "key" | "openrouter" | "chatgpt";
+  connectedAt?: string;
+  /** Last successful connection test or sign-in. */
+  verifiedAt?: string;
+  chatgpt?: ChatGPTSession;
+};
 export type Config = {
-  providers: Partial<
-    Record<Provider, { key: string; model: string; thinking?: ThinkingLevel }>
-  >;
+  providers: Partial<Record<Provider, ProviderSettings>>;
+  /** Stable per-host OAuth registration for Sign in with ChatGPT. */
+  registrations?: { chatgpt?: { hostId: string; clientId?: string } };
   assistant: Provider | null;
   blender: string;
   /** Speech-only services; OpenAI voices reuse the OpenAI provider key. */
@@ -70,11 +97,36 @@ export function modelFor(
   if (!provider)
     throw Error("Connect an AI provider in Studio settings → Connections.");
   const c = config.providers[provider];
+  if (c?.method === "chatgpt" && c.chatgpt && !c.chatgpt.planUsage)
+    throw Error(
+      "ChatGPT plan usage was not allowed during sign-in. Sign in with ChatGPT again and allow it, or use an OpenAI API key.",
+    );
   if (!c?.key || !(override || c.model))
     throw Error(
       `Complete the ${provider} connection in Studio settings → Connections.`,
     );
   const model = override || c.model;
+  if (provider === "openai" && c.method === "chatgpt")
+    // The ChatGPT plan route only accepts unstored Responses API requests.
+    return wrapLanguageModel({
+      model: createOpenAI({
+        apiKey: "chatgpt-session",
+        fetch: chatGPTFetch(config),
+      }).responses(model),
+      middleware: {
+        transformParams: async ({ params }) => ({
+          ...params,
+          providerOptions: {
+            ...params.providerOptions,
+            openai: {
+              ...params.providerOptions?.openai,
+              store: false,
+              systemMessageMode: "developer",
+            },
+          },
+        }),
+      },
+    });
   if (provider === "openai") return createOpenAI({ apiKey: c.key })(model);
   if (provider === "anthropic")
     return createAnthropic({ apiKey: c.key })(model);

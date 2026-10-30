@@ -76,6 +76,10 @@ type PiperCatalogFile = Record<
 const titleCase = (s: string) =>
   s.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+/** OpenAI voices need an API key; a ChatGPT plan sign-in does not cover audio. */
+const openaiSpeechKey = (c: Config) =>
+  c.providers.openai?.method === "chatgpt" ? "" : c.providers.openai?.key;
+
 export function createSpeechService(options: {
   config: () => Config;
   fetch?: typeof fetch;
@@ -325,7 +329,7 @@ export function createSpeechService(options: {
   ): Promise<SpeechResult> {
     const c = options.config();
     if (request.provider === "openai") {
-      const apiKey = c.providers.openai?.key;
+      const apiKey = openaiSpeechKey(c);
       if (!apiKey)
         throw Error(
           "Save an OpenAI API key in Connections to use OpenAI voices.",
@@ -466,7 +470,7 @@ export function createSpeechService(options: {
   return {
     summary(c: Config) {
       return {
-        openai: !!c.providers.openai?.key,
+        openai: !!openaiSpeechKey(c),
         elevenlabs: !!c.speech?.elevenlabs?.key,
         piper: {
           engine: engineInstalled(),
@@ -483,7 +487,7 @@ export function createSpeechService(options: {
         piperEngine: boolean;
         errors: string[];
       } = {
-        openai: c.providers.openai?.key ? openaiVoices : [],
+        openai: openaiSpeechKey(c) ? openaiVoices : [],
         elevenlabs: [],
         piper: piperVoices(),
         piperEngine: engineInstalled(),
