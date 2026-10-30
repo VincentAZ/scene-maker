@@ -611,6 +611,18 @@ def load_image(path, color_space, limit, cache):
     image.colorspace_settings.name = color_space
     require(image.size[0] and image.size[1], "Unreadable image: " + str(path))
     width, height = image.size
+    # Inspect the original pixels, not the capped export image: downsampling can
+    # hide a small hair cutout or a genuinely translucent texel. ActorCore often
+    # declares Base Color as Opacity too, despite its alpha being uniformly 1.
+    # Keep separate evidence for the alpha channel and a standalone RGB opacity
+    # map; an opaque alpha channel says nothing about a grayscale opacity map.
+    import numpy as np
+    pixels = np.empty(width * height * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    pixels = pixels.reshape((-1, 4))
+    image["actorcore_source_alpha_opaque"] = bool(np.all(pixels[:, 3] == 1))
+    image["actorcore_source_color_opaque"] = bool(np.all(pixels[:, :3] == 1))
+    del pixels
     if max(width, height) > limit:
         ratio = limit / max(width, height)
         image.scale(max(1, round(width * ratio)), max(1, round(height * ratio)))
@@ -660,8 +672,24 @@ def build_material(settings, root, name, limit, cache, files):
     opacity = textures.get("Opacity", {}).get("Texture Path")
     if opacity:
         alpha = image_node("Opacity", "sRGB")
-        same_as_base = opacity == textures.get("Base Color", {}).get("Texture Path")
-        links.new(alpha.outputs["Alpha" if same_as_base else "Color"], shader.inputs["Alpha"])
+        same_as_base = base is not None and alpha.image == base.image
+        channel = "Alpha" if same_as_base else "Color"
+        opaque_key = "actorcore_source_alpha_opaque" if same_as_base else "actorcore_source_color_opaque"
+        if not alpha.image[opaque_key]:
+            output = alpha.outputs[channel]
+            scalar = settings.get("Opacity", 1)
+            if scalar != 1:
+                # Linking a texture otherwise overrides the socket default and
+                # silently loses authored scalar opacity. glTF exports this
+                # multiplier as baseColorFactor.a, retaining texture alpha too.
+                multiply = nodes.new("ShaderNodeMath")
+                multiply.operation = "MULTIPLY"
+                multiply.inputs[1].default_value = scalar
+                links.new(output, multiply.inputs[0])
+                output = multiply.outputs[0]
+            links.new(output, shader.inputs["Alpha"])
+        # A redundant all-one link alone makes Blender export BLEND. Leave the
+        # scalar socket default intact instead; do not force all materials opaque.
     normal = image_node("Normal")
     if normal:
         convert = nodes.new("ShaderNodeNormalMap")

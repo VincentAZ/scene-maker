@@ -8,6 +8,7 @@ import {
   type Scene,
 } from "../shared/scene";
 import { configureImportedRig } from "./rig";
+import { repairOpaqueImportedMaterials } from "./importedMaterials";
 
 // Imported files are immutable per URL, so the bytes are downloaded once and
 // kept for the session. Each use is parsed separately: original animation
@@ -52,6 +53,7 @@ export function prepareImportedAsset(
 ): T.Group {
   const group = new T.Group(),
     imported = gltf.scene;
+  repairOpaqueImportedMaterials(imported);
   // Keep node UUIDs: original animation tracks may bind to unnamed nodes.
   // Rooms must keep their authored transforms: grounding by bounds can lift
   // a whole interior when its foundation extends below the floor.

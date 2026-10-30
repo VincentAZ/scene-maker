@@ -90,7 +90,10 @@ rig.animation_data.action.name='Motion'
 bpy.ops.export_scene.fbx(filepath=str(root/'motion.fbx'),object_types={'ARMATURE'},
  add_leaf_bones=False,bake_anim=True,bake_anim_use_all_actions=True,bake_anim_use_nla_strips=False)
 settings={'Two Side':True,'Diffuse Color':[255,255,255],'Opacity':1,'Textures':{}}
-for channel,name in [('Base Color','Diffuse'),('Normal','Normal'),('MetallicAlpha','MetallicAlpha'),('AO','ao')]:
+# Affected ActorCore assets list the same RGBA image for Base Color and
+# Opacity, even for entirely opaque skin/clothing. Keep this realistic case in
+# the full FBX -> sidecar reconstruction -> GLB -> reimport regression.
+for channel,name in [('Base Color','Diffuse'),('Opacity','Diffuse'),('Normal','Normal'),('MetallicAlpha','MetallicAlpha'),('AO','ao')]:
  settings['Textures'][channel]={'Texture Path':'./body.fbm/'+name+'.png','Strength':100,'Offset':[0,0],'Tiling':[1,1]}
 # Empty maps must NOT make the material black metallic.
 settings['Textures']['Metallic']={'Texture Path':'','Strength':100}
@@ -118,6 +121,83 @@ def encode(element):
 encode_bin.write(str(root/'mismatched.fbx'), encode(parsed), version)
 (root/'mismatched.json').write_bytes((root/'body.json').read_bytes())
 '''
+
+MATERIAL_ALPHA_CHECK = r'''
+import bpy, importlib.util, sys
+from pathlib import Path
+args = sys.argv[sys.argv.index('--') + 1:]
+spec = importlib.util.spec_from_file_location('converter', args[0])
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+root = Path(args[1])
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+def image_file(name, color, transparent_texel=False):
+    image = bpy.data.images.new(name, 16, 16, alpha=True)
+    image.generated_color = color
+    image.colorspace_settings.name = 'Non-Color'
+    if transparent_texel:
+        pixels = list(image.pixels[:])
+        pixels[3] = 0
+        image.pixels[:] = pixels
+    image.filepath_raw = str(root / (name + '.png'))
+    image.file_format = 'PNG'
+    image.save()
+    return name + '.png'
+
+opaque = image_file('opaque', (.7, .3, .1, 1))
+fractional = image_file('fractional', (.7, .3, .1, .5))
+hair = image_file('hair', (.7, .3, .1, 1), transparent_texel=True)
+white = image_file('white', (1, 1, 1, 1))
+gray = image_file('gray', (.5, .5, .5, 1))
+black = image_file('black', (0, 0, 0, 1))
+# name, opacity image, shared with base color, scalar opacity, texture limit,
+# expected alpha texture link, expected glTF alpha mode.
+cases = [
+    ('shared_opaque', opaque, True, 1, 16, False, 'OPAQUE'),
+    ('shared_fractional', fractional, True, 1, 16, True, 'BLEND'),
+    ('hair_cutout', hair, True, 1, 16, True, 'BLEND'),
+    ('source_alpha_before_downscale', hair, True, 1, 1, True, 'BLEND'),
+    ('scalar_only', None, False, .4, 16, False, 'BLEND'),
+    ('scalar_with_opaque_map', opaque, True, .4, 16, False, 'BLEND'),
+    ('scalar_with_fractional_map', fractional, True, .4, 16, True, 'BLEND'),
+    ('separate_white_map', white, False, 1, 16, False, 'OPAQUE'),
+    ('separate_gray_map', gray, False, 1, 16, True, 'BLEND'),
+    ('separate_black_map', black, False, 1, 16, True, 'BLEND'),
+]
+for i, (name, opacity, shared, scalar, limit, linked, mode) in enumerate(cases):
+    base = opacity if shared else opaque
+    settings = {'Opacity': scalar, 'Textures': {'Base Color': {'Texture Path': base}}}
+    if opacity:
+        settings['Textures']['Opacity'] = {'Texture Path': opacity}
+    material = mod.build_material(settings, root, name, limit, {}, set())
+    shader = material.node_tree.nodes.get('Principled BSDF')
+    assert shader.inputs['Alpha'].is_linked == linked, (name, 'redundant or missing alpha link')
+    if not linked:
+        assert abs(shader.inputs['Alpha'].default_value - scalar) < .001, name
+    bpy.ops.mesh.primitive_cube_add(location=(i * 2, 0, 0))
+    bpy.context.object.data.materials.append(material)
+
+output = root / 'material_alpha.glb'
+bpy.ops.export_scene.gltf(filepath=str(output), export_format='GLB', export_animations=False)
+document, binary = mod.read_glb(output)
+materials = {m['name']: m for m in document['materials']}
+for name, opacity, shared, scalar, limit, linked, mode in cases:
+    material = materials[name]
+    assert material.get('alphaMode', 'OPAQUE') == mode, (name, material)
+    factor = material['pbrMetallicRoughness'].get('baseColorFactor', [1, 1, 1, 1])[3]
+    assert abs(factor - scalar) < .001, (name, 'scalar opacity lost', factor, scalar)
+
+# Verify actual exported fractional alpha, not only a BLEND flag. Opaque
+# source RGB must not be mistaken for opacity in a shared Base/Opacity map.
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.import_scene.gltf(filepath=str(output))
+for name in ('shared_fractional', 'scalar_with_fractional_map'):
+    material = bpy.data.materials[name]
+    images = [n.image for n in material.node_tree.nodes if n.type == 'TEX_IMAGE']
+    assert any(abs(image.pixels[3] - .5) < .01 for image in images), name
+print('MATERIAL_ALPHA_CHECK_PASSED')
+'''
+
 
 NORMALIZATION_CHECK = r'''
 import importlib.util,json,struct,sys
@@ -344,6 +424,16 @@ else:
                           "p=list(image.pixels[:4]); print('ORM_PIXEL',p)\n"
                           "assert abs(p[1]-.25)<.02 and abs(p[2]-.25)<.02,p\n")
         self.assertIn('ORM_PIXEL', self.run_blender(script, [str(self.output)]))
+
+    def test_shared_opaque_base_and_opacity_map_exports_as_opaque(self):
+        material = self.document['materials'][0]
+        self.assertEqual(material.get('alphaMode', 'OPAQUE'), 'OPAQUE')
+        self.assertEqual(material['pbrMetallicRoughness'].get('baseColorFactor', [1, 1, 1, 1])[3], 1)
+
+    def test_material_alpha_preserves_transparency_and_scalar_opacity(self):
+        script = self.directory / 'material_alpha.py'
+        script.write_text(MATERIAL_ALPHA_CHECK)
+        self.assertIn('MATERIAL_ALPHA_CHECK_PASSED', self.run_blender(script, [str(SCRIPT), str(self.directory)]))
 
     def test_original_fbx_sidecar_and_images_are_unchanged(self):
         for path, digest in self.source_hashes.items():

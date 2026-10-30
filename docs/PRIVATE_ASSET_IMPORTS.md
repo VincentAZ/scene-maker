@@ -51,6 +51,16 @@ These ActorCore FBXs can have an animated armature object frame different from t
 
 The converter restores authoritative FBX bind frames and explicitly rebases root motion. It checks source motion parity, canonicalizes only verified `CC_Base_*` joints, removes tightly bounded numerical scale/translation noise, and updates inverse-bind matrices together. It independently verifies raw glTF node worlds and all-vertex skinning, then re-imports in Blender. Raw joints must agree with the mesh's Y-up frame. Do not replace this with a warning suppression or an arbitrary visual rotation.
 
+### Opaque textures incorrectly exported as transparent
+
+ActorCore sidecars sometimes reference the same completely opaque image for both Base Color and Opacity. Linking that redundant alpha channel made Blender export `alphaMode: BLEND`. Three.js then disabled depth writes: rear triangles could overwrite a character's face, clothing and hands, resembling severely distorted skinning even though the vertex positions were correct.
+
+The converter now inspects source pixels **before resizing** and omits only proven all-one opacity links. Real alpha/cutout maps and scalar opacity are retained, including scalar × texture opacity. Geometry, weights, inverse binds and morph targets are not changed by this material fix.
+
+Existing saved imports are repaired in memory by the shared model loader. A normal BLEND material is changed to opaque/depth-writing only when its scalar opacity is one and its entire decoded base-color texture is opaque (or it has no texture). Materials with alpha maps, vertex colors, alpha testing/hashing, nonstandard blending or physical transmission are left alone. Unreadable, unsupported or oversized textures and textures with custom mipmaps are also left unchanged rather than guessed; browser image inspection is capped at 4096² pixels in total and never downsampled. Uploaded originals and saved project definitions are not overwritten. Baked studio GLB exports retain the corrected material; portable packages' original uploaded source files remain original.
+
+Regression coverage includes opaque images declared as opacity, a single transparent texel, genuine translucency/cutouts, scalar opacity, downscaling, shared materials, unreadable textures, and a real GLTFLoader/GLTFExporter round trip. A Chrome WebGL check additionally reproduced and corrected an overlapping-triangle depth-order pixel failure and loaded the actual private collection; the woman model exported with `OPAQUE` and no WebGL error. Private screenshots/models used for this check are not committed. This does not certify every possible third-party shader or character pose.
+
 ## Register converted models
 
 Create a **private** JSON manifest next to the prepared files:
