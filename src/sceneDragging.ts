@@ -8,6 +8,16 @@ import {
 import { loadImportedAsset } from "./importedAsset";
 import { createCharacter, createProp, disposeObject } from "./world";
 import {
+  collisionBetween,
+  snapshotCollider,
+  type CollisionObstacle,
+} from "./collision";
+import {
+  emptyCollider,
+  sceneObstacles,
+  TransformCollisionGuard,
+} from "./assetManipulation";
+import {
   DRAG_THRESHOLD,
   draggedPosition,
   movedBasePosition,
@@ -39,6 +49,9 @@ type Gesture = {
   plane: T.Plane;
   valid: boolean;
   capture?: Element;
+  obstacles?: CollisionObstacle[];
+  guard?: TransformCollisionGuard;
+  blocked?: string;
 };
 
 /** Direct manipulation stays outside React's render loop; a release is one scene edit. */
@@ -51,6 +64,7 @@ export function sceneDragging(options: {
   orbit: { enabled: boolean; update: () => void; enableDamping: boolean };
   gizmo: { dragging: boolean; axis: string | null; enabled: boolean };
   status: HTMLElement;
+  environment?: () => T.Object3D | null;
 }) {
   const { canvas, camera, world, objects, current, orbit, gizmo, status } =
     options;
@@ -187,6 +201,14 @@ export function sceneDragging(options: {
   };
   const begin = (g: Gesture) => {
     g.active = true;
+    g.obstacles = sceneObstacles(
+      current().scene,
+      objects,
+      g.entity?.id,
+      options.environment?.(),
+    );
+    if (g.item && g.entity)
+      g.guard = new TransformCollisionGuard(g.item, g.obstacles);
     if (g.asset) lock();
     current().onEditStart?.();
     document.documentElement.classList.add("placing-scene-asset");
@@ -254,6 +276,7 @@ export function sceneDragging(options: {
     if (!g.active) begin(g);
     e.preventDefault();
     g.valid = inside(e);
+    g.blocked = "";
     const pointer = ray(e);
     let p = pointer.ray.intersectPlane(g.plane, new T.Vector3());
     if (g.asset?.category === "props" && g.valid) {
@@ -288,11 +311,6 @@ export function sceneDragging(options: {
     marker.visible = g.valid;
     marker.position.copy(g.position);
     marker.position.y += 0.008;
-    say(
-      g.valid
-        ? `${g.asset?.name || g.entity?.name} · ${g.position.x.toFixed(2)}, ${g.position.z.toFixed(2)} · Shift snaps · Esc cancels`
-        : "Drop inside the scene · Esc cancels",
-    );
     render();
   };
   const finish = (cancel = false) => {
@@ -313,12 +331,30 @@ export function sceneDragging(options: {
     highlight.visible = false;
     say("");
     if (g.active) suppressClickUntil = performance.now() + 500;
+    if (
+      g.asset &&
+      g.asset.category !== "environments" &&
+      !g.item &&
+      g.active &&
+      !cancel
+    )
+      current().onError(
+        "This asset is still loading. Wait for its preview before dropping it.",
+      );
+    const geometryReady =
+      !g.asset || g.asset.category === "environments" || !!g.item;
     if (g.item && g.asset) {
       world.remove(g.item);
       disposeObject(g.item);
     }
     if (g.entity && g.item) g.item.position.copy(g.start);
-    if (cancel || !g.active || !g.valid || current().scene.id !== g.projectId)
+    if (
+      cancel ||
+      !g.active ||
+      !g.valid ||
+      !geometryReady ||
+      current().scene.id !== g.projectId
+    )
       return;
     if (g.asset)
       current().onAdd?.(g.asset.id, g.position.toArray() as Position);
@@ -359,10 +395,39 @@ export function sceneDragging(options: {
     }
     if (g.item) {
       g.item.position.copy(g.position);
+      // The animation sampler runs before this preview each frame. Only the
+      // pointer's new candidate is checked; a blocked move stays at the last
+      // accepted point instead of snapping through the obstacle.
+      if (g.entity && g.guard) {
+        const blocked = g.guard.check();
+        if (blocked) {
+          g.blocked = blocked;
+          g.position.copy(g.item.position);
+        }
+      } else if (g.asset && g.valid) {
+        g.blocked =
+          collisionBetween(
+            emptyCollider(),
+            snapshotCollider(g.item),
+            g.obstacles ?? [],
+            false,
+          ) || "";
+        if (g.blocked) g.valid = false;
+      }
       g.item.updateMatrixWorld(true);
       highlight.setFromObject(g.item);
-      highlight.visible = g.valid;
+      highlight.material.color.set(g.blocked ? 0xc56b4f : 0x69864b);
+      highlight.visible = !!g.blocked || g.valid;
     }
+    marker.position.copy(g.position);
+    marker.position.y += 0.008;
+    say(
+      g.blocked
+        ? `Blocked by ${g.blocked} · Choose a clear position · Esc cancels`
+        : g.valid
+          ? `${g.asset?.name || g.entity?.name} · ${g.position.x.toFixed(2)}, ${g.position.z.toFixed(2)} · Shift snaps · Esc cancels`
+          : "Drop inside the scene · Esc cancels",
+    );
   }
   canvas.addEventListener("pointerdown", down, true);
   window.addEventListener("pointermove", move, {

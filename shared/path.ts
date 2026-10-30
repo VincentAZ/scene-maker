@@ -1,4 +1,20 @@
-import type { Motion, Scene, Command } from "./scene";
+import { motionSchema, type Motion, type Scene, type Command } from "./scene";
+
+// Only built-in, non-travelling gestures are safe between relative route clips.
+// No target, seating state, imported root motion, or custom keyframe is needed.
+export const pointActionMotions = [
+  { id: "idle", name: "Wait", duration: 2 },
+  { id: "wave", name: "Wave", duration: 2 },
+  { id: "bow", name: "Bow", duration: 2 },
+  { id: "talk", name: "Talk gesture", duration: 3 },
+  { id: "jump", name: "Jump in place", duration: 1 },
+] as const;
+export type PointAction = {
+  /** Index in path.points: 1 is the first numbered point (not the start). */
+  pointIndex: number;
+  motionId: (typeof pointActionMotions)[number]["id"];
+  duration: number;
+};
 import { ease, turnPoint, type Point } from "./ladder";
 
 export type MotionPath = NonNullable<Motion["path"]>;
@@ -118,14 +134,261 @@ export function worldToPath(point: Point, frame: PathFrame): Point {
   );
 }
 
+/** Materialize stops as ordinary clips: preview, GLB bake and engine export all
+ * evaluate the same sequence, without a second waypoint-actions schema.
+ * Smooth curves are tessellated from compilePath's own arc-length table. */
+export function pathActionClips(motion: Motion, actions: PointAction[]) {
+  const parsed = motionSchema.parse(motion);
+  if (!parsed.path)
+    throw Error("Point actions need a walking or running route.");
+  const path = parsed.path;
+  const byPoint = new Map<number, PointAction>();
+  for (const action of actions) {
+    if (
+      !Number.isInteger(action.pointIndex) ||
+      action.pointIndex < 1 ||
+      action.pointIndex >= path.points.length ||
+      byPoint.has(action.pointIndex) ||
+      !pointActionMotions.some((m) => m.id === action.motionId) ||
+      !Number.isFinite(action.duration) ||
+      action.duration < 0.2 ||
+      action.duration > 60
+    )
+      throw Error(
+        "Choose one in-place action per numbered point, lasting 0.2–60 seconds.",
+      );
+    byPoint.set(action.pointIndex, action);
+  }
+  const compiled = compilePath(path);
+  type Vertex = { point: Point; heading: number };
+  const vertices = compiled.samples.map((sample): Vertex => ({
+    point: sample.point,
+    heading: samplePath(path, sample.distance / compiled.length).heading,
+  }));
+  // Remove redundant vertices, but keep every authored point exactly. The
+  // existing schema requires neighbouring coordinates at least 5 cm apart.
+  const simplify = (span: Vertex[]) => {
+    const spaced = [span[0]];
+    for (const vertex of span.slice(1, -1))
+      if (distance(spaced.at(-1)!.point, vertex.point) >= 0.05)
+        spaced.push(vertex);
+    const end = span.at(-1)!;
+    while (
+      spaced.length > 1 &&
+      distance(spaced.at(-1)!.point, end.point) < 0.05
+    )
+      spaced.pop();
+    spaced.push(end);
+    const reduce = (items: Vertex[]): Vertex[] => {
+      const a = items[0].point,
+        b = items.at(-1)!.point;
+      const delta = b.map((n, i) => n - a[i]);
+      const squared = delta.reduce((sum, n) => sum + n * n, 0);
+      let furthest = 0.005,
+        index = -1;
+      for (let i = 1; i < items.length - 1; i++) {
+        const point = items[i].point;
+        const t = squared
+          ? Math.max(
+              0,
+              Math.min(
+                1,
+                delta.reduce(
+                  (sum, n, axis) => sum + n * (point[axis] - a[axis]),
+                  0,
+                ) / squared,
+              ),
+            )
+          : 0;
+        const error = distance(point, mix(a, b, t));
+        if (error > furthest) {
+          furthest = error;
+          index = i;
+        }
+      }
+      return index < 0
+        ? [items[0], items.at(-1)!]
+        : [
+            ...reduce(items.slice(0, index + 1)).slice(0, -1),
+            ...reduce(items.slice(index)),
+          ];
+    };
+    const reduced = reduce(spaced);
+    // Simplification can bring non-neighbouring points of a loop together.
+    return reduced.some(
+      (v, i) => i && distance(v.point, reduced[i - 1].point) < 0.05,
+    )
+      ? spaced
+      : reduced;
+  };
+  type Part = { motion: Motion; length: number; action?: PointAction };
+  const parts: Part[] = [];
+  let heading = 0;
+  let pending: Vertex[] = [vertices[0]];
+  const emit = () => {
+    if (pending.length < 2) return;
+    const origin = pending[0].point;
+    const local = pending.map((v) =>
+      turnPoint(v.point.map((n, i) => n - origin[i]) as Point, -heading),
+    );
+    const next: Motion = {
+      ...parsed,
+      id: crypto.randomUUID(),
+      name: `${parsed.name.slice(0, 75)} · route ${parts.filter((p) => !p.action).length + 1}`,
+      path: {
+        points: local,
+        smooth: false,
+        endHeading: pending.at(-1)!.heading - heading,
+      },
+    };
+    const length = compilePath(next.path!).length;
+    heading += samplePath(next.path!, 1).heading;
+    parts.push({ motion: next, length });
+    pending = [pending.at(-1)!];
+  };
+  for (let pointIndex = 1; pointIndex < path.points.length; pointIndex++) {
+    // compilePath has 40 subdivisions per authored span, with shared endpoints.
+    const span = simplify(
+      vertices.slice((pointIndex - 1) * 40, pointIndex * 40 + 1),
+    );
+    for (let index = 1; index < span.length; index++) {
+      const a = span[index - 1],
+        b = span[index];
+      // A long straight edge may have lost all of its intermediate samples.
+      // Keep it small enough to fit the local-coordinate schema after turning.
+      const divisions = Math.max(1, Math.ceil(distance(a.point, b.point) / 25));
+      for (let step = 1; step <= divisions; step++) {
+        const t = step / divisions;
+        const vertex = {
+          point: mix(a.point, b.point, t),
+          heading: a.heading + (b.heading - a.heading) * t,
+        };
+        const local = turnPoint(
+          vertex.point.map((n, i) => n - pending[0].point[i]) as Point,
+          -heading,
+        );
+        if (pending.length >= 32 || local.some((n) => Math.abs(n) > 49.999999))
+          emit();
+        pending.push(vertex);
+      }
+    }
+    const action = byPoint.get(pointIndex);
+    if (action) {
+      emit();
+      parts.push({
+        motion: {
+          id: action.motionId,
+          name: pointActionMotions.find((m) => m.id === action.motionId)!.name,
+          kind: action.motionId,
+          duration: action.duration,
+          distance: 0,
+          poses: [],
+        },
+        length: 0,
+        action,
+      });
+    }
+  }
+  emit();
+  const moving = parts.filter((part) => !part.action);
+  if (parsed.duration + 1e-8 < moving.length * 0.2)
+    throw Error(
+      `Increase movement duration to at least ${(moving.length * 0.2).toFixed(1)} seconds for these stops.`,
+    );
+  // Preserve total movement time while respecting the minimum clip duration.
+  let remainingTime = parsed.duration;
+  let remaining = [...moving];
+  while (remaining.length) {
+    const length = remaining.reduce((sum, part) => sum + part.length, 0);
+    const short = remaining.filter(
+      (part) => (remainingTime * part.length) / length < 0.2,
+    );
+    if (!short.length) {
+      for (const part of remaining)
+        part.motion.duration = (remainingTime * part.length) / length;
+      break;
+    }
+    for (const part of short) {
+      part.motion.duration = 0.2;
+      remainingTime -= 0.2;
+    }
+    remaining = remaining.filter((part) => !short.includes(part));
+  }
+  for (const part of moving) part.motion = motionSchema.parse(part.motion);
+  return parts;
+}
+
 export function savePathCommands(
   scene: Scene,
   actorId: string,
   motion: Motion,
   clipId?: string,
+  pointActions?: PointAction[],
 ): Command[] {
   const actor = scene.entities.find((e) => e.id === actorId);
   if (!actor) throw Error("This character is no longer in the scene.");
+  if (pointActions?.length) {
+    const clipIndex = clipId
+      ? actor.clips.findIndex((c) => c.id === clipId)
+      : actor.clips.length;
+    const previous = clipId ? actor.clips[clipIndex] : undefined;
+    if (clipId && (!previous || previous.motionId !== motion.id))
+      throw Error(
+        "This action changed while the path editor was open. Open it again.",
+      );
+    if (
+      clipId &&
+      scene.transcript.some(
+        (line) =>
+          line.characterId === actorId &&
+          (line.clipIds || (line.clipId ? [line.clipId] : [])).includes(clipId),
+      )
+    )
+      throw Error(
+        "Point actions are not supported on dialogue routes. Edit the line's performance instead.",
+      );
+    const parts = pathActionClips(motion, pointActions);
+    const moving = parts.filter((part) => !part.action);
+    if (actor.clips.length - (previous ? 1 : 0) + parts.length > 100)
+      throw Error(
+        "This route and its point actions would exceed 100 sequence clips. Remove actions or points first.",
+      );
+    const references = scene.entities
+      .flatMap((e) => e.clips)
+      .filter((c) => c.motionId === motion.id).length;
+    const replaceMotion = !!previous && references === 1;
+    if (
+      scene.customMotions.length + moving.length - (replaceMotion ? 1 : 0) >
+      100
+    )
+      throw Error(
+        "This route would exceed 100 custom actions. Remove unused actions or use fewer stops.",
+      );
+    moving[0].motion.id =
+      replaceMotion || !previous ? motion.id : crypto.randomUUID();
+    const commands: Command[] = moving.map((part, index) => ({
+      type: index === 0 && replaceMotion ? "updateMotion" : "createMotion",
+      motion: part.motion,
+    }));
+    const clips = parts.map((part, index) => ({
+      id: index === 0 && previous ? previous.id : crypto.randomUUID(),
+      motionId: part.motion.id,
+      duration: part.motion.duration,
+      transition: index === 0 ? previous?.transition : ("cut" as const),
+    }));
+    commands.push({
+      type: "update",
+      id: actorId,
+      changes: {
+        clips: [
+          ...actor.clips.slice(0, clipIndex),
+          ...clips,
+          ...actor.clips.slice(clipIndex + (previous ? 1 : 0)),
+        ],
+      },
+    });
+    return commands;
+  }
   if (!clipId)
     return [
       { type: "createMotion", motion },

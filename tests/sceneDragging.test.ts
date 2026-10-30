@@ -81,11 +81,12 @@ function setup() {
   const orbit = { enabled: true, enableDamping: true, update: vi.fn() },
     gizmo = { enabled: true, axis: null, dragging: false };
   const status = { textContent: "", hidden: true };
+  const objects = new Map([["actor", object]]);
   const drag = sceneDragging({
     canvas: canvas as unknown as HTMLCanvasElement,
     camera,
     world,
-    objects: new Map([["actor", object]]),
+    objects,
     current: () => ({ scene, onMove, onAdd, onSelect, onEditStart, onError }),
     orbit,
     gizmo,
@@ -107,6 +108,7 @@ function setup() {
     win,
     canvas,
     object,
+    objects,
     scene,
     drag,
     orbit,
@@ -249,5 +251,65 @@ describe("library gestures", () => {
     t.win.dispatchEvent(event("pointerup", { clientX: 900, clientY: 300 }));
     expect(t.onMove).not.toHaveBeenCalled();
     expect(t.object.position.toArray()).toEqual([0, 0, 0]);
+  });
+});
+
+describe("collision-aware direct manipulation", () => {
+  function obstacle(
+    t: ReturnType<typeof setup>,
+    size: [number, number, number],
+    x = 0,
+  ) {
+    const object = new T.Group();
+    const mesh = new T.Mesh(
+      new T.BoxGeometry(...size),
+      new T.MeshBasicMaterial(),
+    );
+    mesh.position.y = size[1] / 2;
+    object.position.x = x;
+    object.add(mesh);
+    t.objects.set("obstacle", object);
+    t.scene.entities.push({
+      ...t.scene.entities[0],
+      id: "obstacle",
+      name: "Cabinet",
+      position: [x, 0, 0],
+    });
+  }
+  it("stops at the last clear point and commits only that point after a blocked drag", () => {
+    const t = setup();
+    obstacle(t, [0.1, 3, 20], 1.5);
+    t.down();
+    t.move(30);
+    const accepted = t.object.position.clone();
+    expect(accepted.x).toBeGreaterThan(0);
+    t.move(300);
+    expect(t.status.textContent).toContain("Blocked by Cabinet");
+    expect(t.object.position.toArray()).toEqual(accepted.toArray());
+    t.up();
+    expect(t.onMove).toHaveBeenCalledTimes(1);
+    expect(t.onMove.mock.calls[0][1]).toEqual(accepted.toArray());
+  });
+  it("rejects a new asset dropped inside occupied geometry", () => {
+    const t = setup(),
+      card = new Surface();
+    obstacle(t, [100, 5, 100]);
+    t.drag.startAsset(
+      props.find((a) => a.id === "crate")!,
+      {
+        button: 0,
+        pointerId: 1,
+        clientX: -100,
+        clientY: 100,
+        target: card,
+      } as unknown as PointerEvent,
+    );
+    t.move(150);
+    t.drag.render();
+    expect(t.status.textContent).toContain("Blocked by Cabinet");
+    t.up();
+    expect(t.onAdd).not.toHaveBeenCalled();
+    expect(t.orbit.enabled).toBe(true);
+    expect(t.status.hidden).toBe(true);
   });
 });

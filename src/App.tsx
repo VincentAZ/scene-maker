@@ -26,6 +26,8 @@ import {
   Layers,
   Camera,
   Move,
+  RotateCw,
+  Scaling,
   Maximize,
   Download,
   Upload,
@@ -193,6 +195,9 @@ export default function App() {
     [playing, setPlaying] = useState(false),
     [time, setTime] = useState(0),
     [move, setMove] = useState(false),
+    [transformMode, setTransformMode] = useState<
+      "translate" | "rotate" | "scale"
+    >("translate"),
     [rightTab, setRightTab] = useState<"assistant" | "details" | "code">(
       "assistant",
     ),
@@ -1932,6 +1937,8 @@ export default function App() {
                 if (!conversationController.current) setPlaying(false);
               }}
               onMove={(id, position) => update(id, { position })}
+              onTransform={(id, changes) => update(id, changes)}
+              transformMode={transformMode}
               onAdd={(assetId, position) => {
                 const asset = studioLibraryAssets(
                   sceneRef.current,
@@ -2005,15 +2012,45 @@ export default function App() {
                 <Move size={18} />
               </button>
               <button
-                className={move ? "active" : ""}
+                className={
+                  move && transformMode === "translate" ? "active" : ""
+                }
+                aria-pressed={move && transformMode === "translate"}
                 aria-label="Move selected object"
                 title="Move selected object"
                 onClick={() => {
+                  setTransformMode("translate");
                   setMove(true);
                   setPlaying(false);
                 }}
               >
                 <Plus size={19} />
+              </button>
+              <button
+                className={move && transformMode === "rotate" ? "active" : ""}
+                aria-pressed={move && transformMode === "rotate"}
+                aria-label="Rotate selected object"
+                title="Rotate selected object around the vertical axis"
+                onClick={() => {
+                  setTransformMode("rotate");
+                  setMove(true);
+                  setPlaying(false);
+                }}
+              >
+                <RotateCw size={18} />
+              </button>
+              <button
+                className={move && transformMode === "scale" ? "active" : ""}
+                aria-pressed={move && transformMode === "scale"}
+                aria-label="Scale selected object"
+                title="Scale selected object uniformly (0.1–10×)"
+                onClick={() => {
+                  setTransformMode("scale");
+                  setMove(true);
+                  setPlaying(false);
+                }}
+              >
+                <Scaling size={18} />
               </button>
               <span />
               <button
@@ -2764,8 +2801,8 @@ export default function App() {
                     <input
                       aria-label="Size"
                       type="range"
-                      min=".2"
-                      max="3"
+                      min=".1"
+                      max="10"
                       step=".1"
                       value={entity.scale}
                       onChange={(e) =>
@@ -3134,7 +3171,7 @@ export default function App() {
           }
           motion={pathEdit.motion}
           onClose={() => setModal(null)}
-          onSave={(motion) => {
+          onSave={(motion, pointActions) => {
             if (sameContent(sceneRef.current) !== pathEdit.content)
               throw Error(
                 "The scene changed while you were drawing. Close this path and open it again.",
@@ -3153,6 +3190,7 @@ export default function App() {
                     pathEdit.actorId,
                     motion,
                     pathEdit.clipId,
+                    pointActions,
                   ),
                 );
             change(next);

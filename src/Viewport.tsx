@@ -3,7 +3,13 @@ import * as T from "three";
 import { applyConversationPerformance } from "./conversationPerformance";
 import { dialogueAt } from "../shared/conversation";
 import { sceneDragging } from "./sceneDragging";
-import { movedBasePosition, visibleEntity, type Position } from "./placement";
+import { gizmoEditing } from "./gizmoEditing";
+import {
+  sceneObstacles,
+  sceneCollisionWarning,
+  type TransformMode,
+} from "./assetManipulation";
+import { visibleEntity, type Position } from "./placement";
 import type { Asset, Entity } from "../shared/scene";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
@@ -71,6 +77,11 @@ type Props = {
   playing: boolean;
   onTime: (t: number) => void;
   onMove: (id: string, position: [number, number, number]) => void;
+  onTransform?: (
+    id: string,
+    changes: Pick<Entity, "position" | "rotation" | "scale">,
+  ) => void;
+  transformMode?: TransformMode;
   onAdd?: (assetId: string, position: Position) => void;
   onEditStart?: () => void;
   onError: (text: string) => void;
@@ -130,6 +141,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       startCinema: (width: number, height: number) => HTMLCanvasElement | null;
       stopCinema: () => void;
       dragging: ReturnType<typeof sceneDragging>;
+      editing: ReturnType<typeof gizmoEditing>;
       // Incremental model state: what is placed, what is loading, and the
       // original imported files shared as motion sources.
       environment: EnvironmentModel;
@@ -265,58 +277,21 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       selection.renderOrder = 1000;
       selection.visible = false;
       world.add(selection);
-      let gizmoStart: {
-        id: string;
-        base: Position;
-        position: T.Vector3;
-      } | null = null;
-      transform.addEventListener("dragging-changed", (e) => {
-        controls.enabled = !e.value;
-        const o = transform.object;
-        if (e.value && o) {
-          const entity = live.current.scene.entities.find(
-            (item) => item.id === o.userData.entityId,
-          );
-          if (entity)
-            gizmoStart = {
-              id: entity.id,
-              base: [...entity.position],
-              position: o.position.clone(),
-            };
-          live.current.onEditStart?.();
-        } else if (o && gizmoStart) {
-          if (o.position.distanceTo(gizmoStart.position) > 0.0001)
-            live.current.onMove(
-              gizmoStart.id,
-              movedBasePosition(
-                gizmoStart.base,
-                gizmoStart.position,
-                o.position,
-              ),
-            );
-          gizmoStart = null;
-        }
-      });
-      const cancelGizmo = (event: Event) => {
-        if (
-          transform.dragging &&
-          (event.type !== "keydown" ||
-            (event as KeyboardEvent).key === "Escape")
-        ) {
-          transform.reset();
-          transform.pointerUp(null);
-          gizmoStart = null;
-          controls.enabled = true;
-        }
-      };
-      window.addEventListener("keydown", cancelGizmo);
-      renderer.domElement.addEventListener("pointercancel", cancelGizmo, true);
       const objects = new Map<string, T.Group>();
       const status = document.createElement("div");
       status.className = "placement-status";
       status.setAttribute("role", "status");
       status.hidden = true;
       host.current.appendChild(status);
+      const editing = gizmoEditing({
+        transform,
+        objects,
+        current: () => live.current,
+        orbit: controls,
+        status,
+        environment: () => context.current?.environment.root ?? null,
+        canvas: renderer.domElement,
+      });
       const dragging = sceneDragging({
         canvas: renderer.domElement,
         camera,
@@ -326,11 +301,14 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         orbit: controls,
         gizmo: transform,
         status,
+        environment: () => context.current?.environment.root ?? null,
       });
       let sessionScene: Scene | null = null,
         sessions: HoldSession[] = [],
         interactionWarning = "",
-        lastWarning = "";
+        lastWarning = "",
+        collisionWarning = "",
+        lastCollisionCheck = -Infinity;
       const renderAt = (time: number) => {
         if (sessionScene !== live.current.scene) {
           sessionScene = live.current.scene;
@@ -341,7 +319,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         }
         for (const e of live.current.scene.entities) {
           const obj = objects.get(e.id);
-          if (obj && !(transform.dragging && transform.object === obj)) {
+          if (obj) {
             applyAnimatedEntityPose(obj, e, live.current.scene, time);
           }
         }
@@ -353,6 +331,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           objects,
           sessions,
         ).map((w) => w.message);
+        editing.render();
         dragging.render();
         const selectedObject = live.current.selected
           ? objects.get(live.current.selected)
@@ -365,7 +344,26 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         }
         transform.getHelper().visible =
           !!transform.object?.visible && !live.current.playing;
+        // Geometry bounds for imported skins can be expensive; throttle diagnostics,
+        // never the collision checks for active edit gestures.
+        const now = performance.now();
+        if (
+          now - lastCollisionCheck > 180 &&
+          !transform.dragging &&
+          !dragging.active()
+        ) {
+          lastCollisionCheck = now;
+          collisionWarning = sceneCollisionWarning(
+            sceneObstacles(
+              live.current.scene,
+              objects,
+              undefined,
+              context.current?.environment.root,
+            ),
+          );
+        }
         interactionWarning = [
+          collisionWarning,
           ...interactionMessages,
           ...Array.from(
             objects.values(),
@@ -471,6 +469,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         transform,
         renderAt,
         dragging,
+        editing,
         environment: new EnvironmentModel(content),
         placedKeys: new Map(),
         pending: new Map(),
@@ -593,13 +592,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         stopCinema();
         guide.remove();
         resize.disconnect();
-        window.removeEventListener("keydown", cancelGizmo);
-        renderer.domElement.removeEventListener(
-          "pointercancel",
-          cancelGizmo,
-          true,
-        );
         dragging.dispose();
+        editing.dispose();
         status.remove();
         renderer.domElement.removeEventListener("pointerdown", down);
         renderer.domElement.removeEventListener("pointerup", up);
@@ -766,10 +760,15 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     useEffect(() => {
       const c = context.current;
       if (!c) return;
+      c.editing.cancel();
+      c.transform.setMode(props.transformMode ?? "translate");
+      c.transform.setSpace("world");
+      c.transform.showX = c.transform.showZ = props.transformMode !== "rotate";
+      c.transform.showY = true;
       if (props.move && props.selected && c.objects.has(props.selected))
         c.transform.attach(c.objects.get(props.selected)!);
       else c.transform.detach();
-    }, [props.selected, props.move]);
+    }, [props.selected, props.move, props.transformMode]);
     useImperativeHandle(
       ref,
       () => ({
@@ -791,6 +790,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               c.objects,
               actorId,
               beforeClipId,
+              c.environment.root,
             );
           } finally {
             c.renderAt(live.current.time);
@@ -807,6 +807,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               targetId,
               kind,
               beforeClipId,
+              c.environment.root,
             );
           } finally {
             c.renderAt(live.current.time);
