@@ -1,5 +1,7 @@
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
+import { ChatExportMenu } from "./ChatExportMenu";
+import { exportAssistantChat, exportFilename } from "./code/transcriptExport";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Clapperboard,
@@ -2145,6 +2147,15 @@ export default function App() {
               </div>
               <div className="chat-toolbar">
                 <span>Conversation</span>
+                <ChatExportMenu
+                  disabled={messages.length <= 1}
+                  build={(format) =>
+                    exportAssistantChat(messages, format, { scene: scene.name })
+                  }
+                  filename={(format) =>
+                    exportFilename("assistant", scene.id, format, new Date())
+                  }
+                />
                 {clearedMessages ? (
                   <button
                     className="text-button"
