@@ -248,3 +248,16 @@ it("uses a small Claude envelope, sends thinking effort and validates the decode
     ),
   ).rejects.toThrow();
 });
+
+it("reports an out-of-credit 400 during a connection test as a billing problem", async () => {
+  const { connectionTestMessage } = await import("../server/providerErrors");
+  const body = JSON.stringify({
+    type: "error",
+    error: {
+      type: "invalid_request_error",
+      message: "Your credit balance is too low to access the Anthropic API.",
+    },
+  });
+  expect(connectionTestMessage(400, body)).toContain("API credit");
+  expect(connectionTestMessage(400, "{}")).toContain("did not recognise");
+});

@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
 import { listProviderModels } from "../server/providerModels";
-vi.mock("../server/providerModels", () => ({ listProviderModels: vi.fn() }));
+vi.mock("../server/providerModels", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../server/providerModels")>()),
+  listProviderModels: vi.fn(),
+}));
 let server: Server, base: string, dir: string;
 beforeAll(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "scene-connections-test-"));
@@ -67,6 +70,8 @@ describe("connection setup and persistence", () => {
       connected: true,
       model: "gpt-fixture",
       thinking: "default",
+      method: "key",
+      connectedAt: expect.any(String),
     });
     expect(JSON.stringify(saved)).not.toContain("saved-fixture");
     await req("/api/connections/models", { provider: "openai" }, "POST");
@@ -151,6 +156,8 @@ describe("connection setup and persistence", () => {
       connected: true,
       model: "gpt-fixture-two",
       thinking: "default",
+      method: "key",
+      connectedAt: expect.any(String),
     });
     await req("/api/connections", { provider: "openai", key: "", model: "" });
     expect(await settings()).toMatchObject({
