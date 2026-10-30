@@ -3,7 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { request as httpRequest, type Server } from "node:http";
-import { starterScene } from "../shared/scene";
+import { assetSchema, motionSchema, starterScene } from "../shared/scene";
+import {
+  studioLibraryAssets,
+  studioLibraryMotions,
+  studioLibrarySchema,
+} from "../shared/studioLibrary";
 import { characterDraft } from "../shared/characterDesign";
 let server: Server, base: string, dir: string;
 beforeAll(async () => {
@@ -96,6 +101,132 @@ describe("local service boundaries", () => {
       expect((await response.json()).error).toContain(
         "file is no longer available",
       );
+    }
+  });
+  it("discovers a private studio-wide catalog newest-first without writing projects or exposing missing uploads", async () => {
+    const model = (
+      id: string,
+      category: "characters" | "props" | "environments",
+    ) =>
+      assetSchema.parse({
+        id,
+        name: id,
+        category,
+        style: "Imported",
+        color: "#739480",
+        url: `/uploads/${id}.glb`,
+      });
+    const source = model("catalog-source", "characters");
+    const actor = model("catalog-actor", "characters");
+    const prop = model("catalog-prop", "props");
+    const environment = model("catalog-environment", "environments");
+    const stale = model("catalog-stale", "characters");
+    const motion = motionSchema.parse({
+      id: "catalog-action",
+      name: "Saved take",
+      kind: "imported",
+      duration: 2,
+      sourceAssetId: source.id,
+      animationName: "Greeting",
+    });
+    const older = {
+      ...starterScene(),
+      customAssets: [source, actor, prop, environment, stale],
+      customMotions: [motion],
+    };
+    const newerMotion = { ...motion, name: "Newest take" };
+    const newer = {
+      ...starterScene(),
+      customAssets: [{ ...actor, name: "Newest actor" }, source],
+      customMotions: [newerMotion],
+    };
+    const files = [source, actor, prop, environment].map((entry) =>
+      path.join(dir, "uploads", path.basename(entry.url!)),
+    );
+    const projects = path.join(dir, "projects");
+    for (const file of files) fs.writeFileSync(file, "catalog test model");
+    try {
+      for (const scene of [older, newer])
+        expect(
+          (await req("/api/projects/" + scene.id, scene, "PUT")).status,
+        ).toBe(200);
+      const oldFile = path.join(projects, older.id + ".json");
+      const newFile = path.join(projects, newer.id + ".json");
+      fs.utimesSync(oldFile, new Date(1000), new Date(1000));
+      fs.utimesSync(newFile, new Date(2000), new Date(2000));
+      const dangling = {
+        ...starterScene(),
+        id: "catalog-dangling",
+        customAssets: [],
+        customMotions: [
+          { ...motion, id: "dangling-action", sourceAssetId: "unknown-source" },
+          { ...motion, id: "stale-action", sourceAssetId: stale.id },
+        ],
+      };
+      fs.writeFileSync(
+        path.join(projects, "catalog-dangling.json"),
+        JSON.stringify(dangling),
+      );
+      fs.writeFileSync(
+        path.join(projects, "catalog-malformed.json"),
+        "{not json",
+      );
+      // Duplicate built-in definitions are invalid projects and must not poison the catalog.
+      fs.writeFileSync(
+        path.join(projects, "catalog-duplicate.json"),
+        JSON.stringify({
+          ...starterScene(),
+          id: "catalog-duplicate",
+          customAssets: [{ ...actor, id: "mila" }],
+        }),
+      );
+      const snapshot = () =>
+        fs
+          .readdirSync(projects)
+          .sort()
+          .map((file) => ({
+            file,
+            content: fs.readFileSync(path.join(projects, file), "utf8"),
+            mtime: fs.statSync(path.join(projects, file)).mtimeMs,
+          }));
+      const before = snapshot();
+      const response = await fetch(base + "/api/library");
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const library = studioLibrarySchema.parse(await response.json());
+      expect(library.assets.map((entry) => entry.id)).toEqual([
+        actor.id,
+        source.id,
+        prop.id,
+        environment.id,
+      ]);
+      expect(library.assets[0].name).toBe("Newest actor");
+      expect(library.motions).toEqual([newerMotion]);
+      expect(library.assets.some((entry) => entry.id === "mila")).toBe(false);
+      const fresh = starterScene();
+      expect(studioLibraryAssets(fresh, library)).toEqual(
+        expect.arrayContaining(library.assets),
+      );
+      expect(studioLibraryMotions(fresh, library)).toEqual(
+        expect.arrayContaining([newerMotion]),
+      );
+      expect((await fetch(base + "/api/library")).status).toBe(200);
+      expect(snapshot()).toEqual(before);
+      const loaded = await (
+        await fetch(base + "/api/projects/" + older.id)
+      ).json();
+      expect(loaded.revision).toBe(1);
+      expect(loaded.customAssets).toEqual(older.customAssets);
+    } finally {
+      for (const file of files) fs.rmSync(file, { force: true });
+      for (const id of [
+        older.id,
+        newer.id,
+        "catalog-dangling",
+        "catalog-malformed",
+        "catalog-duplicate",
+      ])
+        fs.rmSync(path.join(projects, id + ".json"), { force: true });
     }
   });
   it("persists project revisions and rejects conflicting writes", async () => {

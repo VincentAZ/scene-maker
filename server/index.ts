@@ -6,6 +6,7 @@ import { codingPreview } from "./codingPreview";
 import { createSpeechService } from "./speech";
 import { checkForUpdates, versionInfo } from "./updates";
 import { recordingsRouter } from "./recordings";
+import { readStudioLibrary } from "./studioLibrary";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -182,6 +183,10 @@ app.get("/api/version", async (_req, res) => {
 app.post("/api/update/check", async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json(await checkForUpdates({ fetch: process.env.NODE_ENV !== "test" }));
+});
+app.get("/api/library", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(readStudioLibrary());
 });
 app.get("/api/projects", (_req, res) => res.json(listProjects()));
 app.get("/api/projects/:id", (req, res) =>

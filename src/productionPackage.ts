@@ -165,5 +165,12 @@ Keep editing in Scene Maker
 Open this ZIP from your projects to restore the editable scene and original assets. Imported source files are included under assets/. scene.glb contains the baked production animation at 24 frames per second.
 `,
   );
-  return zip.generateAsync({ type: "arraybuffer" });
+  // A production export contains both the baked scene and its editable source
+  // models. STORE duplicates large geometry/morph buffers and can exceed the
+  // upload limit even for a modest cast. Compression preserves every file byte.
+  return zip.generateAsync({
+    type: "arraybuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+  });
 }

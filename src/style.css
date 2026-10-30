@@ -2644,6 +2644,17 @@ label > span {
   gap: 26px;
   padding: 26px;
 }
+.library-refresh-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.library-refresh-error p {
+  margin: 0 0 6px;
+}
 .set-library-note {
   margin: 0 0 15px;
   font-size: 11px;

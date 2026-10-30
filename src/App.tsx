@@ -84,6 +84,14 @@ import { type AssistantReply, type StudioStep } from "../shared/studio";
 import { runStudioPlan, StudioPlanError } from "./studioRunner";
 import { ProjectSaveQueue } from "./projectSave";
 import {
+  emptyStudioLibrary,
+  studioLibrarySchema,
+  studioLibraryAssets,
+  studioLibraryMotions,
+  studioLibraryCommands,
+  type StudioLibrary,
+} from "../shared/studioLibrary";
+import {
   type Scene,
   type Entity,
   type Asset,
@@ -175,6 +183,9 @@ const versionSummary = (s: Scene) => {
 export default function App() {
   const [scene, setScene] = useState<Scene>(starterScene),
     [ready, setReady] = useState(false),
+    [studioLibrary, setStudioLibrary] =
+      useState<StudioLibrary>(emptyStudioLibrary),
+    [studioLibraryError, setStudioLibraryError] = useState(""),
     [selected, setSelectedState] = useState<string | null>(null),
     [tab, setTab] = useState<Tab>("characters"),
     [search, setSearch] = useState(""),
@@ -244,6 +255,32 @@ export default function App() {
     [importCategory, setImportCategory] = useState<"characters" | "props">(
       "characters",
     );
+  const libraryRequest = useRef(0);
+  const refreshStudioLibrary = useCallback(async () => {
+    const request = ++libraryRequest.current;
+    try {
+      const library = studioLibrarySchema.parse(await api("/api/library"));
+      if (request !== libraryRequest.current) return;
+      setStudioLibrary(library);
+      setStudioLibraryError("");
+    } catch {
+      if (request !== libraryRequest.current) return;
+      // A catalog outage must not prevent opening/editing an existing project.
+      // Keep the last good catalog, but make failures visible and retryable.
+      setStudioLibraryError(
+        "Your saved library could not be refreshed. Project assets are still available.",
+      );
+    }
+  }, []);
+  useEffect(() => {
+    void refreshStudioLibrary();
+    const refresh = () => void refreshStudioLibrary();
+    window.addEventListener("focus", refresh);
+    return () => {
+      libraryRequest.current++;
+      window.removeEventListener("focus", refresh);
+    };
+  }, [refreshStudioLibrary]);
   const setPanel = useCallback((open: boolean) => {
     setPanelState(open);
     if (open) setConversationOpen(false);
@@ -753,12 +790,20 @@ export default function App() {
     execute([{ type: "update", id, changes }], coalesce);
   function add(asset: Asset, position?: [number, number, number]) {
     const before = sceneRef.current.entities.length;
-    if (
-      !execute([
-        { type: "add", assetId: asset.id, ...(position ? { position } : {}) },
-      ])
-    )
+    try {
+      if (
+        !execute([
+          ...studioLibraryCommands(sceneRef.current, studioLibrary, {
+            assetIds: [asset.id],
+          }),
+          { type: "add", assetId: asset.id, ...(position ? { position } : {}) },
+        ])
+      )
+        return;
+    } catch (error) {
+      report((error as Error).message);
       return;
+    }
     if (asset.category !== "environments") {
       const added = sceneRef.current.entities[before];
       if (added) {
@@ -879,16 +924,34 @@ export default function App() {
       );
       return;
     }
-    const added = execute([
-      {
-        type: "chain",
-        id: actor.id,
-        motionId: motion.id,
-        ...(seat ? { targetId: seat.id } : {}),
-        ...(ladder ? { targetId: ladder.id } : {}),
-      },
-    ]);
-    if (added) toast(`${motion.name} added to ${actor.name}’s sequence`);
+    try {
+      const added = execute([
+        ...studioLibraryCommands(current, studioLibrary, {
+          motionIds: [motion.id],
+        }),
+        {
+          type: "chain",
+          id: actor.id,
+          motionId: motion.id,
+          ...(seat ? { targetId: seat.id } : {}),
+          ...(ladder ? { targetId: ladder.id } : {}),
+        },
+      ]);
+      if (added) toast(`${motion.name} added to ${actor.name}’s sequence`);
+    } catch (error) {
+      report((error as Error).message);
+    }
+  }
+  function previewMotion(motion: Motion, actorId?: string) {
+    // Register dependencies only in the disposable preview, not in the project.
+    const source = applyCommands(
+      sceneRef.current,
+      studioLibraryCommands(sceneRef.current, studioLibrary, {
+        motionIds: [motion.id],
+      }),
+    );
+    setPlaying(false);
+    setPreviewAction({ motion, source, actorId });
   }
   async function performStudioStep(
     step: Exclude<
@@ -936,14 +999,11 @@ export default function App() {
       return;
     }
     if (step.type === "previewAction") {
-      setPlaying(false);
-      setPreviewAction({
-        motion: allMotions(sceneRef.current).find(
-          (m) => m.id === step.motionId,
-        )!,
-        source: structuredClone(sceneRef.current),
-        actorId: step.actorId,
-      });
+      const motion = studioLibraryMotions(sceneRef.current, studioLibrary).find(
+        (item) => item.id === step.motionId,
+      );
+      if (!motion) throw Error("That action is no longer in your library.");
+      previewMotion(motion, step.actorId);
       return;
     }
     if (step.type === "pathEditor") {
@@ -1171,6 +1231,7 @@ export default function App() {
     setModal(null);
     setHistoryVersion((v) => v + 1);
     localStorage.setItem("scene-maker-last", next.id);
+    void refreshStudioLibrary();
   }
   async function importProject(file: File) {
     try {
@@ -1380,12 +1441,20 @@ export default function App() {
       setExporting(false);
     }
   }
-  const filtered = allAssets(scene)
+  const panelAssets = studioLibraryAssets(scene, studioLibrary);
+  const privateAssetIds = new Set(
+    [...scene.customAssets, ...studioLibrary.assets].map((asset) => asset.id),
+  );
+  const privateMotionIds = new Set(
+    [...scene.customMotions, ...studioLibrary.motions].map(
+      (motion) => motion.id,
+    ),
+  );
+  const filtered = panelAssets
     .filter(
       (a) =>
         a.category === tab &&
-        (filter !== "My assets" ||
-          scene.customAssets.some((c) => c.id === a.id)) &&
+        (filter !== "My assets" || privateAssetIds.has(a.id)) &&
         (["All", "My assets"].includes(filter) ||
           (tab === "characters"
             ? characterCollection(a)
@@ -1414,11 +1483,11 @@ export default function App() {
         : tab === "motions"
           ? motionCollections
           : ["All", "My assets"];
-  const filteredMotions = allMotions(scene).filter(
+  const filteredMotions = studioLibraryMotions(scene, studioLibrary).filter(
     (m) =>
       (filter === "All" ||
         (filter === "My actions"
-          ? scene.customMotions.some((custom) => custom.id === m.id)
+          ? privateMotionIds.has(m.id)
           : motionDetails(m).collection === filter)) &&
       (m.name + " " + motionDetails(m).description)
         .toLowerCase()
@@ -1522,6 +1591,17 @@ export default function App() {
             ))}
           </div>
           <div className="library-body">
+            {studioLibraryError && (
+              <div className="library-refresh-error" role="status">
+                <p>{studioLibraryError}</p>
+                <button
+                  className="text-button"
+                  onClick={() => void refreshStudioLibrary()}
+                >
+                  Retry library
+                </button>
+              </div>
+            )}
             <div className="search">
               <Search size={16} />
               <input
@@ -1609,12 +1689,14 @@ export default function App() {
                       className="motion-preview"
                       aria-label={`Preview ${m.name}`}
                       onClick={() => {
-                        setPlaying(false);
-                        setPreviewAction({
-                          motion: m,
-                          source: structuredClone(sceneRef.current),
-                          actorId: isCharacter ? entity!.id : undefined,
-                        });
+                        try {
+                          previewMotion(
+                            m,
+                            isCharacter ? entity!.id : undefined,
+                          );
+                        } catch (error) {
+                          report((error as Error).message);
+                        }
                       }}
                     >
                       <Play size={12} /> Preview
@@ -1851,9 +1933,10 @@ export default function App() {
               }}
               onMove={(id, position) => update(id, { position })}
               onAdd={(assetId, position) => {
-                const asset = allAssets(sceneRef.current).find(
-                  (item) => item.id === assetId,
-                );
+                const asset = studioLibraryAssets(
+                  sceneRef.current,
+                  studioLibrary,
+                ).find((item) => item.id === assetId);
                 if (asset) add(asset, position);
               }}
               onEditStart={() => {

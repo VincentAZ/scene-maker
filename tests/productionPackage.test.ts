@@ -74,6 +74,22 @@ it("exports the editable scene, original assets and automatic Unreal project tog
   );
 });
 
+it("losslessly compresses duplicate baked and editable model buffers", async () => {
+  const scene = starterScene();
+  scene.customAssets.push({ ...characters[0], id: "large-source", name: "Source", url: "/uploads/fixture.glb" });
+  const geometry = new Uint8Array(3 * 1024 * 1024);
+  geometry.set(new TextEncoder().encode("GLB fixture: repetitive geometry and morph buffers"));
+  const readLarge: typeof fetch = async (input, options) =>
+    String(input) === "/uploads/fixture.glb"
+      ? new Response(geometry)
+      : read(input, options);
+  const archive = await productionPackage(scene, geometry.buffer, readLarge);
+  expect(archive.byteLength).toBeLessThan(geometry.byteLength / 10);
+  const zip = await JSZip.loadAsync(archive, { checkCRC32: true });
+  for (const filename of ["scene.glb", "assets/fixture.glb"])
+    expect(hash(await zip.file(filename)!.async("uint8array"))).toBe(hash(geometry));
+});
+
 it("includes only used bundled models and their license in a portable export", async () => {
   const scene = starterScene(),
     asset = libraryCharacters[0];

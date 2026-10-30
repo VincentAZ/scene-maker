@@ -63,6 +63,25 @@ const aliases: Record<string, string> = {
   rightleg: "rightShin",
   rightcalf: "rightShin",
   rightfoot: "rightFoot",
+  // Native ActorCore / Character Creator exports. Hip is the common ancestor
+  // of the separate Pelvis (legs) and Waist (torso) branches; mapping Pelvis
+  // instead would detach the torso from canonical hip rotations. Keep these
+  // exact: UpperarmTwist, ForearmTwist, CalfTwist and ShareBone are not joints.
+  ccbasehip: "hips",
+  ccbasespine01: "spine",
+  ccbasehead: "head",
+  ccbaselupperarm: "leftArm",
+  ccbaselforearm: "leftForearm",
+  ccbaselhand: "leftHand",
+  ccbaserupperarm: "rightArm",
+  ccbaserforearm: "rightForearm",
+  ccbaserhand: "rightHand",
+  ccbaselthigh: "leftLeg",
+  ccbaselcalf: "leftShin",
+  ccbaselfoot: "leftFoot",
+  ccbaserthigh: "rightLeg",
+  ccbasercalf: "rightShin",
+  ccbaserfoot: "rightFoot",
 };
 function restore(rig: HumanoidRig) {
   for (const t of rig.bind) {
