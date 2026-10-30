@@ -3,6 +3,7 @@ import type { McpServerConfig } from "../shared/coding";
 import { generateText, Output, wrapLanguageModel, type ModelMessage } from "ai";
 import type { InlineImage } from "./attachments";
 import { chatGPTFetch } from "./chatgptTransport";
+import { lmStudioBaseUrl } from "./providerModels";
 import { providerErrorMessage } from "./providerErrors";
 import {
   assistantOutputSchema,
@@ -55,7 +56,10 @@ export type ChatGPTSession = {
   planUsage: boolean;
 };
 export type ProviderSettings = {
-  /** API key, OpenRouter sign-in key, or ChatGPT access token. Never sent to the browser. */
+  /**
+   * API key, OpenRouter sign-in key, or ChatGPT access token. Never sent to the
+   * browser. For LM Studio it is the local server address instead.
+   */
   key: string;
   model: string;
   thinking?: ThinkingLevel;
@@ -134,6 +138,13 @@ export function modelFor(
   if (provider === "anthropic")
     return createAnthropic({ apiKey: c.key })(model);
   if (provider === "google") return createGoogle({ apiKey: c.key })(model);
+  if (provider === "lmstudio")
+    // LM Studio accepts json_schema response formats for structured output.
+    return createOpenAICompatible({
+      name: provider,
+      baseURL: lmStudioBaseUrl(c.key),
+      supportsStructuredOutputs: true,
+    }).chatModel(model);
   return createOpenAICompatible({
     name: provider,
     apiKey: c.key,

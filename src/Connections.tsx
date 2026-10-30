@@ -21,6 +21,8 @@ export type ProviderStatus = {
   /** Sign in with ChatGPT: the account email and whether plan usage is allowed. */
   account?: string;
   planUsage?: boolean;
+  /** LM Studio: the saved server address. */
+  address?: string;
 };
 export type ConnectionsData = {
   assistant: Provider | null;
@@ -62,6 +64,7 @@ export const providerNames: Record<Provider, string> = {
   xai: "Grok · xAI",
   kimi: "Kimi · Moonshot",
   openrouter: "OpenRouter",
+  lmstudio: "LM Studio",
 };
 export function Connections({
   scene,

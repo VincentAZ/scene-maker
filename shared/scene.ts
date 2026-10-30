@@ -15,6 +15,7 @@ export const providers = [
   "xai",
   "kimi",
   "openrouter",
+  "lmstudio",
 ] as const;
 export const vec3 = z.tuple([
   z.number().finite(),

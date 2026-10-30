@@ -45,7 +45,9 @@ export function ModelPicker({
         <p className="model-picker-intro">
           {choices.length
             ? "Start with a studio suggestion. You can change it anytime."
-            : "No studio suggestions match this account yet. Choose a model in Advanced models."}
+            : provider === "lmstudio"
+              ? "Choose one of your downloaded models under Advanced models."
+              : "No studio suggestions match this account yet. Choose a model in Advanced models."}
         </p>
         {choices.map((choice) => (
           <label
@@ -83,7 +85,7 @@ export function ModelPicker({
           </span>
         </div>
       )}
-      <details className="model-advanced">
+      <details className="model-advanced" open={provider === "lmstudio"}>
         <summary>
           Advanced models <span>{models.length} available</span>
         </summary>
