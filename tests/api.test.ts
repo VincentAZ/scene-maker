@@ -26,6 +26,12 @@ const req = (url: string, body?: unknown, method = "POST") =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 describe("local service boundaries", () => {
+  it("only restarts when launched by start.sh", async () => {
+    delete process.env.SCENE_MAKER_LAUNCHER;
+    const response = await req("/api/restart", { rebuild: false });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("app icon");
+  });
   it("validates character creation before invoking an engine and cleans failed work", async () => {
     const asset = characterDraft("quaternius-casual-female", "Cleo");
     const before = fs.readdirSync(path.join(dir, "uploads"));

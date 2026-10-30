@@ -3,12 +3,37 @@ export type CodingStatus =
   | "working"
   | "checking"
   | "ready"
+  | "idle"
   | "failed"
   | "cancelled"
   | "publishing"
   | "pushed";
+/** One line of a task's conversation, in the order it happened. */
+export type TranscriptEntry =
+  | { kind: "user"; id: string; at: number; text: string; queued?: boolean; dropped?: boolean }
+  | { kind: "assistant"; id: string; at: number; text: string; depth?: number }
+  | {
+      kind: "tool";
+      id: string;
+      at: number;
+      name: string;
+      title: string;
+      input?: string;
+      status: "running" | "ok" | "error";
+      output?: string;
+      ended?: number;
+      depth?: number;
+    }
+  | {
+      kind: "status";
+      id: string;
+      at: number;
+      text: string;
+      tone?: "info" | "success" | "warning" | "error";
+    };
 export type CodingTask = {
   id: string;
+  /** The first request; the task's title. */
   prompt: string;
   branch: string;
   base: string;
@@ -18,7 +43,7 @@ export type CodingTask = {
   created: number;
   /** When the current run began working. */
   started?: number;
-  /** Last activity from the run, for liveness display. */
+  /** Last activity, for liveness display. */
   updated?: number;
   /** Model turns completed in the current run. */
   step?: number;
@@ -26,9 +51,12 @@ export type CodingTask = {
   maxSteps?: number;
   provider: string;
   model: string;
+  /** The engineer's last reply. */
   summary: string;
   error?: string;
+  /** Legacy flat activity log, kept for tasks created before transcripts. */
   events: string[];
+  transcript?: TranscriptEntry[];
   baselineFiles: string[];
   files: string[];
   diff: string;
@@ -36,15 +64,33 @@ export type CodingTask = {
   review: string;
   checkedReview?: string;
   checks: { name: string; ok: boolean; output: string }[];
+  /** Latest commit on the task branch. */
   commit?: string;
-  /** The agent pushed the branch itself. */
+  /** Commit last pushed to origin. */
+  pushedCommit?: string;
   pushed?: boolean;
-  /** The agent merged the branch into the running studio and restarted it. */
+  /** The engineer merged the branch into the running studio and restarted it. */
   deployed?: boolean;
   previewUrl?: string;
   compareUrl?: string;
   pullRequestUrl?: string;
 };
+/** What the task list needs, without transcripts or diffs. */
+export type CodingTaskSummary = Pick<
+  CodingTask,
+  | "id"
+  | "prompt"
+  | "branch"
+  | "status"
+  | "created"
+  | "updated"
+  | "step"
+  | "error"
+  | "pushed"
+  | "deployed"
+  | "compareUrl"
+  | "pullRequestUrl"
+> & { fileCount: number; searchText: string; lastMessage: string };
 export type McpServerConfig =
   | {
       transport: "stdio";
@@ -64,9 +110,21 @@ export type CodingInfo = {
   mcpServers: string[];
   maxSteps: number;
   timeoutMinutes: number;
-  tasks: CodingTask[];
+  tasks: CodingTaskSummary[];
 };
 export const codingBusy = (s: CodingStatus) =>
   ["preparing", "working", "checking", "publishing"].includes(s);
-/** Activity lines the model wrote itself carry this prefix. */
+/** Legacy activity lines the model wrote itself carry this prefix. */
 export const NARRATION = "Assistant: ";
+export const statusLabel = (task: Pick<CodingTask, "status" | "deployed">) =>
+  ({
+    preparing: "Preparing",
+    working: "Working",
+    checking: "Running checks",
+    ready: "Ready for review",
+    idle: "Done",
+    failed: "Failed",
+    cancelled: "Stopped",
+    publishing: "Pushing",
+    pushed: task.deployed ? "Deployed" : "Pushed",
+  })[task.status];

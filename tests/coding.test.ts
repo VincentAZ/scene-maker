@@ -16,6 +16,22 @@ import {
 import type { Config } from "../server/ai";
 import { codingBusy, type CodingTask } from "../shared/coding";
 import { codingPreview } from "../server/codingPreview";
+import type { AgentEvent } from "../server/codingAgent";
+/** Flatten agent events into readable lines, the way the transcript shows them. */
+function recorder() {
+  const events: string[] = [];
+  const progress: number[] = [];
+  const raw: AgentEvent[] = [];
+  const emit = (event: AgentEvent) => {
+    raw.push(event);
+    if (event.type === "text") events.push("Assistant: " + event.text);
+    else if (event.type === "tool-start") events.push(event.title);
+    else if (event.type === "status") events.push(event.text);
+    else if (event.type === "progress") progress.push(event.step);
+    else if (event.type === "steered") events.push("Steered: " + event.text);
+  };
+  return { events, progress, raw, emit };
+}
 let dir: string, root: string, remote: string;
 const config: Config = {
   assistant: "openai",
@@ -192,27 +208,22 @@ it("stops a running generation and retains partial work", async () => {
   expect(task.status).toBe("cancelled");
   expect(task.diff).toContain("value = 3");
 });
-it("serializes simultaneous starts and handles restart recovery", async () => {
+it("runs tasks in parallel in separate checkouts and recovers after a restart", async () => {
   const s = service();
-  const result = await Promise.allSettled([
+  const [first, second] = await Promise.all([
     s.start("First change please"),
     s.start("Second change please"),
   ]);
-  expect(result.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-  const task = (
-    result.find(
-      (r) => r.status === "fulfilled",
-    ) as PromiseFulfilledResult<CodingTask>
-  ).value;
-  await settled(task);
-  task.status = "working";
-  fs.writeFileSync(
-    path.join(dir, ".tasks", task.id, "task.json"),
-    JSON.stringify(task),
-  );
-  const restored = service().get(task.id);
+  expect(first.id).not.toBe(second.id);
+  expect(s.checkout(first.id)).not.toBe(s.checkout(second.id));
+  await settled(first);
+  await settled(second);
+  expect([first.status, second.status]).toEqual(["ready", "ready"]);
+  first.status = "working";
+  fs.writeFileSync(path.join(dir, ".tasks", first.id, "task.json"), JSON.stringify(first));
+  const restored = service().get(first.id);
   expect(restored.status).toBe("failed");
-  expect(restored.error).toContain("restarted");
+  expect(restored.error).toContain("send a message to continue");
 });
 it.skipIf(process.env.SCENE_MAKER_SANDBOX === "1")(
   "runs checks in a real network-disabled sandbox without host secrets",
@@ -315,13 +326,13 @@ it("executes the real AI SDK tool loop, blocks traversal, and edits source", asy
       },
     ],
   });
-  const events: string[] = [];
+  const rec = recorder();
   const result = await runCodingAgent(
     config,
     root,
     "Update example",
     new AbortController().signal,
-    (text) => events.push(text),
+    rec.emit,
     () => model,
   );
   expect(result).toBe("Updated the example.");
@@ -329,7 +340,11 @@ it("executes the real AI SDK tool loop, blocks traversal, and edits source", asy
   expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain(
     "relative path inside the checkout",
   );
-  expect(events).toContain("Updated src/example.ts");
+  expect(rec.events).toContain("Edit src/example.ts");
+  expect(rec.events).toContain("Read ../private.ts");
+  // The blocked read is reported as a failed tool call, in order.
+  const escape = rec.raw.find((e) => e.type === "tool-end" && e.id === "0:escape");
+  expect(escape).toMatchObject({ ok: false });
 });
 
 const usage = {
@@ -369,26 +384,25 @@ it("narrates steps, reports progress, runs commands, commits and pushes on its o
       finalText("Done: value is 5, committed and pushed."),
     ],
   });
-  const events: string[] = [];
-  const progress: number[] = [];
+  const { events, progress, emit } = recorder();
   const pushes: string[] = [];
   const result = await runCodingAgent(
     config,
     root,
     "Set value to 5, commit and push",
     new AbortController().signal,
-    (text, p) => {
-      if (text) events.push(text);
-      if (p) progress.push(p.step);
-    },
+    emit,
     () => model,
     { remote, branch: "studio/test-branch", onPush: (c) => pushes.push(c) },
   );
   expect(result).toContain("committed and pushed");
   expect(events).toContain("Assistant: Checking the workspace first.");
-  expect(events.some((e) => e.startsWith("Running: echo hello-from-shell"))).toBe(true);
-  expect(events.some((e) => e.startsWith("Committed "))).toBe(true);
-  expect(events.some((e) => e.startsWith("Pushed studio/test-branch"))).toBe(true);
+  // Narration arrives before the tool call it introduces.
+  expect(events.indexOf("Assistant: Checking the workspace first.")).toBeLessThan(
+    events.findIndex((e) => e.startsWith("$ echo hello-from-shell")),
+  );
+  expect(events).toContain("Commit: Set value to 5");
+  expect(events).toContain("Push branch to GitHub");
   expect(progress).toEqual([1, 2, 3, 4, 5]);
   const run = JSON.stringify(model.doGenerateCalls[1].prompt);
   expect(run).toContain("hello-from-shell");
@@ -426,13 +440,13 @@ it("survives a lost provider connection and resumes from the last completed step
       return responses[calls === 1 ? 0 : calls === 3 ? 1 : 2];
     },
   });
-  const events: string[] = [];
+  const { events, emit } = recorder();
   const result = await runCodingAgent(
     config,
     root,
     "Set value to 8",
     new AbortController().signal,
-    (text) => text && events.push(text),
+    emit,
     () => model,
     { retryDelayMs: 10, maxRetries: 0 },
   );
@@ -443,7 +457,7 @@ it("survives a lost provider connection and resumes from the last completed step
   // The resumed call carries the first step exactly once and no edit was repeated.
   const resumed = JSON.stringify(model.doGenerateCalls[2].prompt);
   expect(resumed.split("\"toolCallId\":\"edit\"").length - 1).toBe(2);
-  expect(events.filter((e) => e === "Updated src/example.ts")).toHaveLength(1);
+  expect(events.filter((e) => e === "Edit src/example.ts")).toHaveLength(1);
   expect(model.doGenerateCalls).toHaveLength(4);
 });
 
@@ -473,13 +487,13 @@ it("connects configured MCP servers and exposes their tools to the engineer", as
       finalText("The server answered."),
     ],
   });
-  const events: string[] = [];
+  const { events, emit } = recorder();
   const result = await runCodingAgent(
     config,
     root,
     "Use the fixture server",
     new AbortController().signal,
-    (text) => text && events.push(text),
+    emit,
     () => model,
     {
       mcpServers: {
@@ -493,6 +507,7 @@ it("connects configured MCP servers and exposes their tools to the engineer", as
   );
   expect(result).toBe("The server answered.");
   expect(events).toContain("Connected MCP server fixture (1 tools)");
+  expect(events).toContain("fixture › echo");
   expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain("echo: ping");
 });
 
@@ -602,4 +617,181 @@ it("round-trips a coding task through the HTTP API and publishes the reviewed di
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+it("continues one conversation across turns, including after a push", async () => {
+  const seen: { prompt: string; history: unknown[] }[] = [];
+  const s = service({
+    generate: async (_config, checkout, prompt, _signal, emit, _model, options) => {
+      seen.push({ prompt, history: options?.history || [] });
+      if (seen.length === 1) {
+        writeSource(checkout, "src/example.ts", "export const value = 6;\n");
+        await git(checkout, ["add", "-A"]);
+        await git(checkout, ["commit", "-m", "Set 6"]);
+        const commit = await git(checkout, ["rev-parse", "HEAD"]);
+        options?.onCommit?.(commit);
+        await git(checkout, ["push", "--", options!.remote!, `${commit}:refs/heads/${options!.branch}`]);
+        options?.onPush?.(commit);
+      }
+      const reply = seen.length === 1 ? "Set it to 6 and pushed." : "I changed value from 1 to 6.";
+      emit({ type: "text", text: reply, depth: 0 });
+      options?.onHistory?.([
+        ...(options.history || []),
+        { role: "user", content: prompt },
+        { role: "assistant", content: reply },
+      ]);
+      return reply;
+    },
+  });
+  const task = await settled(await s.start("Set value to 6, commit and push"));
+  expect(task.status, task.error).toBe("pushed");
+  await settled(await s.reply(task.id, "What did you change?"));
+  expect(task.status, task.error).toBe("pushed");
+  expect(seen[1].prompt).toBe("What did you change?");
+  expect(JSON.stringify(seen[1].history)).toContain("Set value to 6, commit and push");
+  expect(JSON.stringify(seen[1].history)).toContain("Set it to 6 and pushed.");
+  const conversation = task.transcript!.filter((e) => e.kind === "user" || e.kind === "assistant");
+  expect(conversation.map((e) => ("text" in e ? e.text : ""))).toEqual([
+    "Set value to 6, commit and push",
+    "Set it to 6 and pushed.",
+    "What did you change?",
+    "I changed value from 1 to 6.",
+  ]);
+  // A question that changes nothing on a task without a branch ends as done, not failed.
+  const plain = service({
+    generate: async () => "It reads src/example.ts.",
+  });
+  const asked = await settled(await plain.start("Which file holds the value?"));
+  expect(asked.status, asked.error).toBe("idle");
+});
+
+it("delivers a message to the running engineer at its next step", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { runCodingAgent } = await import("../server/codingAgent");
+  let steer: ((text: string) => Promise<boolean>) | undefined;
+  let delivered: Promise<boolean> | undefined;
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        delivered = steer!("Also keep the file name.");
+        return toolCall("readFile", { path: "src/example.ts" }, "read", "Reading first.");
+      }
+      return finalText("Done, and kept the file name.");
+    },
+  });
+  const { events, emit } = recorder();
+  let saved: unknown[] = [];
+  const result = await runCodingAgent(config, root, "Look at the example", new AbortController().signal, emit, () => model, {
+    onSteer: (fn) => {
+      if (fn) steer = fn;
+    },
+    onHistory: (messages) => {
+      saved = [...messages];
+    },
+  });
+  expect(result).toBe("Done, and kept the file name.");
+  expect(await delivered).toBe(true);
+  expect(events).toContain("Steered: Also keep the file name.");
+  expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain("Also keep the file name.");
+  expect(JSON.stringify(saved)).toContain("Also keep the file name.");
+  // After the run, a late message is reported as not delivered.
+  expect(await steer!("too late")).toBe(false);
+});
+
+it("queues messages sent while checks run and continues with them afterwards", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const prompts: string[] = [];
+  const s = service({
+    check: async () => {
+      await gate;
+      return { ok: true, output: "" };
+    },
+    generate: async (_config, checkout, prompt) => {
+      prompts.push(prompt);
+      writeSource(checkout, "src/example.ts", `export const value = ${prompts.length + 1};\n`);
+      return "Changed.";
+    },
+  });
+  const task = await s.start("Change the example value");
+  for (let i = 0; i < 300 && task.status !== "checking"; i++) await new Promise((r) => setTimeout(r, 10));
+  expect(task.status).toBe("checking");
+  await s.reply(task.id, "Then make it 3");
+  const queued = task.transcript!.find((e) => e.kind === "user" && e.text === "Then make it 3");
+  expect(queued).toMatchObject({ queued: true });
+  release();
+  for (let i = 0; i < 500 && prompts.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+  await settled(task);
+  expect(prompts).toEqual(["Change the example value", "Then make it 3"]);
+  expect(queued).not.toHaveProperty("queued", true);
+  expect(task.status, task.error).toBe("ready");
+});
+
+it("deletes single tasks, refuses running ones, and clears finished tasks", async () => {
+  let stop!: () => void;
+  const s = service();
+  const a = await settled(await s.start("First change please"));
+  const b = await settled(await s.start("Second change please"));
+  const blocking = service({
+    generate: (_config, _checkout, _prompt, signal) =>
+      new Promise((_r, reject) => {
+        stop = () => reject(Error("stopped"));
+        signal.addEventListener("abort", () => reject(Error("stopped")), { once: true });
+      }),
+  });
+  const running = await blocking.start("Keep working");
+  for (let i = 0; i < 300 && running.status !== "working"; i++) await new Promise((r) => setTimeout(r, 10));
+  expect(() => blocking.delete(running.id)).toThrow("Stop the task");
+  expect(blocking.clear()).toEqual({ removed: 2 });
+  expect(blocking.get(running.id).status).toBe("working");
+  expect(() => blocking.get(a.id)).toThrow("not found");
+  expect(fs.existsSync(path.join(dir, ".tasks", b.id))).toBe(false);
+  blocking.cancel(running.id);
+  await settled(running);
+  stop();
+  expect(blocking.delete(running.id)).toEqual({ deleted: running.id });
+  expect(fs.readdirSync(path.join(dir, ".tasks"))).toEqual([]);
+});
+
+it("lists task summaries without transcripts or diffs", async () => {
+  const s = service();
+  const task = await settled(await s.start("Change the example value"));
+  const [listed] = (await s.info()).tasks;
+  expect(listed.id).toBe(task.id);
+  expect(listed.fileCount).toBe(1);
+  expect(listed.searchText).toContain("src/example.ts");
+  expect(listed).not.toHaveProperty("transcript");
+  expect(listed).not.toHaveProperty("diff");
+});
+
+it("trims old tool output once a conversation gets large", async () => {
+  const { trimContext } = await import("../server/codingAgent");
+  const big = "x".repeat(50_000);
+  const messages = Array.from({ length: 20 }, (_, i) => [
+    {
+      role: "assistant" as const,
+      content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: "readFile", input: {} }],
+    },
+    {
+      role: "tool" as const,
+      content: [
+        {
+          type: "tool-result" as const,
+          toolCallId: `c${i}`,
+          toolName: "readFile",
+          output: { type: "text" as const, value: big },
+        },
+      ],
+    },
+  ]).flat();
+  const trimmed = trimContext([{ role: "user", content: "start" }, ...messages]);
+  const outputs = trimmed
+    .filter((m) => m.role === "tool")
+    .map((m) => JSON.stringify(m.content));
+  expect(outputs.filter((o) => o.includes("trimmed to save context"))).toHaveLength(8);
+  expect(outputs.slice(-12).every((o) => o.includes(big))).toBe(true);
+  const small = [{ role: "user" as const, content: "hi" }];
+  expect(trimContext(small)).toBe(small);
 });

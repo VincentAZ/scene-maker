@@ -1,5 +1,7 @@
 import { thinkingLevels, thinkingChoices } from "../shared/thinking";
-import { createCodingService, codingRouter } from "./coding";
+import { createCodingService, codingRouter, repositoryRoot } from "./coding";
+import { scheduleRestart } from "./codingDeploy";
+import { runShell } from "./codingAgent";
 import { codingPreview } from "./codingPreview";
 import { createSpeechService } from "./speech";
 import { checkForUpdates, versionInfo } from "./updates";
@@ -115,6 +117,44 @@ app.use(
   codingRouter(coding, (task) => codePreview.open(task)),
 );
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+/**
+ * Rebuild and restart the studio service. Only available when the studio was
+ * launched through start.sh, which knows how to bring it back. Running coding
+ * tasks are stopped first (their conversation and changes are kept) unless
+ * the caller has not confirmed that.
+ */
+app.post("/api/restart", async (req, res) => {
+  const body = z
+    .object({ force: z.boolean().optional(), rebuild: z.boolean().optional() })
+    .parse(req.body ?? {});
+  if (process.env.SCENE_MAKER_LAUNCHER !== "start.sh") {
+    res.status(409).json({
+      error:
+        "Restart works when Scene Maker is opened from its app icon. In development, restart the dev server in its terminal.",
+    });
+    return;
+  }
+  const running = coding.busyCount();
+  if (running && !body.force) {
+    res.status(409).json({
+      error: `${running} coding ${running === 1 ? "task is" : "tasks are"} running.`,
+      running,
+    });
+    return;
+  }
+  if (body.rebuild !== false) {
+    const build = await runShell(repositoryRoot, "npm run build", new AbortController().signal, 0);
+    if (build.exitCode !== 0) {
+      res.status(500).json({
+        error: `The rebuild failed, so the studio was not restarted.\n${build.output.slice(-3000)}`,
+      });
+      return;
+    }
+  }
+  coding.stopAll();
+  scheduleRestart(repositoryRoot, 800);
+  res.json({ ok: true, restarting: true });
+});
 app.get("/api/version", async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json(await versionInfo());

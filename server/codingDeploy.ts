@@ -5,6 +5,24 @@ import { git } from "./codeWorkspace";
 import { runShell } from "./codingAgent";
 
 /**
+ * Restart the studio service through start.sh a moment from now, so the
+ * current HTTP response can finish first. The open app window reconnects.
+ */
+export function scheduleRestart(root: string, delayMs = 1500) {
+  const script = path.join(root, "start.sh");
+  if (!fs.existsSync(script)) throw Error("start.sh is missing; restart the studio by hand.");
+  setTimeout(() => {
+    const child = spawn("bash", [script, "--restart"], {
+      cwd: root,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env },
+    });
+    child.on("error", () => {});
+    child.unref();
+  }, delayMs).unref();
+}
+/**
  * Bring a committed task branch into the running studio: fast-forward or merge
  * it into the studio checkout's current branch, rebuild the production bundle
  * and restart the service through start.sh. The caller saves task state before
@@ -31,17 +49,6 @@ export async function deployBranch(
   }
   const build = await runShell(root, "npm run build", signal, 0, path.join(root, "node_modules"));
   if (build.exitCode !== 0) throw Error(`Production build failed:\n${build.output.slice(-4000)}`);
-  const script = path.join(root, "start.sh");
-  if (!fs.existsSync(script)) throw Error("start.sh is missing; restart the studio by hand.");
-  setTimeout(() => {
-    const child = spawn("bash", [script, "--restart"], {
-      cwd: root,
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env },
-    });
-    child.on("error", () => {});
-    child.unref();
-  }, 1500).unref();
+  scheduleRestart(root);
   return `Merged ${branch} (${commit.slice(0, 10)}) into ${current}, rebuilt, and scheduled a studio restart. The studio reloads in a few seconds.`;
 }

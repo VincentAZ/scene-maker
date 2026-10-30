@@ -26,7 +26,7 @@ if [ "${1:-}" = --restart ]; then
   rm -f "$PIDFILE"
   mkdir -p "$DATA"
   echo "Restarting Scene Maker service at $URL (log: $LOG)" >>"$LOG"
-  PORT="$PORT" nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
+  PORT="$PORT" SCENE_MAKER_LAUNCHER=start.sh nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
   for _ in $(seq 1 60); do running && break; sleep 1; done
   exit 0
@@ -50,7 +50,7 @@ if ! running; then
     npm run build >>"$LOG" 2>&1
   fi
   echo "Starting Scene Maker service at $URL (log: $LOG)"
-  PORT="$PORT" nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
+  PORT="$PORT" SCENE_MAKER_LAUNCHER=start.sh nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
   for _ in $(seq 1 60); do
     running && break

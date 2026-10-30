@@ -1,324 +1,554 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Code2,
+  ArrowDown,
+  ArrowLeft,
   ArrowUp,
+  Bot,
   Check,
-  GitBranch,
-  Square,
+  ChevronRight,
+  Code2,
   ExternalLink,
+  FilePlus2,
+  FileText,
+  GitBranch,
+  GitCommitHorizontal,
+  Globe,
   Loader2,
+  Pencil,
+  Plug,
+  Plus,
+  Rocket,
+  Search,
+  Square,
+  Terminal,
+  Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { api } from "./api";
 import {
   codingBusy,
-  NARRATION,
+  statusLabel,
   type CodingInfo,
   type CodingTask,
+  type CodingTaskSummary,
+  type TranscriptEntry,
 } from "../shared/coding";
+import { Markdown } from "./code/markdown";
+import { parseDiff } from "./code/diff";
+
+const storageKey = "scene-maker-code-view-v1";
+type View = { screen: "list" | "thread" | "new"; id?: string };
+function readView(): View {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    if (saved.screen === "thread" && typeof saved.id === "string")
+      return { screen: "thread", id: saved.id };
+    if (saved.screen === "new") return { screen: "new" };
+  } catch {
+    // The panel still works without browser storage.
+  }
+  return { screen: "list" };
+}
 function duration(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600),
     m = Math.floor((total % 3600) / 60),
     s = total % 60;
-  const mm = String(m).padStart(h ? 2 : 1, "0"),
-    ss = String(s).padStart(2, "0");
-  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  return h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
 }
-const phases: Record<string, string> = {
-  preparing: "Preparing a private checkout",
-  working: "Engineer working",
-  checking: "Running checks",
-  publishing: "Pushing branch",
-};
-function Progress({ task, now }: { task: CodingTask; now: number }) {
-  const started = task.started || task.created;
-  const idle = task.updated ? now - task.updated : 0;
-  const last = task.events[task.events.length - 1] || "";
-  const current = last.startsWith(NARRATION) ? last.slice(NARRATION.length) : last;
+function ago(time: number | undefined, now: number) {
+  if (!time) return "";
+  const s = Math.max(0, (now - time) / 1000);
+  if (s < 45) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+const post = <T,>(url: string, body: object = {}) =>
+  api<T>(url, { method: "POST", body: JSON.stringify(body) });
+const deletePrompt = (prompt: string) =>
+  `Delete “${prompt.slice(0, 80)}”?\n\nIts conversation and private checkout are removed from this computer. Branches already pushed to GitHub stay there.`;
+
+function StatusPill({ task }: { task: Pick<CodingTask, "status" | "deployed"> }) {
   return (
-    <div className="coding-progress" role="status" aria-live="polite">
-      <div className="coding-progress-head">
-        <Loader2 size={16} className="spin" aria-hidden />
-        <strong>{phases[task.status] || task.status}</strong>
-        <span className="coding-progress-meta">
-          {duration(now - started)}
-          {task.status === "working" && task.step
-            ? ` · step ${task.step}${task.maxSteps ? ` of ${task.maxSteps}` : ""}`
-            : ""}
-        </span>
+    <span className={`code-pill code-pill-${task.status}`}>
+      {codingBusy(task.status) && <Loader2 size={11} className="spin" aria-hidden />}
+      {statusLabel(task)}
+    </span>
+  );
+}
+
+/* ---------- Task list ---------- */
+
+function TaskList({
+  info,
+  now,
+  onOpen,
+  onNew,
+  onChanged,
+  onError,
+}: {
+  info: CodingInfo;
+  now: number;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const tasks = info.tasks.filter((t) => {
+    const text = t.searchText.toLowerCase();
+    return terms.every((term) => text.includes(term));
+  });
+  const finished = info.tasks.filter((t) => !codingBusy(t.status)).length;
+  async function remove(task: CodingTaskSummary) {
+    if (!window.confirm(deletePrompt(task.prompt))) return;
+    try {
+      await api(`/api/coding/tasks/${task.id}`, { method: "DELETE" });
+      onChanged();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  }
+  async function clearFinished() {
+    if (
+      !window.confirm(
+        `Delete all ${finished} finished ${finished === 1 ? "task" : "tasks"}?\n\nRunning tasks are kept. Branches already pushed to GitHub stay there.`,
+      )
+    )
+      return;
+    try {
+      await post("/api/coding/tasks/clear");
+      onChanged();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  }
+  return (
+    <div className="code-list">
+      <div className="code-list-head">
+        <div>
+          <h2>
+            <Code2 size={18} /> Code
+          </h2>
+          <p className="code-model">
+            {info.provider ? `${info.provider} · ${info.model}` : "No AI provider connected"}
+            <span>
+              {info.maxSteps ? `${info.maxSteps} steps` : "Unlimited steps"} ·{" "}
+              {info.timeoutMinutes ? `${info.timeoutMinutes} min limit` : "no time limit"} ·{" "}
+              {info.mcpServers.length ? `MCP: ${info.mcpServers.join(", ")}` : "no MCP servers"}
+            </span>
+          </p>
+        </div>
+        <button className="primary code-new" onClick={onNew} disabled={!info.available}>
+          <Plus size={15} /> New task
+        </button>
       </div>
-      {current && <p className="coding-now">{current}</p>}
-      <p className="coding-progress-note">
-        {idle > 45_000
-          ? `Waiting on the model for ${duration(idle)}. Long turns with extended thinking can take a few minutes; nothing is stuck unless this keeps climbing.`
-          : task.status === "working"
-            ? "The engineer narrates each step below. Stop at any time; partial work is kept."
-            : task.status === "checking"
-              ? "TypeScript, tests and the production build run in an isolated sandbox."
-              : ""}
-      </p>
+      {info.reason && <p className="code-notice">{info.reason}</p>}
+      {!!info.tasks.length && (
+        <label className="code-search">
+          <Search size={14} aria-hidden />
+          <input
+            type="search"
+            placeholder="Search tasks, branches, files…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search coding tasks"
+          />
+          {query && (
+            <button className="icon-button" aria-label="Clear search" onClick={() => setQuery("")}>
+              <X size={13} />
+            </button>
+          )}
+        </label>
+      )}
+      <ul className="code-tasks" aria-label="Coding tasks">
+        {tasks.map((task) => (
+          <li key={task.id} className={codingBusy(task.status) ? "running" : ""}>
+            <button className="code-task-open" onClick={() => onOpen(task.id)}>
+              <span className="code-task-title">{task.prompt}</span>
+              {task.lastMessage && <span className="code-task-last">{task.lastMessage}</span>}
+              <span className="code-task-meta">
+                <StatusPill task={task} />
+                <span>{ago(task.updated || task.created, now)}</span>
+                {!!task.fileCount && (
+                  <span>
+                    {task.fileCount} {task.fileCount === 1 ? "file" : "files"}
+                  </span>
+                )}
+                <span className="code-task-branch">{task.branch}</span>
+              </span>
+            </button>
+            {!codingBusy(task.status) && (
+              <button
+                className="icon-button code-task-delete"
+                aria-label={`Delete task ${task.prompt.slice(0, 40)}`}
+                title="Delete task"
+                onClick={() => void remove(task)}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!info.tasks.length && (
+        <div className="code-empty">
+          <GitBranch size={26} />
+          <p>No coding tasks yet.</p>
+          <span>
+            Each task is a conversation with the studio engineer in its own private checkout. Ask
+            for a feature, a fix or an explanation.
+          </span>
+          <button className="primary" onClick={onNew} disabled={!info.available}>
+            <Plus size={15} /> Start your first task
+          </button>
+        </div>
+      )}
+      {!!info.tasks.length && !tasks.length && (
+        <p className="code-muted code-no-results">No tasks match “{query}”.</p>
+      )}
+      {finished > 0 && (
+        <button className="text-button code-clear" onClick={() => void clearFinished()}>
+          <Trash2 size={13} /> Clear finished tasks
+        </button>
+      )}
     </div>
   );
 }
-export function CodingAssistant() {
-  const [info, setInfo] = useState<CodingInfo | null>(null);
-  const [selected, setSelected] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [acknowledged, setAcknowledged] = useState(false);
-  const [fullDiff, setFullDiff] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [now, setNow] = useState(() => Date.now());
-  const [offline, setOffline] = useState(false);
-  const log = useRef<HTMLOListElement>(null);
-  const task = info?.tasks.find((t) => t.id === selected) ?? info?.tasks[0];
-  async function load() {
-    const next = await api<CodingInfo>("/api/coding");
-    setInfo(next);
+
+/* ---------- Transcript ---------- */
+
+type ToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
+const toolIcon = (name: string) => {
+  switch (name) {
+    case "readFile":
+    case "listFiles":
+      return FileText;
+    case "writeFile":
+      return FilePlus2;
+    case "editFile":
+    case "deleteFile":
+      return Pencil;
+    case "runCommand":
+      return Terminal;
+    case "gitCommit":
+      return GitCommitHorizontal;
+    case "gitPush":
+      return Upload;
+    case "deployToStudio":
+      return Rocket;
+    case "http":
+      return Globe;
+    case "askModel":
+    case "delegate":
+      return Bot;
+    default:
+      return Plug;
   }
+};
+function parseInput(input?: string): Record<string, unknown> {
+  try {
+    return JSON.parse(input || "{}");
+  } catch {
+    return {};
+  }
+}
+function ToolDetail({ entry }: { entry: ToolEntry }) {
+  const input = parseInput(entry.input);
+  const text = (k: string) => (typeof input[k] === "string" ? (input[k] as string) : "");
+  const writes = entry.name === "writeFile" || entry.name === "editFile";
+  return (
+    <div className="code-tool-detail">
+      {entry.name === "editFile" ? (
+        <pre className="code-diff">
+          {text("oldText")
+            .split("\n")
+            .map((line, i) => (
+              <span key={`o${i}`} className="del">
+                {"−" + line + "\n"}
+              </span>
+            ))}
+          {text("newText")
+            .split("\n")
+            .map((line, i) => (
+              <span key={`n${i}`} className="add">
+                {"+" + line + "\n"}
+              </span>
+            ))}
+        </pre>
+      ) : entry.name === "writeFile" ? (
+        <pre>{text("content").slice(0, 6000)}</pre>
+      ) : entry.name === "runCommand" ? (
+        <pre className="code-command">$ {text("command")}</pre>
+      ) : entry.name === "delegate" || entry.name === "askModel" ? (
+        <pre>{text("task") || text("prompt")}</pre>
+      ) : (
+        entry.input && entry.input !== "{}" && <pre className="code-input">{entry.input}</pre>
+      )}
+      {entry.output && (!writes || entry.status === "error") && (
+        <pre className={entry.status === "error" ? "code-output error" : "code-output"}>
+          {entry.output}
+        </pre>
+      )}
+    </div>
+  );
+}
+function ToolRow({ entry, now }: { entry: ToolEntry; now: number }) {
+  const [open, setOpen] = useState(false);
+  const Icon = toolIcon(entry.name);
+  const took = (entry.ended || now) - entry.at;
+  return (
+    <div className={`code-tool ${entry.status}${entry.depth ? " nested" : ""}`}>
+      <button className="code-tool-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <ChevronRight size={12} className={open ? "open" : ""} aria-hidden />
+        <Icon size={13} aria-hidden />
+        <span className="code-tool-title">{entry.title}</span>
+        <span className="code-tool-state">
+          {entry.status === "running" ? (
+            <>
+              <Loader2 size={12} className="spin" /> {duration(took)}
+            </>
+          ) : entry.status === "error" ? (
+            <X size={12} aria-label="failed" />
+          ) : took > 1500 ? (
+            duration(took)
+          ) : (
+            <Check size={12} aria-label="done" />
+          )}
+        </span>
+      </button>
+      {open && <ToolDetail entry={entry} />}
+    </div>
+  );
+}
+function ToolGroup({ entries, now }: { entries: ToolEntry[]; now: number }) {
+  const [open, setOpen] = useState(false);
+  const files = entries.filter((e) => e.name === "readFile").length;
+  const lists = entries.length - files;
+  const label = [
+    files ? `Read ${files} ${files === 1 ? "file" : "files"}` : "",
+    lists ? `${files ? "listed" : "Listed"} ${lists} ${lists === 1 ? "folder" : "folders"}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <div className={`code-tool ok${entries[0].depth ? " nested" : ""}`}>
+      <button className="code-tool-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <ChevronRight size={12} className={open ? "open" : ""} aria-hidden />
+        <FileText size={13} aria-hidden />
+        <span className="code-tool-title">{label}</span>
+        <span className="code-tool-state">
+          <Check size={12} aria-label="done" />
+        </span>
+      </button>
+      {open && (
+        <div className="code-tool-group">
+          {entries.map((entry) => (
+            <ToolRow key={entry.id} entry={entry} now={now} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+type Row =
+  | { kind: "entry"; entry: TranscriptEntry }
+  | { kind: "group"; entries: ToolEntry[] };
+/** Collapse runs of finished reads into one line, as a terminal agent does. */
+export function transcriptRows(transcript: TranscriptEntry[]): Row[] {
+  const result: Row[] = [];
+  let run: ToolEntry[] = [];
+  const flush = () => {
+    if (run.length >= 3) result.push({ kind: "group", entries: run });
+    else run.forEach((entry) => result.push({ kind: "entry", entry }));
+    run = [];
+  };
+  for (const entry of transcript) {
+    const groupable =
+      entry.kind === "tool" &&
+      (entry.name === "readFile" || entry.name === "listFiles") &&
+      entry.status === "ok" &&
+      (!run.length || run[0].depth === entry.depth);
+    if (groupable) run.push(entry as ToolEntry);
+    else {
+      flush();
+      result.push({ kind: "entry", entry });
+    }
+  }
+  flush();
+  return result;
+}
+function Transcript({ task, now }: { task: CodingTask; now: number }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const [pinned, setPinned] = useState(true);
+  const transcript = task.transcript || [];
+  const count = transcript.length;
+  const last = transcript[count - 1];
+  const lastToolState = last?.kind === "tool" ? last.status : "";
   useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const refresh = async () => {
-      try {
-        const next = await api<CodingInfo>("/api/coding");
-        if (active) {
-          setInfo(next);
-          setOffline(false);
-        }
-      } catch {
-        // The studio restarts after a self-deploy; keep polling and say so.
-        if (active) setOffline(true);
-      }
-      if (active) timer = setTimeout(refresh, 1500);
-    };
-    void refresh();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, []);
-  const running = info?.tasks.some((t) => codingBusy(t.status));
+    const el = scroller.current;
+    if (el && pinned) el.scrollTop = el.scrollHeight;
+  }, [count, lastToolState, pinned, task.status]);
   useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [running]);
+    setPinned(true);
+  }, [task.id]);
+  const running = [...transcript]
+    .reverse()
+    .find((e) => e.kind === "tool" && e.status === "running");
+  const busy = codingBusy(task.status);
+  const idleFor = now - (task.updated || now);
+  return (
+    <div className="code-transcript-wrap">
+      <div
+        className="code-transcript"
+        ref={scroller}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          setPinned(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
+        }}
+      >
+        {transcriptRows(transcript).map((row) => {
+          if (row.kind === "group")
+            return <ToolGroup key={row.entries[0].id} entries={row.entries} now={now} />;
+          const entry = row.entry;
+          switch (entry.kind) {
+            case "user":
+              return (
+                <div key={entry.id} className={`code-msg user${entry.dropped ? " dropped" : ""}`}>
+                  <div className="code-msg-by">
+                    You
+                    {entry.queued && <span>Delivered at the engineer’s next step</span>}
+                    {entry.dropped && <span>Not delivered: the task was stopped</span>}
+                  </div>
+                  <p>{entry.text}</p>
+                </div>
+              );
+            case "assistant":
+              return (
+                <div key={entry.id} className={`code-msg assistant${entry.depth ? " nested" : ""}`}>
+                  {!!entry.depth && <div className="code-msg-by">Sub-agent</div>}
+                  <Markdown text={entry.text} />
+                </div>
+              );
+            case "tool":
+              return <ToolRow key={entry.id} entry={entry} now={now} />;
+            case "status":
+              return (
+                <p key={entry.id} className={`code-status ${entry.tone || "info"}`}>
+                  {entry.text}
+                </p>
+              );
+          }
+        })}
+        {busy && (
+          <div className="code-live" role="status" aria-live="polite">
+            <Loader2 size={14} className="spin" aria-hidden />
+            <span>
+              {task.status === "preparing"
+                ? "Preparing a private checkout"
+                : task.status === "checking"
+                  ? "Running checks"
+                  : task.status === "publishing"
+                    ? "Pushing"
+                    : running
+                      ? "Working"
+                      : "Thinking"}
+            </span>
+            <span className="code-live-time">
+              {duration(now - (task.started || task.created))}
+              {task.step ? ` · step ${task.step}${task.maxSteps ? ` of ${task.maxSteps}` : ""}` : ""}
+            </span>
+            {task.status === "working" && !running && idleFor > 45_000 && (
+              <span className="code-live-note">
+                The model has been thinking for {duration(idleFor)}. Long reasoning turns can take
+                a few minutes.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      {!pinned && (
+        <button
+          className="code-jump"
+          onClick={() => {
+            setPinned(true);
+            const el = scroller.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          }}
+        >
+          <ArrowDown size={13} /> Latest
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Review drawer ---------- */
+
+function Review({
+  task,
+  info,
+  onAction,
+  busy,
+}: {
+  task: CodingTask;
+  info: CodingInfo;
+  onAction: (fn: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [full, setFull] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
   useEffect(() => {
     setAcknowledged(false);
     setPreviewUrl("");
-  }, [task?.id, task?.review]);
-  const eventCount = task?.events.length || 0;
-  useEffect(() => {
-    const list = log.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, [eventCount, task?.id]);
-  async function action(fn: () => Promise<unknown>) {
-    setBusy(true);
-    setError("");
-    try {
-      await fn();
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const post = <T,>(url: string, body = {}) =>
-    api<T>(url, { method: "POST", body: JSON.stringify(body) });
-  const canPublish =
-    task &&
-    (task.status === "ready" || (task.status === "failed" && !!task.commit));
+  }, [task.id, task.review]);
+  const files = useMemo(
+    () => parseDiff(full ? task.publishDiff : task.diff),
+    [full, task.diff, task.publishDiff],
+  );
+  const added = files.reduce((n, f) => n + f.additions, 0);
+  const removed = files.reduce((n, f) => n + f.deletions, 0);
+  if (!task.files.length && !task.checks.length && task.status !== "pushed") return null;
   return (
-    <section className="coding-assistant" aria-label="Coding assistant">
-      <div className="coding-heading">
-        <Code2 size={24} />
-        <h2>Build your studio.</h2>
-        <p>
-          Describe a feature or fix. The studio engineer reads, edits, runs the
-          checks, and can commit, push and deploy when you ask it to.
-        </p>
-      </div>
-      <div className="coding-provider">
-        {info?.provider
-          ? `${info.provider} · ${info.model}`
-          : "Connect an AI provider in Studio settings."}
-        {info && (
-          <span className="coding-limits">
-            {info.maxSteps ? `${info.maxSteps} steps` : "Unlimited steps"} ·{" "}
-            {info.timeoutMinutes
-              ? `${info.timeoutMinutes} min limit`
-              : "No time limit"}{" "}
-            ·{" "}
-            {info.mcpServers.length
-              ? `MCP: ${info.mcpServers.join(", ")}`
-              : "No MCP servers"}
+    <section className={`code-review${open ? " open" : ""}`}>
+      <button className="code-review-bar" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <ChevronRight size={13} className={open ? "open" : ""} aria-hidden />
+        <strong>
+          {task.files.length} {task.files.length === 1 ? "file" : "files"} changed
+        </strong>
+        {!!files.length && (
+          <span className="code-review-stat">
+            <span className="add">+{added}</span> <span className="del">−{removed}</span>
           </span>
         )}
-      </div>
-      {info?.reason && (
-        <p role="status" className="coding-notice">
-          {info.reason}
-        </p>
-      )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void action(async () => {
-            const next = await post<CodingTask>("/api/coding/tasks", {
-              prompt,
-            });
-            setSelected(next.id);
-            setPrompt("");
-          });
-        }}
-      >
-        <label htmlFor="coding-prompt">What would you like to change?</label>
-        <textarea
-          id="coding-prompt"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          maxLength={60000}
-          placeholder="Add rotation handles to selected assets, run the checks, then commit and push…"
-          rows={4}
-        />
-        <p className="muted">
-          Source files, command output and MCP results are sent to your
-          selected provider. Uses your existing API connection.
-        </p>
-        <button
-          className="primary"
-          disabled={
-            busy || running || !info?.available || prompt.trim().length < 4
-          }
-        >
-          <ArrowUp size={15} /> Start coding task
-        </button>
-        {task && !codingBusy(task.status) && !task.commit && task.baseline && (
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || running || prompt.trim().length < 4}
-            onClick={() =>
-              void action(async () => {
-                await post(`/api/coding/tasks/${task.id}/retry`, { prompt });
-                setPrompt("");
-              })
-            }
-          >
-            Refine this task
-          </button>
-        )}
-      </form>
-      {offline && (
-        <p role="status" className="coding-notice">
-          Reconnecting to the studio service… This clears on its own once it
-          answers again.
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="coding-error">
-          {error}
-          <button className="text-button" onClick={() => void action(load)}>
-            Retry connection
-          </button>
-        </p>
-      )}
-      {!!info?.tasks.length && (
-        <label className="coding-task-picker">
-          Task history
-          <select
-            aria-label="Coding task history"
-            value={task?.id || ""}
-            onChange={(e) => setSelected(e.target.value)}
-          >
-            {info.tasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.prompt.slice(0, 65)} · {t.status}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {task && (
-        <article className="coding-task">
-          {codingBusy(task.status) ? (
-            <div className="row coding-status-row">
-              <Progress task={task} now={now} />
-              {task.status !== "publishing" && (
-                <button
-                  className="text-button"
-                  disabled={busy}
-                  onClick={() =>
-                    void action(() =>
-                      post(`/api/coding/tasks/${task.id}/stop`),
-                    )
-                  }
-                >
-                  <Square size={12} /> Stop
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="row">
-              <strong
-                className={
-                  task.status === "failed" ? "coding-state-failed" : ""
-                }
-              >
-                {task.status === "ready"
-                  ? "Ready for review"
-                  : task.status === "pushed"
-                    ? task.deployed
-                      ? "Deployed to the studio"
-                      : "Branch pushed"
-                    : task.status === "failed"
-                      ? "Failed"
-                      : task.status === "cancelled"
-                        ? "Stopped"
-                        : task.status}
-              </strong>
-              {task.started && task.updated && (
-                <span className="coding-progress-meta">
-                  ran {duration(task.updated - task.started)}
-                  {task.step ? ` · ${task.step} steps` : ""}
-                </span>
-              )}
-            </div>
-          )}
-          <h3>{task.prompt}</h3>
-          <p className="coding-branch">
-            <GitBranch size={14} />
-            {task.branch}
-          </p>
-          {task.summary && <p className="coding-summary">{task.summary}</p>}
-          {task.error && (
-            <p className="coding-error" role="alert">
-              {task.error}
-            </p>
-          )}
-          <details open={codingBusy(task.status)}>
-            <summary>Activity · {task.events.length}</summary>
-            <ol className="coding-events" ref={log}>
-              {task.events.map((event, i) =>
-                event.startsWith(NARRATION) ? (
-                  <li key={i} className="coding-narration">
-                    {event.slice(NARRATION.length)}
-                  </li>
-                ) : (
-                  <li key={i}>{event}</li>
-                ),
-              )}
-            </ol>
-          </details>
+        <span className="code-review-checks">
+          {task.checks.map((c) => (
+            <span
+              key={c.name}
+              className={c.ok ? "ok" : "fail"}
+              title={`${c.name} ${c.ok ? "passed" : "failed"}`}
+            >
+              {c.ok ? <Check size={11} /> : <X size={11} />} {c.name}
+            </span>
+          ))}
+          {task.status === "ready" && <span className="ready">Ready to push</span>}
+        </span>
+      </button>
+      {open && (
+        <div className="code-review-body">
           {!!task.checks.length && (
-            <div className="coding-checks">
+            <div className="code-checks">
               {task.checks.map((check) => (
                 <details key={check.name}>
-                  <summary>
-                    {check.ok ? <Check size={14} /> : "×"} {check.name} ·{" "}
+                  <summary className={check.ok ? "ok" : "fail"}>
+                    {check.ok ? <Check size={12} /> : <X size={12} />} {check.name} ·{" "}
                     {check.ok ? "passed" : "failed"}
                   </summary>
                   <pre>{check.output}</pre>
@@ -326,59 +556,51 @@ export function CodingAssistant() {
               ))}
             </div>
           )}
-          {!!task.files.length && (
-            <>
-              <details open>
-                <summary>{task.files.length} changed files</summary>
-                <ul className="coding-files">
-                  {task.files.map((name) => (
-                    <li key={name}>{name}</li>
-                  ))}
-                </ul>
-              </details>
-              {!!task.baselineFiles.length && (
-                <div className="coding-notice">
-                  <strong>Includes existing source changes</strong>
-                  <p>
-                    This checkout also contains {task.baselineFiles.length}{" "}
-                    previously uncommitted files. They will be included when
-                    this branch is pushed.
-                  </p>
-                  <details>
-                    <summary>Existing changes</summary>
-                    <ul className="coding-files">
-                      {task.baselineFiles.map((name) => (
-                        <li key={name}>{name}</li>
-                      ))}
-                    </ul>
-                  </details>
-                </div>
-              )}
-              <label className="coding-checkbox">
-                <input
-                  type="checkbox"
-                  checked={fullDiff}
-                  onChange={(e) => setFullDiff(e.target.checked)}
-                />{" "}
-                Show full push diff, including existing changes
-              </label>
-              <details className="coding-diff" open>
+          {!!task.baselineFiles.length && (
+            <label className="code-check-row">
+              <input type="checkbox" checked={full} onChange={(e) => setFull(e.target.checked)} />
+              Show the {task.baselineFiles.length} uncommitted studio changes this branch also
+              carries
+            </label>
+          )}
+          <div className="code-files">
+            {files.map((file) => (
+              <details key={file.path} className="code-file">
                 <summary>
-                  {fullDiff ? "Full push diff" : "Assistant changes"}
+                  <span className={`code-file-status ${file.status}`}>
+                    {file.status[0].toUpperCase()}
+                  </span>
+                  <span className="code-file-path">{file.path}</span>
+                  <span className="code-review-stat">
+                    <span className="add">+{file.additions}</span>{" "}
+                    <span className="del">−{file.deletions}</span>
+                  </span>
                 </summary>
-                <pre tabIndex={0}>
-                  {fullDiff ? task.publishDiff : task.diff}
+                <pre className="code-diff">
+                  {file.lines.slice(0, 4000).map((line, i) => (
+                    <span key={i} className={line.kind}>
+                      {(line.kind === "add"
+                        ? "+"
+                        : line.kind === "del"
+                          ? "−"
+                          : line.kind === "ctx"
+                            ? " "
+                            : "") +
+                        line.text +
+                        "\n"}
+                    </span>
+                  ))}
                 </pre>
               </details>
-            </>
-          )}
-          {(task.status === "ready" || task.status === "pushed") && (
-            <div className="coding-actions">
+            ))}
+          </div>
+          <div className="code-actions">
+            {(task.status === "ready" || task.status === "pushed") && (
               <button
                 className="secondary"
                 disabled={busy}
                 onClick={() =>
-                  void action(async () => {
+                  void onAction(async () => {
                     const result = await post<{ url: string }>(
                       `/api/coding/tasks/${task.id}/preview`,
                     );
@@ -388,41 +610,57 @@ export function CodingAssistant() {
               >
                 Prepare UI preview
               </button>
-              {previewUrl && (
-                <a href={previewUrl} target="_blank" rel="noreferrer">
-                  Open preview <ExternalLink size={13} />
-                </a>
-              )}
-              <p className="muted">
-                Preview uses temporary scenes. Server changes are covered by
-                tests; they are not run in the preview.
-              </p>
-            </div>
-          )}
-          {canPublish && (
-            <div className="coding-publish">
+            )}
+            {previewUrl && (
+              <a href={previewUrl} target="_blank" rel="noreferrer">
+                Open preview <ExternalLink size={12} />
+              </a>
+            )}
+            {task.compareUrl && (
+              <a href={task.compareUrl} target="_blank" rel="noreferrer">
+                Compare on GitHub <ExternalLink size={12} />
+              </a>
+            )}
+            {task.pullRequestUrl ? (
+              <a href={task.pullRequestUrl} target="_blank" rel="noreferrer">
+                Open pull request <ExternalLink size={12} />
+              </a>
+            ) : (
+              task.status === "pushed" &&
+              !task.deployed && (
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void onAction(() => post(`/api/coding/tasks/${task.id}/pull-request`))
+                  }
+                >
+                  Create draft pull request
+                </button>
+              )
+            )}
+          </div>
+          {task.status === "ready" && (
+            <div className="code-publish">
               <p>
-                Push to{" "}
-                <strong>{info?.remote || "No GitHub origin configured"}</strong>
-                . The running studio stays unchanged.
+                Push <strong>{task.branch}</strong> to{" "}
+                <strong>{info.remote || "no GitHub origin configured"}</strong>. The running studio
+                stays unchanged.
               </p>
-              <label className="coding-checkbox">
+              <label className="code-check-row">
                 <input
                   type="checkbox"
                   checked={acknowledged}
                   onChange={(e) => setAcknowledged(e.target.checked)}
-                />{" "}
-                I reviewed the full diff
-                {task.baselineFiles.length
-                  ? ", including the existing changes"
-                  : ""}
-                .
+                />
+                I reviewed the changes
+                {task.baselineFiles.length ? ", including the carried-over studio changes" : ""}.
               </label>
               <button
                 className="primary"
-                disabled={busy || !acknowledged || !info?.remote}
+                disabled={busy || !acknowledged || !info.remote}
                 onClick={() =>
-                  void action(() =>
+                  void onAction(() =>
                     post(`/api/coding/tasks/${task.id}/publish`, {
                       review: task.review,
                       includeBaseline: acknowledged,
@@ -430,55 +668,351 @@ export function CodingAssistant() {
                   )
                 }
               >
-                {task.commit ? "Retry push" : "Commit & push branch"}
+                <Upload size={14} /> Commit & push branch
               </button>
             </div>
           )}
-          {task.status === "pushed" && (
-            <div className="coding-actions">
-              <p>
-                Commit <code>{task.commit?.slice(0, 12)}</code>
-                {task.deployed
-                  ? " · merged into the studio checkout and live after restart"
-                  : task.pushed
-                    ? " · pushed by the engineer"
-                    : ""}
-              </p>
-              {task.compareUrl && (
-                <a href={task.compareUrl} target="_blank" rel="noreferrer">
-                  Compare branch <ExternalLink size={13} />
-                </a>
-              )}
-              {task.pullRequestUrl ? (
-                <a href={task.pullRequestUrl} target="_blank" rel="noreferrer">
-                  Open pull request <ExternalLink size={13} />
-                </a>
-              ) : (
-                !task.deployed && (
-                  <button
-                    className="primary"
-                    disabled={busy}
-                    onClick={() =>
-                      void action(() =>
-                        post(`/api/coding/tasks/${task.id}/pull-request`),
-                      )
-                    }
-                  >
-                    Create draft pull request
-                  </button>
-                )
-              )}
-            </div>
-          )}
-        </article>
-      )}
-      {!task && (
-        <div className="coding-empty">
-          <GitBranch size={26} />
-          <p>Your first coding task starts here.</p>
-          <span>Private checkout → engineer → checks → review → branch</span>
         </div>
       )}
+    </section>
+  );
+}
+
+/* ---------- Composer ---------- */
+
+function Composer({
+  value,
+  onChange,
+  onSend,
+  onStop,
+  running,
+  disabled,
+  placeholder,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
+  onStop?: () => void;
+  running: boolean;
+  disabled: boolean;
+  placeholder: string;
+  autoFocus?: boolean;
+}) {
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 240) + "px";
+  }, [value]);
+  useEffect(() => {
+    if (autoFocus) box.current?.focus();
+  }, [autoFocus]);
+  const send = () => {
+    if (value.trim() && !disabled) onSend();
+  };
+  return (
+    <form
+      className="code-composer"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      <textarea
+        ref={box}
+        rows={2}
+        value={value}
+        maxLength={60_000}
+        placeholder={placeholder}
+        aria-label="Message the studio engineer"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            send();
+          }
+        }}
+      />
+      <div className="code-composer-bar">
+        <span>
+          {running ? "Read at its next step" : "Enter to send"} · Shift+Enter for a new line
+        </span>
+        {onStop && (
+          <button type="button" className="code-stop" onClick={onStop} title="Stop the engineer">
+            <Square size={11} /> Stop
+          </button>
+        )}
+        <button className="code-send" aria-label="Send" disabled={disabled || !value.trim()}>
+          <ArrowUp size={16} />
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ---------- Panel ---------- */
+
+export function CodingAssistant() {
+  const [info, setInfo] = useState<CodingInfo | null>(null);
+  const [view, setView] = useState<View>(readView);
+  const [detail, setDetail] = useState<CodingTask | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const [offline, setOffline] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [titleOpen, setTitleOpen] = useState(false);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(view));
+    } catch {
+      // Not remembered across reloads; nothing else depends on it.
+    }
+  }, [view]);
+  const refresh = useCallback(async () => {
+    const next = await api<CodingInfo>("/api/coding");
+    setInfo(next);
+    const current = viewRef.current;
+    if (current.screen === "thread" && current.id) {
+      if (!next.tasks.some((t) => t.id === current.id)) {
+        setView({ screen: "list" });
+        setDetail(null);
+      } else {
+        const task = await api<CodingTask>(`/api/coding/tasks/${current.id}`);
+        if (viewRef.current.id === task.id) setDetail(task);
+      }
+    }
+    return next;
+  }, []);
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const loop = async () => {
+      let fast = false;
+      try {
+        const next = await refresh();
+        fast = next.tasks.some((t) => codingBusy(t.status));
+        if (active) setOffline(false);
+      } catch {
+        // The studio restarts after a self-deploy or a restart; keep polling.
+        if (active) setOffline(true);
+      }
+      if (active) timer = setTimeout(loop, fast ? 1000 : 3000);
+    };
+    void loop();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [refresh]);
+  useEffect(() => {
+    void refresh().catch(() => {});
+  }, [view.screen, view.id, refresh]);
+  const anyBusy = !!info?.tasks.some((t) => codingBusy(t.status));
+  useEffect(() => {
+    if (!anyBusy) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [anyBusy]);
+  async function action(fn: () => Promise<unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const draftKey = view.screen === "thread" && view.id ? view.id : "new";
+  const draft = drafts[draftKey] || "";
+  const setDraft = (value: string) => setDrafts((d) => ({ ...d, [draftKey]: value }));
+  const open = (id: string) => {
+    setDetail(null);
+    setError("");
+    setTitleOpen(false);
+    setView({ screen: "thread", id });
+  };
+  const notices = (
+    <>
+      {offline && (
+        <p role="status" className="code-notice">
+          Reconnecting to the studio service… This clears on its own once it answers.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="code-error">
+          <span>{error}</span>
+          <button className="icon-button" aria-label="Dismiss" onClick={() => setError("")}>
+            <X size={13} />
+          </button>
+        </p>
+      )}
+    </>
+  );
+  if (!info)
+    return (
+      <section className="coding-assistant code-shell" aria-label="Coding assistant">
+        {notices}
+        <p className="code-muted code-loading">
+          <Loader2 size={14} className="spin" /> Loading coding tasks…
+        </p>
+      </section>
+    );
+  if (view.screen === "new")
+    return (
+      <section className="coding-assistant code-shell" aria-label="Coding assistant">
+        <div className="code-thread-head">
+          <button className="text-button code-back" onClick={() => setView({ screen: "list" })}>
+            <ArrowLeft size={15} /> Tasks
+          </button>
+        </div>
+        <div className="code-new-intro">
+          <h2>New task</h2>
+          <p>
+            Describe a feature, a fix or a question. The engineer works in a private checkout,
+            narrates each step, runs the checks, and commits, pushes or deploys when you ask it to.
+          </p>
+          <p className="code-model">
+            {info.provider ? `${info.provider} · ${info.model}` : "No AI provider connected"}
+          </p>
+          {info.reason && <p className="code-notice">{info.reason}</p>}
+          <ul className="code-examples">
+            {[
+              "Explain how the coding service runs a task",
+              "Add rotation handles to selected assets, run the checks, then commit and push",
+              "Fix the failing tests, then deploy to the studio",
+            ].map((example) => (
+              <li key={example}>
+                <button className="text-button" onClick={() => setDraft(example)}>
+                  {example}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {notices}
+        <Composer
+          autoFocus
+          value={draft}
+          onChange={setDraft}
+          running={false}
+          disabled={busy || !info.available}
+          placeholder="What would you like to build or change?"
+          onSend={() =>
+            void action(async () => {
+              const task = await post<CodingTaskSummary>("/api/coding/tasks", { prompt: draft });
+              setDrafts((d) => ({ ...d, new: "" }));
+              open(task.id);
+            })
+          }
+        />
+      </section>
+    );
+  if (view.screen === "thread" && view.id) {
+    const id = view.id;
+    const summary = info.tasks.find((t) => t.id === id);
+    const task = detail?.id === id ? detail : null;
+    const running = summary ? codingBusy(summary.status) : false;
+    return (
+      <section className="coding-assistant code-shell" aria-label="Coding assistant">
+        <div className="code-thread-head">
+          <button className="text-button code-back" onClick={() => setView({ screen: "list" })}>
+            <ArrowLeft size={15} /> Tasks
+          </button>
+          {summary && <StatusPill task={summary} />}
+          {summary && !running && (
+            <button
+              className="icon-button"
+              title="Delete task"
+              aria-label="Delete task"
+              onClick={() => {
+                if (window.confirm(deletePrompt(summary.prompt)))
+                  void action(async () => {
+                    await api(`/api/coding/tasks/${summary.id}`, { method: "DELETE" });
+                    setView({ screen: "list" });
+                  });
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+        {summary && (
+          <div className="code-thread-title">
+            <h3
+              className={titleOpen ? "open" : ""}
+              title={titleOpen ? "Collapse" : "Show the full request"}
+              onClick={() => setTitleOpen(!titleOpen)}
+            >
+              {summary.prompt}
+            </h3>
+            <p>
+              <GitBranch size={12} aria-hidden />{" "}
+              <span>
+                {summary.branch}
+                {task ? ` · ${task.provider} · ${task.model}` : ""}
+              </span>
+            </p>
+          </div>
+        )}
+        {task ? (
+          <Transcript task={task} now={now} />
+        ) : (
+          <p className="code-muted code-loading">
+            <Loader2 size={14} className="spin" /> Loading conversation…
+          </p>
+        )}
+        {task && <Review task={task} info={info} onAction={action} busy={busy} />}
+        {notices}
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          running={running}
+          disabled={busy || !summary}
+          placeholder={
+            running
+              ? "Message the engineer while it works…"
+              : "Reply, ask a question, or request another change…"
+          }
+          onStop={
+            running && summary?.status !== "publishing"
+              ? () => void action(() => post(`/api/coding/tasks/${id}/stop`))
+              : undefined
+          }
+          onSend={() =>
+            void action(async () => {
+              const text = draft;
+              setDraft("");
+              try {
+                await post(`/api/coding/tasks/${id}/reply`, { message: text });
+              } catch (e) {
+                setDraft(text);
+                throw e;
+              }
+            })
+          }
+        />
+      </section>
+    );
+  }
+  return (
+    <section className="coding-assistant code-shell" aria-label="Coding assistant">
+      {notices}
+      <TaskList
+        info={info}
+        now={now}
+        onOpen={open}
+        onNew={() => setView({ screen: "new" })}
+        onChanged={() => void refresh().catch(() => {})}
+        onError={setError}
+      />
     </section>
   );
 }

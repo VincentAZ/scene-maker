@@ -173,3 +173,15 @@
 - Self-deploy merges the task branch into the studio checkout's current branch, rebuilds, and restarts through `start.sh --restart`; a task marked `deployed` survives the restart as `pushed` rather than `failed`. It refuses when the studio checkout has uncommitted tracked changes.
 - Every uncommitted change in the studio checkout is carried into the task checkout (previously only source-tree files), so the engineer works on what is actually running.
 - Trade-off accepted explicitly: commands run with the host's environment and credentials. The checkout is isolated, but shell and HTTP are not sandboxed.
+
+## Code panel as a conversation, and restart from the app
+
+- A task is a conversation, not a one-shot job. The model history is saved per task (`messages.json`) after every step, so any reply continues with full context in the same checkout, including after a push or a studio restart. Replies used to be refused once a task was committed.
+- The transcript is structured (`user`, `assistant`, `tool`, `status` entries) instead of a flat log. Tool calls are instrumented at the tool boundary, so MCP tools are covered too. Narration is captured with model middleware the moment a response arrives, so it appears above the tool calls it introduces.
+- Messages sent while the engineer works use AI SDK steering and arrive at the next step boundary. A steered message is added to the saved history once delivered. Messages that miss the run, for example during checks, are queued and start the next turn.
+- Long sessions trim older large tool outputs from the model context once the conversation passes about 400k characters, keeping the latest twelve results whole. The engineer can re-run a tool if it needs an old output again.
+- A turn that changes nothing ends as **Done** (`idle`) rather than failing, so questions are first-class. Changed, unpushed work still goes through the sandboxed checks before the panel offers a push.
+- Up to four tasks run in parallel. The list endpoint returns summaries only; the open task is fetched on its own, polled every second while anything runs.
+- A run's final status is set only after its cleanup finishes, so a follow-up sent the moment a run fails cannot race the old run's teardown.
+- Restart runs `npm run build` first and refuses to restart into a broken build. It only works when `start.sh` launched the service, which marks it with `SCENE_MAKER_LAUNCHER`, because only then is something present to bring the service back.
+- Side panels wrap long text and code instead of scrolling sideways.

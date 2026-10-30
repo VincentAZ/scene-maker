@@ -114,6 +114,7 @@ import { Modal } from "./Modal";
 import { Connections } from "./Connections";
 import { CharacterModelPicker } from "./CharacterModelPicker";
 import { UpdateCheck } from "./UpdateCheck";
+import { RestartStudio } from "./RestartStudio";
 import { api, download } from "./api";
 type Tab = "characters" | "props" | "environments" | "motions";
 const characterFilters = [
@@ -1621,6 +1622,7 @@ export default function App() {
                 <MessageCircle size={15} />
                 <span>Direct the cast</span>
               </button>
+              <RestartStudio />
               <button
                 className={`icon-button ${!panel ? "active" : ""}`}
                 aria-label="Toggle side panel"

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { studioBuild, studioVersion } from "./version";
+import { RestartStudio } from "./RestartStudio";
 
 type VersionInfo = {
   version: string;
@@ -111,10 +112,12 @@ export function UpdateCheck() {
       {source?.restartNeeded && (
         <p className="update-status warning" role="status">
           <TriangleAlert size={14} /> The files on disk are newer than the
-          running service. Stop the local service from the dock icon and launch
-          Scene Maker again.
+          running service. Restart to use them.
         </p>
       )}
+      <div className="row update-actions">
+        <RestartStudio variant="button" />
+      </div>
       {result && !error && (
         <div className="update-status" role="status">
           {result.reason ? (
@@ -142,11 +145,11 @@ export function UpdateCheck() {
                 )}
               </p>
               <p>
-                To update, run this in the Scene Maker folder, then relaunch
-                from the dock icon:
+                To update, run this in the Scene Maker folder, then choose
+                Restart Scene Maker:
               </p>
               <pre>
-                <code>git pull --ff-only && npm ci && npm run build</code>
+                <code>git pull --ff-only && npm ci</code>
               </pre>
               {!!result.ahead && (
                 <p className="small muted">
