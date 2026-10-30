@@ -92,27 +92,92 @@ it("refuses to silently weaken mixed tuples", () => {
 });
 
 it.each([
-  [400, "invalid_json_schema", "app compatibility error"],
-  [401, "invalid_api_key", "rejected the API key"],
-  [403, "", "permission"],
-  [404, "model_not_found", "model is unavailable"],
-  [429, "insufficient_quota", "API credit"],
-  [429, "rate_limit_exceeded", "request limit"],
-  [503, "", "temporarily unavailable"],
+  [400, "invalid_json_schema", "secret-key user-private-prompt", "app compatibility error"],
+  [401, "invalid_api_key", "secret-key user-private-prompt", "rejected the API key"],
+  [403, "", "secret-key user-private-prompt", "permission"],
+  [404, "model_not_found", "secret-key user-private-prompt", "model is unavailable"],
+  [429, "insufficient_quota", "secret-key user-private-prompt", "API credit"],
+  [429, "rate_limit_exceeded", "secret-key user-private-prompt", "request limit"],
+  [503, "", "secret-key user-private-prompt", "temporarily unavailable"],
+  // Anthropic reports exhausted credit as a plain 400 invalid_request_error.
+  [
+    400,
+    "invalid_request_error",
+    "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing secret-key user-private-prompt",
+    "API credit",
+  ],
+  [
+    429,
+    "insufficient_quota",
+    "You exceeded your current quota secret-key user-private-prompt",
+    "API credit",
+  ],
+  [
+    400,
+    "invalid_request_error",
+    "prompt is too long: 213456 tokens > 200000 maximum secret-key user-private-prompt",
+    "too long for the selected model (213456 tokens, limit 200000)",
+  ],
+  [
+    400,
+    "context_length_exceeded",
+    "This model's maximum context length is 128000 tokens secret-key user-private-prompt",
+    "too long for the selected model",
+  ],
+  [
+    400,
+    "invalid_request_error",
+    "messages.3: thinking blocks must precede tool_use secret-key user-private-prompt",
+    "request format (invalid_request_error). This is an app compatibility error",
+  ],
+  [
+    400,
+    "invalid_request_error",
+    "secret-key user-private-prompt",
+    "rejected the request (invalid_request_error)",
+  ],
 ])(
   "explains provider status %s / %s without leaking upstream data",
-  (statusCode, code, expected) => {
+  (statusCode, code, upstream, expected) => {
     const message = providerErrorMessage({
       name: "AI_APICallError",
       statusCode,
-      responseBody: JSON.stringify({
-        error: { code, message: "secret-key user-private-prompt" },
-      }),
+      responseBody: JSON.stringify({ error: { code, message: upstream } }),
     });
     expect(message).toContain(expected);
     expect(message).not.toMatch(/secret-key|user-private-prompt/);
   },
 );
+
+it("quotes the provider's request id for unexplained rejections and finds wrapped API errors", async () => {
+  const { contextOverflowError } = await import("../server/providerErrors");
+  const wrapped = {
+    name: "AI_RetryError",
+    lastError: {
+      name: "AI_APICallError",
+      statusCode: 400,
+      responseHeaders: { "request-id": "req_123abc", "x-secret": "hidden" },
+      responseBody: JSON.stringify({
+        type: "error",
+        error: { type: "invalid_request_error", message: "secret-key user-private-prompt" },
+        request_id: "req_123abc",
+      }),
+    },
+  };
+  const message = providerErrorMessage(wrapped);
+  expect(message).toContain("request req_123abc");
+  expect(message).not.toMatch(/secret-key|user-private-prompt|hidden/);
+  expect(contextOverflowError(wrapped)).toBe(false);
+  expect(
+    contextOverflowError({
+      name: "AI_APICallError",
+      statusCode: 400,
+      responseBody: JSON.stringify({
+        error: { type: "invalid_request_error", message: "prompt is too long: 9 tokens > 8 maximum" },
+      }),
+    }),
+  ).toBe(true);
+});
 
 it("uses a small Claude envelope, sends thinking effort and validates the decoded plan", async () => {
   const { createAnthropic } = await import("@ai-sdk/anthropic");
@@ -182,4 +247,17 @@ it("uses a small Claude envelope, sends thinking effort and validates the decode
       provider("claude-fable-5-1"),
     ),
   ).rejects.toThrow();
+});
+
+it("reports an out-of-credit 400 during a connection test as a billing problem", async () => {
+  const { connectionTestMessage } = await import("../server/providerErrors");
+  const body = JSON.stringify({
+    type: "error",
+    error: {
+      type: "invalid_request_error",
+      message: "Your credit balance is too low to access the Anthropic API.",
+    },
+  });
+  expect(connectionTestMessage(400, body)).toContain("API credit");
+  expect(connectionTestMessage(400, "{}")).toContain("did not recognise");
 });

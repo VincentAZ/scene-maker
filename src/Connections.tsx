@@ -9,13 +9,23 @@ import { primeCatalog } from "./connectionsStore";
 import { VoicesSettings } from "./VoicesSettings";
 export type Provider = (typeof providers)[number];
 export type ProviderModel = { id: string; name: string };
+/** Connection status only; the server never returns credentials. */
+export type ProviderStatus = {
+  connected: boolean;
+  model: string;
+  thinking?: ThinkingLevel;
+  /** How the credential was obtained: a pasted key or a provider sign-in. */
+  method?: "key" | "openrouter" | "chatgpt";
+  connectedAt?: string;
+  verifiedAt?: string;
+  /** Sign in with ChatGPT: the account email and whether plan usage is allowed. */
+  account?: string;
+  planUsage?: boolean;
+};
 export type ConnectionsData = {
   assistant: Provider | null;
   blender: string;
-  providers: Record<
-    string,
-    { connected: boolean; model: string; thinking?: ThinkingLevel }
-  >;
+  providers: Record<string, ProviderStatus>;
   speech?: {
     openai: boolean;
     elevenlabs: boolean;
@@ -97,6 +107,10 @@ export function Connections({
   useEffect(() => {
     void load();
   }, []);
+  async function refresh() {
+    setData(await api<ConnectionsData>("/api/connections"));
+    onChanged();
+  }
   async function save(body: object) {
     setData(
       await api<ConnectionsData>("/api/connections", {
@@ -128,7 +142,8 @@ export function Connections({
         </button>
       </div>
       <p className="muted">
-        Choose the AI behind your studio assistant. Saved keys stay on this
+        Choose the AI behind your studio assistant. Connect with an API key, or
+        sign in where the provider allows it. Keys and sign-ins stay on this
         computer and are never returned to the browser.
       </p>
       <div className="provider-tabs" role="group" aria-label="AI providers">
@@ -141,7 +156,14 @@ export function Connections({
           >
             {providerNames[p]}
             {data.providers[p]?.connected && (
-              <Check size={12} aria-label="Key saved" />
+              <Check
+                size={12}
+                aria-label={
+                  data.providers[p]?.method === "key"
+                    ? "Key saved"
+                    : "Signed in"
+                }
+              />
             )}
           </button>
         ))}
@@ -154,6 +176,7 @@ export function Connections({
           active={p === provider}
           data={data}
           onSave={save}
+          onRefresh={refresh}
           onDone={onDone}
           onCatalog={(id, models) => primeCatalog(id, models, revision)}
         />

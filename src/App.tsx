@@ -1,5 +1,7 @@
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
+import { ChatExportMenu } from "./ChatExportMenu";
+import { exportAssistantChat, exportFilename } from "./code/transcriptExport";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Clapperboard,
@@ -41,8 +43,6 @@ import {
   Film,
   Lightbulb,
   PanelRightClose,
-  Circle,
-  Square,
 } from "lucide-react";
 import JSZip from "jszip";
 import { AssistantModelMenu } from "./AssistantModelMenu";
@@ -63,6 +63,7 @@ import { savePathCommands, type PathFrame } from "../shared/path";
 import { PathEditor } from "./PathEditor";
 import type { Footprint } from "../shared/navigation";
 import {
+  dialogueAt,
   dialogueSubtitles,
   dialogueTiming,
   appendSpeech,
@@ -104,7 +105,9 @@ import {
 import { ConversationAside } from "./ConversationAside";
 import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
+import { RecordButton, type RecordingStatus } from "./RecordButton";
 import {
+  CINEMA,
   SceneRecorder,
   recordingFileName,
   recordingToMp4,
@@ -124,6 +127,13 @@ import { Connections } from "./Connections";
 import { CharacterModelPicker } from "./CharacterModelPicker";
 import { UpdateCheck } from "./UpdateCheck";
 import { RestartStudio } from "./RestartStudio";
+import {
+  AttachButton,
+  PendingChips,
+  pastedFiles,
+  useFileDrop,
+  useImageAttachments,
+} from "./Attachments";
 import { api, download } from "./api";
 type Tab = "characters" | "props" | "environments" | "motions";
 const characterFilters = [
@@ -135,7 +145,13 @@ const characterFilters = [
   "Mannequins",
   "My assets",
 ];
-type Message = { role: "user" | "assistant"; text: string; mode?: string };
+type Message = {
+  role: "user" | "assistant";
+  text: string;
+  mode?: string;
+  /** Reference images sent with a request, as data URLs for display. */
+  images?: string[];
+};
 const welcomeMessage: Message = {
   role: "assistant",
   text: "Every great scene starts with a little “what if”. Tell me what you have in mind, and let’s make it happen.",
@@ -311,42 +327,65 @@ export default function App() {
   const report = useCallback((text: string) => {
     setError(text);
   }, []);
+  const images = useImageAttachments(report);
+  const imageDrop = useFileDrop(images.add);
   const toast = (text: string) => {
     setNotice(text);
     setTimeout(() => setNotice(""), 4000);
   };
   // Recording the viewport during playback; the take ends when playback stops.
+  // The take follows the scene clock, so it can span a live cast conversation
+  // and skips the waits while the cast generates replies.
   const recorder = useRef<SceneRecorder | null>(null);
-  const [recording, setRecording] = useState<"idle" | "recording" | "saving">(
-    "idle",
-  );
+  const [recording, setRecording] = useState<RecordingStatus>("idle");
+  const [activeTake, setActiveTake] = useState<SceneRecorder | null>(null);
   const sceneEnd = Math.max(
     0,
     ...scene.entities.map((e) => e.clips.reduce((t, c) => t + c.duration, 0)),
   );
-  const startRecording = () => {
-    if (recording !== "idle" || recorder.current) return;
-    const surface = viewport.current?.recordingSurface();
-    if (!surface) {
-      report("Wait for the scene to finish loading, then record again.");
-      return;
+  /** Arm a take; `play` also starts playback from the playhead. */
+  const startRecording = (play: boolean) => {
+    if (recording !== "idle" || recorder.current) return false;
+    // Film camera: 1920×1080 from the preview's view, no editor helpers.
+    const film = viewport.current?.startCinema(CINEMA.width, CINEMA.height);
+    if (!film) {
+      report(
+        "The film camera could not start. Wait for the scene to load, then record again.",
+      );
+      return false;
     }
     const audio = voiceEnabled ? armRecordingAudio() : null;
     let take: SceneRecorder;
     try {
-      take = new SceneRecorder(surface, audio);
+      take = new SceneRecorder(
+        film,
+        (t) => dialogueAt(sceneRef.current, t),
+        audio,
+      );
     } catch (error) {
       disarmRecordingAudio();
+      viewport.current?.stopCinema();
       report((error as Error).message);
-      return;
+      return false;
     }
     recorder.current = take;
-    viewport.current?.onFrame(() => take.drawFrame());
+    setActiveTake(take);
+    viewport.current?.onFrame((t) => take.drawFrame(t));
     // Restart the current voice line so its audio joins the recording.
     voice.stop();
-    if (sceneEnd > 0 && time >= sceneEnd) setTime(0);
     setRecording("recording");
-    setPlaying(true);
+    if (play) {
+      if (sceneEnd > 0 && time >= sceneEnd) setTime(0);
+      setPlaying(true);
+    }
+    return true;
+  };
+  const recordConversation = () => {
+    if (startRecording(false)) void runConversation();
+  };
+  const stopRecording = () => {
+    if (!castProgress) setPlaying(false);
+    void finishRecording();
   };
   const finishRecording = useCallback(async () => {
     const take = recorder.current;
@@ -355,24 +394,31 @@ export default function App() {
     viewport.current?.onFrame(null);
     disarmRecordingAudio();
     setRecording("saving");
+    const finished = take.stop();
+    viewport.current?.stopCinema();
     try {
-      const mp4 = await recordingToMp4(await take.stop());
+      const mp4 = await recordingToMp4(await finished);
       download(mp4, recordingFileName(sceneRef.current.name), "video/mp4");
       setNotice("Recording saved as MP4.");
       setTimeout(() => setNotice(""), 4000);
     } catch (error) {
       report((error as Error).message);
     } finally {
+      setActiveTake(null);
       setRecording("idle");
     }
   }, [report]);
+  // A take ends when playback stops, unless a cast conversation is still
+  // generating (it pauses playback while waiting for the first reply).
   useEffect(() => {
-    if (recording === "recording" && !playing) void finishRecording();
-  }, [recording, playing, finishRecording]);
+    if (recording === "recording" && !playing && !castProgress)
+      void finishRecording();
+  }, [recording, playing, castProgress, finishRecording]);
   useEffect(
     () => () => {
       recorder.current?.stop().catch(() => {});
       recorder.current = null;
+      viewport.current?.stopCinema();
       disarmRecordingAudio();
     },
     [],
@@ -722,10 +768,22 @@ export default function App() {
     } else toast(`${asset.name} is ready`);
   }
   async function ask(text = prompt) {
-    if (!text.trim() || busy || modelSwitchBusy) return;
+    const attached = images.items.filter((i) => i.image);
+    if (images.items.some((i) => i.status === "uploading")) return;
+    if ((!text.trim() && !attached.length) || busy || modelSwitchBusy) return;
     setPrompt("");
+    images.clear();
     setClearedMessages(null);
-    setMessages((m) => [...m, { role: "user", text }]);
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        text,
+        images: attached.length
+          ? attached.map((i) => i.preview || "")
+          : undefined,
+      },
+    ]);
     setBusy(true);
     const starting = sceneRef.current;
     try {
@@ -733,14 +791,22 @@ export default function App() {
         method: "POST",
         body: JSON.stringify({
           scene: starting,
-          prompt: text,
+          prompt: text.trim() || "Use the attached reference image.",
+          images: attached.map((i) => ({
+            name: i.name,
+            mediaType: i.image!.mediaType,
+            data: i.image!.data,
+          })),
           selected,
           playhead: time,
           stagingFeedback: interactionWarning,
           history: messages
             .filter((m) => m.mode !== "welcome" && m.mode !== "error")
             .slice(-20)
-            .map(({ role, text }) => ({ role, text })),
+            .map(({ role, text, images }) => ({
+              role,
+              text: text || (images ? "(Sent reference images.)" : ""),
+            })),
         }),
       });
       if (
@@ -1821,7 +1887,7 @@ export default function App() {
               ) : (
                 <span className="view-label recording-label" role="status">
                   <span className="recording-dot" />
-                  {recording === "recording" ? "RECORDING" : "SAVING MP4…"}
+                  {recording === "recording" ? "REC" : "SAVING MP4…"}
                 </span>
               )}
               <div className="stage-pill">
@@ -1944,35 +2010,13 @@ export default function App() {
                     <Play size={15} fill="currentColor" />
                   )}
                 </button>
-                <button
-                  className={`icon-button record-button${recording === "recording" ? " active" : ""}`}
-                  aria-label={
-                    recording === "recording"
-                      ? "Stop recording"
-                      : "Record scene as MP4"
-                  }
-                  title={
-                    recording === "recording"
-                      ? "Stop recording and save the MP4"
-                      : recording === "saving"
-                        ? "Saving MP4…"
-                        : "Record the scene while it plays and save it as an MP4"
-                  }
-                  disabled={recording === "saving"}
-                  onClick={() =>
-                    recording === "recording"
-                      ? setPlaying(false)
-                      : startRecording()
-                  }
-                >
-                  {recording === "recording" ? (
-                    <Square size={13} fill="currentColor" />
-                  ) : recording === "saving" ? (
-                    <LoaderCircle size={15} className="spin" />
-                  ) : (
-                    <Circle size={14} fill="currentColor" />
-                  )}
-                </button>
+                <RecordButton
+                  status={recording}
+                  recorder={activeTake}
+                  label="Record the scene while it plays and save it as an MP4"
+                  onStart={() => startRecording(!castProgress)}
+                  onStop={stopRecording}
+                />
                 <span className="timecode">
                   {time.toFixed(1).padStart(4, "0")}{" "}
                   <span>/ {total.toFixed(1)}s</span>
@@ -2203,6 +2247,38 @@ export default function App() {
                     : "Let them talk"}
               </button>
             </div>
+            {recording === "idle" ? (
+              <button
+                className="record-conversation"
+                disabled={
+                  busy ||
+                  modelSwitchBusy ||
+                  !!castProgress ||
+                  cast.filter((e) => e.visible).length < 2
+                }
+                title="Generate the conversation and record it to an MP4 as it plays. Waits for replies are left out."
+                onClick={recordConversation}
+              >
+                <span className="record-dot" aria-hidden="true" />
+                {scene.transcript.length
+                  ? "Record while they continue"
+                  : "Record while they talk"}
+              </button>
+            ) : (
+              <div className="record-conversation-status">
+                <RecordButton
+                  status={recording}
+                  recorder={activeTake}
+                  onStart={() => {}}
+                  onStop={stopRecording}
+                />
+                <span className="small muted">
+                  {recording === "saving"
+                    ? "Saving your MP4…"
+                    : "Recording. The video skips the waits while the cast thinks."}
+                </span>
+              </div>
+            )}
             {castProgress && (
               <CastProgress progress={castProgress} onStop={stopConversation} />
             )}
@@ -2311,6 +2387,15 @@ export default function App() {
               </div>
               <div className="chat-toolbar">
                 <span>Conversation</span>
+                <ChatExportMenu
+                  disabled={messages.length <= 1}
+                  build={(format) =>
+                    exportAssistantChat(messages, format, { scene: scene.name })
+                  }
+                  filename={(format) =>
+                    exportFilename("assistant", scene.id, format, new Date())
+                  }
+                />
                 {clearedMessages ? (
                   <button
                     className="text-button"
@@ -2361,7 +2446,14 @@ export default function App() {
                       )}
                       {m.mode === "offline" && <span>OFFLINE HELPER</span>}
                     </div>
-                    <p>{m.text}</p>
+                    {m.text && <p>{m.text}</p>}
+                    {m.images && (
+                      <div className="message-images">
+                        {m.images.map((src, j) => (
+                          <img key={j} src={src} alt="Attached reference" />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {messages.length === 1 && (
@@ -2395,18 +2487,26 @@ export default function App() {
                 <div ref={chatEnd} />
               </div>
               <form
-                className="prompt-box"
+                className={`prompt-box${imageDrop.dragging ? " dragging" : ""}`}
+                {...imageDrop.handlers}
                 onSubmit={(e) => {
                   e.preventDefault();
                   void ask();
                 }}
               >
+                <PendingChips items={images.items} onRemove={images.remove} />
                 <textarea
                   id="assistant-prompt"
                   aria-label="Ask the scene assistant"
                   placeholder="What are we creating today?"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
+                  onPaste={(e) => {
+                    const files = pastedFiles(e);
+                    if (!files.length) return;
+                    e.preventDefault();
+                    images.add(files);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -2418,12 +2518,24 @@ export default function App() {
                   <span>
                     <Sparkles size={12} /> Imagine. Ask. Create.
                   </span>
-                  <button
-                    aria-label="Send message"
-                    disabled={busy || modelSwitchBusy || !prompt.trim()}
-                  >
-                    <ArrowUp size={17} />
-                  </button>
+                  <div className="prompt-actions">
+                    <AttachButton
+                      onFiles={images.add}
+                      accept="image/*"
+                      label="Attach reference images (or drop or paste them here)"
+                    />
+                    <button
+                      aria-label="Send message"
+                      disabled={
+                        busy ||
+                        modelSwitchBusy ||
+                        images.items.some((i) => i.status === "uploading") ||
+                        (!prompt.trim() && !images.items.length)
+                      }
+                    >
+                      <ArrowUp size={17} />
+                    </button>
+                  </div>
                 </div>
               </form>
               <p className="assistant-footnote">

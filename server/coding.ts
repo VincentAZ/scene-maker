@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Router } from "express";
 import { z } from "zod";
-import type { ModelMessage } from "ai";
+import type { ModelMessage, UserContent } from "ai";
 import { dataDir, atomicWrite } from "./storage";
 import { modelFor, type Config } from "./ai";
 import { providerErrorMessage } from "./providerErrors";
@@ -16,6 +16,16 @@ import {
   type AgentEvent,
 } from "./codingAgent";
 import { deployBranch } from "./codingDeploy";
+import {
+  AttachmentStore,
+  attachmentIds,
+  attachmentsRouter,
+  buildUserContent,
+  dehydrateHistory,
+  rehydrateHistory,
+  sendAttachment,
+} from "./attachments";
+import type { Attachment } from "../shared/attachments";
 import {
   git,
   snapshot,
@@ -53,11 +63,15 @@ type Dependencies = {
   remote?: string;
   probeSandbox?: () => Promise<void>;
   deploy?: typeof deployBranch;
+  /** Unsent attachments; a sibling of tasksDir by default, on the same disk. */
+  uploadsDir?: string;
 };
 type Handle = {
   controller: AbortController;
-  steer?: (text: string) => Promise<boolean>;
+  steer?: (message: string | UserContent) => Promise<boolean>;
 };
+/** One message from the person: words and the files sent with them. */
+type Turn = { text: string; attachments: Attachment[] };
 type NewEntry =
   | Omit<Extract<TranscriptEntry, { kind: "user" }>, "id" | "at">
   | Omit<Extract<TranscriptEntry, { kind: "assistant" }>, "id" | "at">
@@ -87,12 +101,17 @@ function legacyTranscript(task: CodingTask): TranscriptEntry[] {
 export class CodingService {
   readonly tasks = new Map<string, CodingTask>();
   private running = new Map<string, Handle>();
-  private queues = new Map<string, string[]>();
+  private queues = new Map<string, Turn[]>();
   private locks = new Set<string>();
   private deploying: Promise<unknown> = Promise.resolve();
   private availability?: { at: number; reason: string };
+  /** Uploads waiting for the message that sends them. */
+  readonly attachments: AttachmentStore;
   constructor(readonly options: Dependencies) {
     fs.mkdirSync(options.tasksDir, { recursive: true, mode: 0o700 });
+    this.attachments = new AttachmentStore(
+      options.uploadsDir || options.tasksDir.replace(/[\\/]+$/, "") + "-uploads",
+    );
     for (const entry of fs.readdirSync(options.tasksDir)) {
       if (!idSchema.safeParse(entry).success) continue;
       const file = path.join(options.tasksDir, entry, "task.json");
@@ -127,6 +146,16 @@ export class CodingService {
   checkout(id: string) {
     idSchema.parse(id);
     return path.join(this.options.tasksDir, id, "checkout");
+  }
+  /** Files sent with this task's messages; outside the checkout, so never committed. */
+  attachmentDir(task: CodingTask) {
+    return path.join(this.options.tasksDir, task.id, "attachments");
+  }
+  /** The model's view of a turn: plain words, or words with attachment parts. */
+  private content(task: CodingTask, turn: Turn, provider: string | null) {
+    return turn.attachments.length
+      ? buildUserContent(turn.text, turn.attachments, this.attachmentDir(task), provider)
+      : Promise.resolve(turn.text);
   }
   get(id: string) {
     idSchema.parse(id);
@@ -217,21 +246,25 @@ export class CodingService {
   private historyFile(task: CodingTask) {
     return path.join(this.options.tasksDir, task.id, "messages.json");
   }
-  private loadHistory(task: CodingTask): ModelMessage[] {
+  private async loadHistory(task: CodingTask, provider: string | null): Promise<ModelMessage[]> {
+    let saved: ModelMessage[] | undefined;
     try {
-      return JSON.parse(fs.readFileSync(this.historyFile(task), "utf8"));
+      saved = JSON.parse(fs.readFileSync(this.historyFile(task), "utf8"));
     } catch {
-      // Tasks from before conversations were saved: give the engineer the gist.
-      if (!task.summary) return [];
-      return [
-        { role: "user", content: task.prompt },
-        { role: "assistant", content: task.summary },
-      ];
+      saved = undefined;
     }
+    // Attachments are saved as references and read again for each run.
+    if (saved) return rehydrateHistory(saved, this.attachmentDir(task), provider);
+    // Tasks from before conversations were saved: give the engineer the gist.
+    if (!task.summary) return [];
+    return [
+      { role: "user", content: task.prompt },
+      { role: "assistant", content: task.summary },
+    ];
   }
   private saveHistory(task: CodingTask, messages: ModelMessage[]) {
     if (!this.tasks.has(task.id)) return;
-    atomicWrite(this.historyFile(task), messages);
+    atomicWrite(this.historyFile(task), dehydrateHistory(messages));
   }
   async remote() {
     const remote =
@@ -331,7 +364,7 @@ export class CodingService {
     modelFor(config, config.assistant); // Fail early if setup is incomplete.
     return config;
   }
-  async start(prompt: string) {
+  async start(prompt: string, attachmentIds: string[] = []) {
     const busy = [...this.tasks.values()].filter((t) => codingBusy(t.status)).length;
     if (busy >= MAX_PARALLEL)
       throw Error(
@@ -340,10 +373,11 @@ export class CodingService {
     const reason = (await this.info()).reason;
     if (reason) throw Error(reason);
     const config = this.validConfig();
+    this.attachments.check(attachmentIds);
     const id = randomUUID();
     const task: CodingTask = {
       id,
-      prompt,
+      prompt: prompt || "Attached files",
       branch: `studio/code-${id.slice(0, 12)}`,
       base: "",
       baseline: "",
@@ -367,10 +401,17 @@ export class CodingService {
       checks: [],
     };
     this.tasks.set(id, task);
-    this.add(task, { kind: "user", text: prompt });
+    const attachments = this.attachments.claim(attachmentIds, this.attachmentDir(task));
+    if (!prompt && attachments.length)
+      task.prompt = `Attached ${attachments.map((a) => a.name).join(", ")}`.slice(0, 200);
+    this.add(task, {
+      kind: "user",
+      text: prompt,
+      attachments: attachments.length ? attachments : undefined,
+    });
     const controller = new AbortController();
     this.running.set(id, { controller });
-    void this.run(task, config, controller, true, prompt);
+    void this.run(task, config, controller, true, { text: prompt, attachments });
     return task;
   }
   /**
@@ -378,45 +419,58 @@ export class CodingService {
    * next step; otherwise it starts the next turn of the same conversation in
    * the same checkout, whatever the task's state, including after a push.
    */
-  async reply(id: string, message: string) {
+  async reply(id: string, message: string, attachmentIds: string[] = []) {
     const task = this.get(id);
     if (this.locks.has(id))
       throw Error("Wait for the push to finish, then send your message.");
-    if (codingBusy(task.status)) {
-      const entry = this.add(task, { kind: "user", text: message, queued: true });
-      const handle = this.running.get(id);
-      if (task.status === "working" && handle?.steer)
-        void handle.steer(message).then((delivered) => {
-          if (!delivered) this.enqueue(task, message, entry.id);
-        });
-      else this.enqueue(task, message, entry.id);
-      return task;
-    }
-    const busy = [...this.tasks.values()].filter((t) => codingBusy(t.status)).length;
-    if (busy >= MAX_PARALLEL)
+    const busy = codingBusy(task.status);
+    if (!busy && this.busyCount() >= MAX_PARALLEL)
       throw Error(`${MAX_PARALLEL} tasks are already running. Wait for one to finish.`);
-    this.add(task, { kind: "user", text: message });
-    return this.resume(task, message);
+    const attachments = this.attachments.claim(attachmentIds, this.attachmentDir(task));
+    const turn: Turn = { text: message, attachments };
+    const entry = this.add(task, {
+      kind: "user",
+      text: message,
+      queued: busy || undefined,
+      attachments: attachments.length ? attachments : undefined,
+    });
+    if (!busy) return this.resume(task, turn);
+    const handle = this.running.get(id);
+    const steer = task.status === "working" ? handle?.steer : undefined;
+    if (steer)
+      void this.content(task, turn, task.provider)
+        .then(steer)
+        .catch(() => false)
+        .then((delivered) => {
+          if (!delivered) return this.enqueue(task, turn, entry.id);
+          const item = task.transcript?.find((e) => e.id === entry.id);
+          if (item?.kind === "user" && item.queued) {
+            item.queued = undefined;
+            this.save(task);
+          }
+        });
+    else this.enqueue(task, turn, entry.id);
+    return task;
   }
   /** Kept for the earlier API: refining is replying. */
   retry(id: string, prompt: string) {
     return this.reply(id, prompt);
   }
-  private enqueue(task: CodingTask, message: string, entryId: string) {
+  private enqueue(task: CodingTask, turn: Turn, entryId: string) {
     if (this.running.has(task.id)) {
-      this.queues.set(task.id, [...(this.queues.get(task.id) || []), message]);
+      this.queues.set(task.id, [...(this.queues.get(task.id) || []), turn]);
       return;
     }
     // The run ended between the message and its delivery: start the next turn.
     const item = task.transcript?.find((e) => e.id === entryId);
     if (item && item.kind === "user") item.queued = undefined;
     try {
-      this.resume(task, message);
+      this.resume(task, turn);
     } catch (error) {
       this.note(task, (error as Error).message, "error");
     }
   }
-  private resume(task: CodingTask, message: string) {
+  private resume(task: CodingTask, turn: Turn) {
     const config = this.validConfig();
     const failedChecks = task.checks.filter((c) => !c.ok);
     const feedback = failedChecks.length
@@ -438,7 +492,10 @@ export class CodingService {
     const controller = new AbortController();
     this.running.set(task.id, { controller });
     this.save(task);
-    void this.run(task, config, controller, prepare, message + feedback);
+    void this.run(task, config, controller, prepare, {
+      ...turn,
+      text: turn.text + feedback,
+    });
     return task;
   }
   private async refresh(task: CodingTask) {
@@ -505,7 +562,7 @@ export class CodingService {
     config: Config,
     controller: AbortController,
     prepare: boolean,
-    message: string,
+    turn: Turn,
   ) {
     const handle = this.running.get(task.id)!;
     const minutes = codingTimeoutMinutes();
@@ -524,6 +581,10 @@ export class CodingService {
         );
       }
       signal.throwIfAborted();
+      const content = turn.attachments.length
+        ? await this.content(task, turn, config.assistant)
+        : undefined;
+      const history = await this.loadHistory(task, config.assistant);
       task.status = "working";
       task.started = Date.now();
       this.save(task);
@@ -531,7 +592,7 @@ export class CodingService {
       task.summary = await (this.options.generate || runCodingAgent)(
         config,
         checkout,
-        message,
+        turn.text,
         signal,
         (event) => this.onAgent(task, event),
         undefined,
@@ -540,7 +601,8 @@ export class CodingService {
           branch: task.branch,
           mcpServers: config.mcpServers,
           dependencies: path.join(this.options.root, "node_modules"),
-          history: this.loadHistory(task),
+          history,
+          content: typeof content === "string" ? undefined : content,
           onHistory: (messages) => this.saveHistory(task, messages),
           onSteer: (steer) => {
             handle.steer = steer;
@@ -609,7 +671,13 @@ export class CodingService {
         for (const item of task.transcript || [])
           if (item.kind === "user" && item.queued) item.queued = undefined;
         try {
-          this.resume(task, queued.join("\n\n"));
+          this.resume(task, {
+            text: queued
+              .map((t) => t.text)
+              .filter(Boolean)
+              .join("\n\n"),
+            attachments: queued.flatMap((t) => t.attachments),
+          });
         } catch (error) {
           this.note(task, (error as Error).message, "error");
         }
@@ -769,6 +837,20 @@ export class CodingService {
   }
 }
 const message = z.string().trim().min(1).max(60_000);
+/** Words, files, or both. */
+const words = z.string().trim().max(60_000);
+const filled = (body: { text: string; attachments: string[] }) =>
+  !!body.text || body.attachments.length > 0;
+const newTask = z
+  .object({ prompt: words, attachments: attachmentIds })
+  .refine((b) => filled({ text: b.prompt, attachments: b.attachments }), {
+    message: "Write a message or attach a file.",
+  });
+const replyBody = z
+  .object({ message: words, attachments: attachmentIds })
+  .refine((b) => filled({ text: b.message, attachments: b.attachments }), {
+    message: "Write a message or attach a file.",
+  });
 export function codingRouter(
   service: CodingService,
   preview: (task: CodingTask) => Promise<string>,
@@ -779,9 +861,10 @@ export function codingRouter(
     next();
   });
   router.get("/", async (_req, res) => res.json(await service.info()));
+  router.use("/attachments", attachmentsRouter(service.attachments));
   router.post("/tasks", async (req, res) => {
-    const { prompt } = z.object({ prompt: message }).parse(req.body);
-    res.status(202).json(service.summary(await service.start(prompt)));
+    const body = newTask.parse(req.body);
+    res.status(202).json(service.summary(await service.start(body.prompt, body.attachments)));
   });
   router.post("/tasks/clear", (_req, res) => res.json(service.clear()));
   router.get("/tasks/:id", (req, res) => res.json(service.get(String(req.params.id))));
@@ -790,8 +873,23 @@ export function codingRouter(
     res.json(service.summary(service.cancel(String(req.params.id)))),
   );
   router.post("/tasks/:id/reply", async (req, res) => {
-    const body = z.object({ message }).parse(req.body);
-    res.status(202).json(service.summary(await service.reply(String(req.params.id), body.message)));
+    const body = replyBody.parse(req.body);
+    res
+      .status(202)
+      .json(
+        service.summary(
+          await service.reply(String(req.params.id), body.message, body.attachments),
+        ),
+      );
+  });
+  router.get("/tasks/:id/attachments/:attachment", (req, res) => {
+    const task = service.get(String(req.params.id));
+    const attachment = (task.transcript || [])
+      .flatMap((entry) => (entry.kind === "user" && entry.attachments) || [])
+      .find((a) => a.id === String(req.params.attachment));
+    if (!attachment)
+      throw Object.assign(Error("That file is no longer available."), { status: 404 });
+    sendAttachment(res, service.attachmentDir(task), attachment);
   });
   router.post("/tasks/:id/retry", async (req, res) => {
     const { prompt } = z.object({ prompt: message }).parse(req.body);

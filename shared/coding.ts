@@ -1,3 +1,4 @@
+import type { Attachment } from "./attachments";
 export type CodingStatus =
   | "preparing"
   | "working"
@@ -10,7 +11,16 @@ export type CodingStatus =
   | "pushed";
 /** One line of a task's conversation, in the order it happened. */
 export type TranscriptEntry =
-  | { kind: "user"; id: string; at: number; text: string; queued?: boolean; dropped?: boolean }
+  | {
+      kind: "user";
+      id: string;
+      at: number;
+      text: string;
+      queued?: boolean;
+      dropped?: boolean;
+      /** Files sent with the message, saved in the task's attachments directory. */
+      attachments?: Attachment[];
+    }
   | { kind: "assistant"; id: string; at: number; text: string; depth?: number }
   | {
       kind: "tool";

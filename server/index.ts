@@ -26,8 +26,15 @@ import {
 } from "./storage";
 import { assistant, type Config } from "./ai";
 import { providerErrorMessage } from "./providerErrors";
-import { listProviderModels } from "./providerModels";
+import { listChatGPTModels, listProviderModels } from "./providerModels";
+import { providerAuthRouter } from "./providerAuthRoutes";
+import {
+  chatGPTAccessToken,
+  useChatGPTCredentialStore,
+} from "./chatgptTransport";
+import { revokeChatGPTSession } from "./providerAuth";
 import { conversationRoute } from "./conversationRoute";
+import { parseInlineImages } from "./attachments";
 import {
   validateScene,
   providers,
@@ -47,6 +54,9 @@ const config = () =>
     assistant: null,
     blender: process.env.BLENDER_PATH || "blender",
   });
+const saveConfig = (c: Config) => atomicWrite(configFile, c);
+// Refreshed ChatGPT tokens are saved straight back to the connections file.
+useChatGPTCredentialStore({ read: config, write: saveConfig });
 export const app = express();
 app.disable("x-powered-by");
 app.use((req, res, next) => {
@@ -75,6 +85,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+// Assistant requests may carry a few reference images next to the scene.
+app.use("/api/assistant", express.json({ limit: "32mb" }));
 app.use(express.json({ limit: "8mb" }));
 app.use(
   "/library",
@@ -207,15 +219,34 @@ function connectionSummary(c: Config) {
             },
       ]),
     ),
+    // Status only: keys, tokens and account IDs never leave the server.
     providers: Object.fromEntries(
-      providers.map((p) => [
-        p,
-        {
-          connected: !!c.providers[p]?.key,
-          model: c.providers[p]?.model || "",
-          thinking: c.providers[p]?.thinking || "default",
-        },
-      ]),
+      providers.map((p) => {
+        const entry = c.providers[p];
+        const chatgpt =
+          entry?.method === "chatgpt" && entry.chatgpt?.refreshToken
+            ? entry.chatgpt
+            : undefined;
+        const connected = !!entry?.key;
+        return [
+          p,
+          {
+            connected,
+            model: entry?.model || "",
+            thinking: entry?.thinking || "default",
+            ...(connected || chatgpt
+              ? {
+                  method: entry?.method || "key",
+                  connectedAt: entry?.connectedAt,
+                  verifiedAt: entry?.verifiedAt,
+                }
+              : {}),
+            ...(chatgpt
+              ? { account: chatgpt.email, planUsage: chatgpt.planUsage }
+              : {}),
+          },
+        ];
+      }),
     ),
   };
 }
@@ -231,9 +262,17 @@ app.post("/api/connections/models", async (req, res) => {
       key: z.string().trim().min(1).max(1000).optional(),
     })
     .parse(req.body);
-  const key = body.key ?? config().providers[body.provider]?.key ?? "";
+  const saved = config().providers[body.provider];
+  if (!body.key && saved?.method === "chatgpt") {
+    res.json({
+      models: await listChatGPTModels(await chatGPTAccessToken(config())),
+    });
+    return;
+  }
+  const key = body.key ?? saved?.key ?? "";
   res.json({ models: await listProviderModels(body.provider, key) });
 });
+app.use("/api/connections", providerAuthRouter({ config, save: saveConfig }));
 app.put("/api/connections", (req, res) => {
   const body = z
       .object({
@@ -299,12 +338,20 @@ app.put("/api/connections", (req, res) => {
       throw Error(
         "This thinking effort is not supported by the selected model.",
       );
+    const replacing = body.key !== undefined && body.key !== prev?.key;
+    if (replacing && prev?.chatgpt?.refreshToken)
+      // A pasted key replaces a ChatGPT sign-in; end that session too.
+      void revokeChatGPTSession(prev.chatgpt);
     c.providers[body.provider] = {
+      ...(replacing ? {} : prev),
       key: body.key === undefined ? prev?.key || "" : body.key,
       model,
       thinking: thinkingChoices(body.provider, model).includes(thinking)
         ? thinking
         : "default",
+      ...(replacing && body.key
+        ? { method: "key" as const, connectedAt: new Date().toISOString() }
+        : {}),
     };
   }
   if (body.assistant) {
@@ -317,7 +364,7 @@ app.put("/api/connections", (req, res) => {
   if (body.assistant !== undefined) c.assistant = body.assistant;
   if (c.assistant && !c.providers[c.assistant]?.key) c.assistant = null;
   if (body.blender !== undefined) c.blender = body.blender;
-  atomicWrite(configFile, c);
+  saveConfig(c);
   res.json({ ok: true, ...connectionSummary(c) });
 });
 // Spoken playback: catalogues, synthesis (cached on disk) and the local Piper engine.
@@ -382,6 +429,7 @@ app.post("/api/assistant", async (req, res) => {
           .max(1000)
           .optional()
           .parse(req.body.stagingFeedback),
+        images: parseInlineImages(req.body.images),
       },
     );
     for (const command of result.steps.flatMap((step) =>

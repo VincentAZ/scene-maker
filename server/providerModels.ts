@@ -1,7 +1,8 @@
 import type { Provider } from "./ai";
+import { connectionTestMessage } from "./providerErrors";
 
 export type ProviderModel = { id: string; name: string };
-const endpoints: Record<Provider, string> = {
+export const modelEndpoints: Record<Provider, string> = {
   openai: "https://api.openai.com/v1/models",
   anthropic: "https://api.anthropic.com/v1/models?limit=1000",
   google:
@@ -11,6 +12,13 @@ const endpoints: Record<Provider, string> = {
   openrouter: "https://openrouter.ai/api/v1/models/user",
 };
 
+function keyMismatch(provider: Provider, key: string) {
+  if (key.startsWith("sk-ant-") && provider !== "anthropic")
+    return "This looks like an Anthropic API key. Choose the Anthropic tab and enter it there, or replace it with a key from the selected provider.";
+  if (key.startsWith("sk-or-") && provider !== "openrouter")
+    return "This looks like an OpenRouter API key. Choose the OpenRouter tab and enter it there, or replace it with a key from the selected provider.";
+}
+
 // Catalogue reads only: no generation, test prompts, or credentials in URLs/logs.
 export async function listProviderModels(
   provider: Provider,
@@ -18,23 +26,12 @@ export async function listProviderModels(
   request: typeof fetch = fetch,
 ): Promise<ProviderModel[]> {
   if (!key.trim()) throw Error("Paste an API key first.");
-  if (key.startsWith("sk-ant-") && provider !== "anthropic")
-    throw Error(
-      "This looks like an Anthropic API key. Choose the Anthropic tab and enter it there, or replace it with a key from the selected provider.",
-    );
-  if (key.startsWith("sk-or-") && provider !== "openrouter")
-    throw Error(
-      "This looks like an OpenRouter API key. Choose the OpenRouter tab and enter it there, or replace it with a key from the selected provider.",
-    );
-  const headers: Record<string, string> =
-    provider === "anthropic"
-      ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
-      : provider === "google"
-        ? { "x-goog-api-key": key }
-        : { Authorization: `Bearer ${key}` };
+  const mismatch = keyMismatch(provider, key);
+  if (mismatch) throw Error(mismatch);
+  const headers = authHeaders(provider, key);
   const models = new Map<string, ProviderModel>();
   const seen = new Set<string>();
-  let url = endpoints[provider];
+  let url = modelEndpoints[provider];
   const signal = AbortSignal.timeout(15000);
   while (url) {
     if (seen.has(url) || seen.size >= 20)
@@ -102,7 +99,7 @@ export async function listProviderModels(
       const name = entry.display_name || entry.displayName || entry.name || id;
       models.set(id, { id, name: typeof name === "string" ? name : id });
     }
-    const next = new URL(endpoints[provider]);
+    const next = new URL(modelEndpoints[provider]);
     if (
       provider === "google" &&
       typeof body.nextPageToken === "string" &&
@@ -126,4 +123,112 @@ export async function listProviderModels(
   return [...models.values()].sort((a, b) =>
     a.id.localeCompare(b.id, undefined, { numeric: true }),
   );
+}
+
+const authHeaders = (
+  provider: Provider,
+  key: string,
+): Record<string, string> =>
+  provider === "anthropic"
+    ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
+    : provider === "google"
+      ? { "x-goog-api-key": key }
+      : { Authorization: `Bearer ${key}` };
+
+/**
+ * Models a ChatGPT plan can use, in the server's order. The plan catalogue has
+ * its own shape: https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
+ */
+export async function listChatGPTModels(
+  accessToken: string,
+  request: typeof fetch = fetch,
+): Promise<ProviderModel[]> {
+  let response: Response;
+  try {
+    response = await request(modelEndpoints.openai, {
+      headers: authHeaders("openai", accessToken),
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
+  } catch {
+    throw Error(
+      "Could not reach ChatGPT. Check your connection and try loading models again.",
+    );
+  }
+  if (!response.ok)
+    throw Error(
+      connectionTestMessage(
+        response.status,
+        await response.text().catch(() => ""),
+      ),
+    );
+  const body = await response.json().catch(() => null);
+  const entries = Array.isArray(body?.models) ? body.models : body?.data;
+  if (!Array.isArray(entries))
+    throw Error("ChatGPT returned an unexpected model list. Try again.");
+  const models: ProviderModel[] = [];
+  for (const entry of entries) {
+    const id = entry?.slug ?? entry?.id;
+    if (typeof id !== "string" || !id || id.length > 200) continue;
+    if (entry.visibility !== undefined && entry.visibility !== "list") continue;
+    if (models.some((model) => model.id === id)) continue;
+    const name = entry.display_name || id;
+    models.push({ id, name: typeof name === "string" ? name : id });
+  }
+  if (!models.length)
+    throw Error("No models are available to this ChatGPT plan right now.");
+  return models;
+}
+
+export type ConnectionTest =
+  { ok: true; models?: number } | { ok: false; error: string };
+
+/**
+ * OpenRouter's model list answers even without a valid key, so its key
+ * endpoint is the one that proves the credential.
+ */
+const checkEndpoints: Partial<Record<Provider, string>> = {
+  openrouter: "https://openrouter.ai/api/v1/key",
+};
+
+/**
+ * Check a credential with one cheap, read-only request (usually the model
+ * list). Never generates, and never relays upstream bodies (they can echo
+ * credentials).
+ */
+export async function testProviderConnection(
+  provider: Provider,
+  key: string,
+  request: typeof fetch = fetch,
+): Promise<ConnectionTest> {
+  if (!key.trim()) return { ok: false, error: "Paste an API key first." };
+  const mismatch = keyMismatch(provider, key.trim());
+  if (mismatch) return { ok: false, error: mismatch };
+  const endpoint = checkEndpoints[provider];
+  let response: Response;
+  try {
+    response = await request(endpoint ?? modelEndpoints[provider], {
+      headers: authHeaders(provider, key.trim()),
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Could not reach the provider. Check your internet connection and try again.",
+    };
+  }
+  if (!response.ok)
+    return {
+      ok: false,
+      error: connectionTestMessage(
+        response.status,
+        await response.text().catch(() => ""),
+      ),
+    };
+  if (endpoint) return { ok: true };
+  const body = await response.json().catch(() => null);
+  const entries = body?.models ?? body?.data;
+  return { ok: true, models: Array.isArray(entries) ? entries.length : 0 };
 }

@@ -20,13 +20,6 @@ export function chooseRecordingFormat(
   return candidates.find((c) => isTypeSupported(c.mimeType)) ?? null;
 }
 
-/** Recording frame size: canvas pixels, capped, with even sides for H.264. */
-export function recordingSize(width: number, height: number, max = 1920) {
-  const scale = Math.min(1, max / Math.max(width, height, 1));
-  const even = (n: number) => Math.max(2, Math.floor((n * scale) / 2) * 2);
-  return { width: even(width), height: even(height), scale };
-}
-
 export function recordingFileName(name: string, date = new Date()) {
   const base =
     name
@@ -61,99 +54,65 @@ export function wrapText(
   return lines;
 }
 
-const roundRect = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) => {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-};
+/** Cinematic output: Full HD, 16:9, regardless of the editor's layout. */
+export const CINEMA = { width: 1920, height: 1080 } as const;
 
 /**
- * Paint the in-scene dialogue bubbles (DOM overlays in the live view) onto
- * the recording frame, matching the .scene-bubble styling.
+ * Vertical field of view for the film camera so its 16:9 frame is the
+ * largest centred 16:9 area of the preview: wide previews crop the sides
+ * (same vertical view), tall previews crop top and bottom.
  */
-export function drawBubbles(
-  ctx: CanvasRenderingContext2D,
-  layer: HTMLElement,
-  origin: DOMRect,
-  scale: number,
-) {
-  for (const bubble of Array.from(layer.children) as HTMLElement[]) {
-    if (bubble.hidden) continue;
-    const name = bubble.querySelector("strong")?.textContent ?? "";
-    const words = bubble.querySelector("span");
-    const text = words?.textContent ?? "";
-    const thought = bubble.classList.contains("thought");
-    const rect = bubble.getBoundingClientRect();
-    const textWidth =
-      words?.getBoundingClientRect().width ?? Math.max(0, rect.width - 32);
-    const family = getComputedStyle(bubble).fontFamily || "sans-serif";
-    ctx.save();
-    ctx.scale(scale, scale);
-    ctx.translate(rect.left - origin.left, rect.top - origin.top);
-    const radius = thought ? 24 : 18;
-    // Tail below the bubble.
-    ctx.fillStyle = "#fffef8";
-    ctx.strokeStyle = "#819776";
-    ctx.lineWidth = 1;
-    if (thought) {
-      ctx.beginPath();
-      ctx.arc(rect.width / 2, rect.height + 9, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-    ctx.shadowColor = "#263a2420";
-    ctx.shadowBlur = 20;
-    ctx.shadowOffsetY = 5;
-    ctx.fillStyle = "#fffef8f5";
-    roundRect(ctx, 0.5, 0.5, rect.width - 1, rect.height - 1, radius);
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    if (thought) ctx.setLineDash([3, 3]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    if (!thought) {
-      ctx.beginPath();
-      ctx.moveTo(rect.width / 2 - 7, rect.height - 1);
-      ctx.lineTo(rect.width / 2, rect.height + 7);
-      ctx.lineTo(rect.width / 2 + 7, rect.height - 1);
-      ctx.fillStyle = "#fffef8";
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(rect.width / 2 - 7, rect.height - 0.5);
-      ctx.lineTo(rect.width / 2, rect.height + 7);
-      ctx.lineTo(rect.width / 2 + 7, rect.height - 0.5);
-      ctx.stroke();
-    }
-    ctx.textBaseline = "top";
-    ctx.fillStyle = "#74846a";
-    ctx.font = `600 10px ${family}`;
-    if ("letterSpacing" in ctx) ctx.letterSpacing = "0.8px";
-    ctx.fillText(name.toUpperCase(), 16, 13);
-    if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
-    ctx.fillStyle = "#31452c";
-    ctx.font = `${thought ? "italic " : ""}14px ${family}`;
-    wrapText(text, textWidth + 1, (t) => ctx.measureText(t).width).forEach(
-      (line, i) => ctx.fillText(line, 16, 32 + i * 21),
-    );
-    ctx.restore();
-  }
+export function cinemaFov(fov: number, viewAspect: number, aspect: number) {
+  if (viewAspect >= aspect) return fov;
+  const half = (fov * Math.PI) / 360;
+  return (Math.atan((Math.tan(half) * viewAspect) / aspect) * 360) / Math.PI;
 }
 
-export type RecordingSurface = {
-  canvas: HTMLCanvasElement;
-  overlay: HTMLElement;
-};
+/** The largest centred rectangle of `aspect` inside a width × height view. */
+export function frameGuide(width: number, height: number, aspect: number) {
+  const w = Math.min(width, height * aspect);
+  const h = w / aspect;
+  return { left: (width - w) / 2, top: (height - h) / 2, width: w, height: h };
+}
+
+export type Caption = { text: string };
+
+/** Film-style subtitles: white, outlined, centred near the bottom. */
+export function drawCaptions(
+  ctx: CanvasRenderingContext2D,
+  captions: Caption[],
+  width: number,
+  height: number,
+) {
+  if (!captions.length) return;
+  const size = Math.round(height * 0.037);
+  const lineHeight = size * 1.28;
+  ctx.save();
+  ctx.font = `500 ${size}px "Helvetica Neue", Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.lineJoin = "round";
+  const lines = captions.flatMap((c) =>
+    wrapText(
+      (captions.length > 1 ? "– " : "") + c.text.replace(/\s+/g, " "),
+      width * 0.72,
+      (t) => ctx.measureText(t).width,
+    ),
+  );
+  const bottom = height * 0.92;
+  lines.forEach((line, i) => {
+    const y = bottom - (lines.length - 1 - i) * lineHeight;
+    ctx.shadowColor = "#000a";
+    ctx.shadowBlur = size * 0.35;
+    ctx.lineWidth = size * 0.14;
+    ctx.strokeStyle = "#000c";
+    ctx.strokeText(line, width / 2, y);
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(line, width / 2, y);
+  });
+  ctx.restore();
+}
 
 export type Recording = {
   blob: Blob;
@@ -161,8 +120,58 @@ export type Recording = {
 };
 
 /**
- * Records the live viewport in real time: every rendered frame is composited
- * (3D view + dialogue bubbles) onto an offscreen canvas captured by
+ * Decides, frame by frame, whether the recording should be running. The take
+ * follows the scene clock: it starts when scene time first moves and pauses
+ * while time holds still (a cast still generating its next reply, a voice
+ * line loading, the end of the sequence), so the video has no dead waits.
+ */
+export class RecordingClock {
+  private last: number | null = null;
+  private movedAt = 0;
+  private segmentStart = 0;
+  private total = 0;
+  state: "waiting" | "recording" | "paused" = "waiting";
+  constructor(private hold = 0.2) {}
+  /** Feed the scene time shown this frame; returns what the recorder should do. */
+  update(
+    time: number,
+    now: number,
+  ): "start" | "resume" | "pause" | "draw" | "skip" {
+    const moved = this.last !== null && Math.abs(time - this.last) > 1e-4;
+    this.last = time;
+    if (moved) this.movedAt = now;
+    if (this.state === "waiting") {
+      if (!moved) return "skip";
+      this.state = "recording";
+      this.segmentStart = now;
+      return "start";
+    }
+    if (this.state === "paused") {
+      if (!moved) return "skip";
+      this.state = "recording";
+      this.segmentStart = now;
+      return "resume";
+    }
+    if (!moved && now - this.movedAt > this.hold * 1000) {
+      this.state = "paused";
+      this.total += now - this.segmentStart;
+      return "pause";
+    }
+    return "draw";
+  }
+  /** Seconds of video recorded so far. */
+  recorded(now: number) {
+    return (
+      (this.total +
+        (this.state === "recording" ? now - this.segmentStart : 0)) /
+      1000
+    );
+  }
+}
+
+/**
+ * Records the film camera in real time: each frame of the dedicated 16:9
+ * render (no editor helpers) gets film subtitles and is captured by
  * MediaRecorder, optionally with a voice audio track.
  */
 export class SceneRecorder {
@@ -172,9 +181,11 @@ export class SceneRecorder {
   private chunks: Blob[] = [];
   private stream: MediaStream;
   private done: Promise<Recording>;
+  private clock = new RecordingClock();
   readonly format: RecordingFormat;
   constructor(
-    private surface: RecordingSurface,
+    private source: HTMLCanvasElement,
+    private captions: (time: number) => Caption[],
     audio: MediaStreamTrack | null,
   ) {
     if (typeof MediaRecorder === "undefined")
@@ -185,14 +196,13 @@ export class SceneRecorder {
     if (!format)
       throw Error("This browser cannot record video. Try Chrome or Safari.");
     this.format = format;
-    const size = recordingSize(surface.canvas.width, surface.canvas.height);
     this.frame = document.createElement("canvas");
-    this.frame.width = size.width;
-    this.frame.height = size.height;
+    this.frame.width = source.width;
+    this.frame.height = source.height;
     const ctx = this.frame.getContext("2d");
     if (!ctx) throw Error("This browser cannot record video.");
     this.ctx = ctx;
-    this.drawFrame();
+    this.paint(0);
     this.stream = this.frame.captureStream(30);
     if (audio) this.stream.addTrack(audio);
     this.recorder = new MediaRecorder(this.stream, {
@@ -205,7 +215,6 @@ export class SceneRecorder {
     });
     this.done = new Promise((resolve, reject) => {
       this.recorder.addEventListener("stop", () => {
-        for (const track of this.stream.getVideoTracks()) track.stop();
         const blob = new Blob(this.chunks, {
           type: format.mimeType.split(";")[0],
         });
@@ -217,21 +226,39 @@ export class SceneRecorder {
         reject(Error("The browser stopped the recording unexpectedly.")),
       );
     });
-    this.recorder.start(1000);
   }
-  get active() {
-    return this.recorder.state === "recording";
+  /** "waiting" until the scene first plays, "paused" while its clock holds. */
+  get state() {
+    return this.clock.state;
   }
-  /** Copy the latest rendered viewport frame into the recording. */
-  drawFrame() {
-    const { canvas, overlay } = this.surface;
+  /** Seconds of video recorded so far. */
+  get seconds() {
+    return this.clock.recorded(performance.now());
+  }
+  /** Called after each rendered viewport frame with the scene time shown. */
+  drawFrame(time: number) {
+    const step = this.clock.update(time, performance.now());
+    if (step === "skip") return;
+    if (step === "pause") {
+      this.recorder.pause();
+      return;
+    }
+    this.paint(time);
+    if (step === "start") this.recorder.start(1000);
+    if (step === "resume") this.recorder.resume();
+  }
+  private paint(time: number) {
     const { width, height } = this.frame;
-    this.ctx.drawImage(canvas, 0, 0, width, height);
-    const box = canvas.getBoundingClientRect();
-    if (box.width) drawBubbles(this.ctx, overlay, box, width / box.width);
+    this.ctx.drawImage(this.source, 0, 0, width, height);
+    drawCaptions(this.ctx, this.captions(time), width, height);
   }
   stop(): Promise<Recording> {
-    if (this.recorder.state !== "inactive") this.recorder.stop();
+    for (const track of this.stream.getVideoTracks()) track.stop();
+    if (this.recorder.state === "inactive")
+      return Promise.reject(
+        Error("Nothing played while recording, so no video was saved."),
+      );
+    this.recorder.stop();
     return this.done;
   }
 }

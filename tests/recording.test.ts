@@ -6,9 +6,11 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { Server } from "node:http";
 import {
+  RecordingClock,
   chooseRecordingFormat,
+  cinemaFov,
+  frameGuide,
   recordingFileName,
-  recordingSize,
   wrapText,
 } from "../src/sceneRecorder";
 import {
@@ -25,13 +27,21 @@ describe("recording helpers", () => {
     ).toEqual({ mimeType: "video/webm;codecs=vp9,opus", container: "webm" });
     expect(chooseRecordingFormat(() => false)).toBeNull();
   });
-  it("sizes frames with even sides and a capped long edge", () => {
-    expect(recordingSize(1281, 721)).toMatchObject({
-      width: 1280,
-      height: 720,
+  it("frames the film camera as the largest centred 16:9 area", () => {
+    // Wide preview: same vertical view, sides cropped.
+    expect(cinemaFov(38, 2.4, 16 / 9)).toBe(38);
+    expect(frameGuide(2400, 1000, 16 / 9)).toMatchObject({
+      top: 0,
+      height: 1000,
     });
-    const big = recordingSize(3840, 2160);
-    expect([big.width, big.height]).toEqual([1920, 1080]);
+    // Tall preview: same horizontal view, top and bottom cropped.
+    const fov = cinemaFov(38, 1, 16 / 9);
+    const horizontal = (f: number, aspect: number) =>
+      Math.atan(Math.tan((f * Math.PI) / 360) * aspect);
+    expect(horizontal(fov, 16 / 9)).toBeCloseTo(horizontal(38, 1));
+    const box = frameGuide(900, 900, 16 / 9);
+    expect(box).toMatchObject({ left: 0, width: 900 });
+    expect(box.top).toBeCloseTo((900 - 900 / (16 / 9)) / 2);
   });
   it("names files safely", () => {
     const date = new Date("2025-01-02T03:04:05Z");
@@ -48,6 +58,25 @@ describe("recording helpers", () => {
       "three",
       "four",
     ]);
+  });
+  it("follows the scene clock: waits, records, pauses on holds, resumes", () => {
+    const clock = new RecordingClock(0.2);
+    // Scene frozen while the cast generates its first reply: nothing yet.
+    expect(clock.update(4, 0)).toBe("skip");
+    expect(clock.update(4, 500)).toBe("skip");
+    expect(clock.state).toBe("waiting");
+    // First reply plays.
+    expect(clock.update(4.02, 1000)).toBe("start");
+    expect(clock.update(4.04, 1016)).toBe("draw");
+    // Brief hold (e.g. a dropped frame) keeps drawing.
+    expect(clock.update(4.04, 1100)).toBe("draw");
+    // Held past the threshold while waiting for the next reply: pause.
+    expect(clock.update(4.04, 1300)).toBe("pause");
+    expect(clock.update(4.04, 5000)).toBe("skip");
+    expect(clock.recorded(5000)).toBeCloseTo(0.3);
+    // Next reply starts playing.
+    expect(clock.update(4.06, 5100)).toBe("resume");
+    expect(clock.recorded(6100)).toBeCloseTo(1.3);
   });
   it("identifies containers by content and builds ffmpeg arguments", () => {
     expect(recordingContainer(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))).toBe(
