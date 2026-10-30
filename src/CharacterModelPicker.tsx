@@ -104,9 +104,14 @@ export function CharacterModelPicker({
     }
   }, [open, entity.id]);
 
-  const assign = (changes: Partial<Entity>) => {
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  const assign = (changes: Partial<Entity>, complete = true) => {
     if (disabled) return;
     onChange(changes);
+    if (complete) close();
   };
   const models = catalog.provider === shown ? catalog.models : [];
   const chosenId = entity.provider === shown ? entity.model : "";
@@ -151,8 +156,7 @@ export function CharacterModelPicker({
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.stopPropagation();
-          setOpen(false);
-          trigger.current?.focus();
+          close();
         }
       }}
     >
@@ -242,8 +246,12 @@ export function CharacterModelPicker({
                 }
                 onClick={() => {
                   setBrowsing(p);
+                  setSearch("");
                   if (entity.provider !== p)
-                    assign({ provider: p, model: "", thinking: undefined });
+                    assign(
+                      { provider: p, model: "", thinking: undefined },
+                      false,
+                    );
                 }}
               >
                 {providerNames[p]}
@@ -364,10 +372,13 @@ export function CharacterModelPicker({
                 value={entity.thinking ?? ""}
                 disabled={disabled || levels.length === 1}
                 onChange={(e) =>
-                  assign({
-                    thinking: (e.target.value || undefined) as
-                      ThinkingLevel | undefined,
-                  })
+                  assign(
+                    {
+                      thinking: (e.target.value || undefined) as
+                        ThinkingLevel | undefined,
+                    },
+                    false,
+                  )
                 }
               >
                 <option value="">

@@ -131,8 +131,14 @@ export function AssistantModelMenu({
         }),
       });
       setData(next);
-      setOpen(false);
-      requestAnimationFrame(() => trigger.current?.focus());
+      if (nextModel !== undefined || nextProvider === null) {
+        setOpen(false);
+        requestAnimationFrame(() => trigger.current?.focus());
+      } else {
+        // Picking a provider is the first step; leave its models available.
+        setSearch("");
+        requestAnimationFrame(() => searchInput.current?.focus());
+      }
     } catch (e) {
       setError((e as Error).message);
       requestAnimationFrame(() => searchInput.current?.focus());
