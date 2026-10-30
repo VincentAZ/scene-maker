@@ -36,6 +36,8 @@ import {
 } from "../shared/coding";
 import { Markdown } from "./code/markdown";
 import { parseDiff } from "./code/diff";
+import { exportCodeTask, exportFilename } from "./code/transcriptExport";
+import { ChatExportMenu } from "./ChatExportMenu";
 
 const storageKey = "scene-maker-code-view-v1";
 type View = { screen: "list" | "thread" | "new"; id?: string };
@@ -927,6 +929,13 @@ export function CodingAssistant() {
             <ArrowLeft size={15} /> Tasks
           </button>
           {summary && <StatusPill task={summary} />}
+          {task && (
+            <ChatExportMenu
+              label="task conversation"
+              build={(format) => exportCodeTask(task, format)}
+              filename={(format) => exportFilename("code", task.id, format, new Date())}
+            />
+          )}
           {summary && !running && (
             <button
               className="icon-button"

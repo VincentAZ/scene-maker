@@ -3153,6 +3153,59 @@ label > span {
 .chat-toolbar .text-button {
   font-size: 11px;
 }
+.chat-export {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.chat-toolbar .chat-export {
+  margin-left: auto;
+}
+.chat-export .icon-button {
+  color: #6c7c5c;
+}
+.chat-export-menu {
+  position: absolute;
+  z-index: 300;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px #2b332d24;
+}
+.chat-export-menu button {
+  padding: 7px 10px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chat-export-menu button:hover,
+.chat-export-menu button:focus-visible {
+  background: #edf4e3;
+}
+.chat-export-note {
+  position: absolute;
+  z-index: 300;
+  top: calc(100% + 4px);
+  right: 0;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: var(--forest);
+  color: #fff;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.chat-export-note.failed {
+  background: #a5483c;
+}
 .chat-cleared {
   margin: 8px 20px 0;
   padding: 8px 10px;
