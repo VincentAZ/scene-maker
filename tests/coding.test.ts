@@ -14,7 +14,11 @@ import {
   writeSource,
 } from "../server/codeWorkspace";
 import type { Config } from "../server/ai";
-import { codingBusy, type CodingTask } from "../shared/coding";
+import {
+  codingBusy,
+  type CodingTask,
+  type CodingModelSelection,
+} from "../shared/coding";
 import { codingPreview } from "../server/codingPreview";
 import type { AgentEvent } from "../server/codingAgent";
 /** Flatten agent events into readable lines, the way the transcript shows them. */
@@ -225,6 +229,189 @@ it("runs tasks in parallel in separate checkouts and recovers after a restart", 
   expect(restored.status).toBe("failed");
   expect(restored.error).toContain("send a message to continue");
 });
+it("runs concurrent tasks with independent explicit model configs without mutating global settings", async () => {
+  const global: Config = {
+    ...structuredClone(config),
+    assistant: "google",
+    providers: {
+      openai: { key: "openai-key", model: "assistant-openai", thinking: "default" },
+      anthropic: { key: "anthropic-key", model: "assistant-claude" },
+      google: { key: "google-key", model: "assistant-gemini" },
+    },
+  };
+  const before = structuredClone(global);
+  const seen: Config[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let entered!: () => void;
+  const bothStarted = new Promise<void>((resolve) => { entered = resolve; });
+  const s = service({
+    config: () => global,
+    generate: async (runConfig) => {
+      seen.push(runConfig);
+      if (seen.length === 2) entered();
+      await gate;
+      return "Done.";
+    },
+  });
+  const firstSelection: CodingModelSelection = { provider: "openai", model: "code-openai" };
+  const secondSelection: CodingModelSelection = { provider: "anthropic", model: "code-claude" };
+  const [first, second] = await Promise.all([
+    s.start("First model", [], firstSelection),
+    s.start("Second model", [], secondSelection),
+  ]);
+  try {
+    await bothStarted;
+    expect(first.status).toBe("working");
+    expect(second.status).toBe("working");
+    expect(seen).toHaveLength(2);
+    for (const selection of [firstSelection, secondSelection]) {
+      const runConfig = seen.find((c) => c.assistant === selection.provider)!;
+      const expected = structuredClone(before);
+      expected.assistant = selection.provider;
+      expected.providers[selection.provider]!.model = selection.model;
+      expect(runConfig).toEqual(expected);
+      expect(runConfig).not.toBe(global);
+      expect(runConfig.providers).not.toBe(global.providers);
+    }
+    expect(global).toEqual(before);
+  } finally {
+    release();
+    await Promise.all([settled(first), settled(second)]);
+  }
+  expect(s.summary(first)).toMatchObject(firstSelection);
+  expect(s.summary(second)).toMatchObject(secondSelection);
+  s.setModel(first.id, { provider: "google", model: "code-gemini" });
+  expect(second).toMatchObject(secondSelection);
+  expect(global).toEqual(before);
+});
+
+it("persists task model changes and resumes with that choice despite assistant changes", async () => {
+  const global = structuredClone(config);
+  global.providers.anthropic = { key: "claude-key", model: "global-claude" };
+  const seen: Config[] = [];
+  const overrides = {
+    config: () => global,
+    generate: async (runConfig: Config) => {
+      seen.push(runConfig);
+      return "Done.";
+    },
+  };
+  const s = service(overrides);
+  const task = await settled(await s.start("Remember this model", [], {
+    provider: "anthropic", model: "initial-code-model",
+  }));
+  const selection: CodingModelSelection = { provider: "anthropic", model: "saved-code-model" };
+  s.setModel(task.id, selection);
+  global.assistant = null;
+  global.providers.anthropic!.model = "changed-global-model";
+  global.providers.openai!.model = "another-global-model";
+  const restored = service(overrides);
+  expect(restored.get(task.id)).toMatchObject(selection);
+  expect((await restored.info()).tasks[0]).toMatchObject(selection);
+  await settled(await restored.reply(task.id, "Continue with the saved model"));
+  expect(seen[1].assistant).toBe("anthropic");
+  expect(seen[1].providers.anthropic!.model).toBe("saved-code-model");
+  expect(seen[1].providers.openai!.model).toBe("another-global-model");
+  expect(restored.get(task.id)).toMatchObject(selection);
+  expect(global.assistant).toBeNull();
+  expect(global.providers.anthropic!.model).toBe("changed-global-model");
+  // Losing the task's own connection must not silently switch to the default.
+  delete global.providers.anthropic;
+  await expect(restored.reply(task.id, "Do not switch providers")).rejects.toThrow("anthropic connection");
+  expect(restored.get(task.id)).toMatchObject(selection);
+  expect(seen).toHaveLength(2);
+});
+
+it("chooses the first usable code provider independently of an offline or different assistant", async () => {
+  const global: Config = {
+    ...structuredClone(config),
+    assistant: null,
+    providers: {
+      openai: { key: "", model: "disconnected" },
+      anthropic: { key: "claude-key", model: "code-default" },
+      google: { key: "google-key", model: "assistant-model" },
+    },
+  };
+  const s = service({ config: () => global });
+  expect(await s.info()).toMatchObject({ available: true, provider: "anthropic", model: "code-default" });
+  global.assistant = "google";
+  expect(await s.info()).toMatchObject({ available: true, provider: "anthropic", model: "code-default" });
+  const task = await settled(await s.start("Use the code default"));
+  expect(task).toMatchObject({ provider: "anthropic", model: "code-default" });
+  global.providers = {};
+  expect(await s.info()).toMatchObject({ available: false, provider: null, model: "" });
+  await expect(s.start("No connection")).rejects.toThrow("connected AI provider");
+});
+
+it("validates selections and connected credentials without saving rejected changes", async () => {
+  const global = structuredClone(config);
+  const s = service({ config: () => global });
+  const invalid: unknown[] = [
+    { provider: "unknown", model: "code-model" },
+    { provider: "openai", model: "   " },
+    { provider: "openai", model: "x".repeat(201) },
+    { provider: "anthropic", model: "disconnected" },
+    { provider: "__proto__", model: "bad-provider" },
+    { model: "no-provider" },
+  ];
+  for (const selection of invalid)
+    await expect(s.start("Reject invalid choice", [], selection as CodingModelSelection)).rejects.toThrow();
+  expect(s.tasks.size).toBe(0);
+  const task = await settled(await s.start("Valid task"));
+  const saved = fs.readFileSync(path.join(dir, ".tasks", task.id, "task.json"), "utf8");
+  for (const selection of invalid)
+    expect(() => s.setModel(task.id, selection as CodingModelSelection)).toThrow();
+  expect(fs.readFileSync(path.join(dir, ".tasks", task.id, "task.json"), "utf8")).toBe(saved);
+  // An explicitly supplied model works even when no global model is selected.
+  global.providers.openai!.model = "";
+  await settled(await s.start("Use explicit model", [], { provider: "openai", model: "explicit-model" }));
+  // modelFor's provider-specific credential checks still apply.
+  global.providers.openai!.method = "chatgpt";
+  global.providers.openai!.chatgpt = {
+    clientId: "client", refreshToken: "refresh", idToken: "id", expiresAt: 0,
+    scopes: [], account: "fixture", planUsage: false,
+  };
+  await expect(s.start("Denied plan", [], { provider: "openai", model: "code" })).rejects.toThrow("plan usage");
+  expect(() => s.setModel(task.id, { provider: "openai", model: "code" })).toThrow("plan usage");
+});
+
+it("refuses model changes for busy, running, or locked tasks", async () => {
+  const s = service();
+  const task = await settled(await s.start("Make a reviewable change"));
+  const selection: CodingModelSelection = { provider: "openai", model: "new-code-model" };
+  for (const status of ["preparing", "working", "checking", "publishing"] as const) {
+    task.status = status;
+    expect(() => s.setModel(task.id, selection)).toThrow("before changing its model");
+  }
+  task.status = "ready";
+  // publish takes the lock synchronously, before its first awaited refresh.
+  const publish = s.publish(task.id, task.review, true);
+  expect(task.status).toBe("ready");
+  expect(() => s.setModel(task.id, selection)).toThrow("before changing its model");
+  await publish;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const running = service({
+    generate: async (_config, _checkout, _prompt, signal) => {
+      entered();
+      await new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(Error("stopped")), { once: true }));
+      return "";
+    },
+  });
+  const active = await running.start("Stay running");
+  await started;
+  try {
+    // Cover the running-handle guard independently of the status guard.
+    active.status = "idle";
+    expect(() => running.setModel(active.id, selection)).toThrow("before changing its model");
+  } finally {
+    active.status = "working";
+    running.cancel(active.id);
+    await settled(active);
+  }
+});
+
 it.skipIf(process.env.SCENE_MAKER_SANDBOX === "1")(
   "runs checks in a real network-disabled sandbox without host secrets",
   async () => {
@@ -619,6 +806,125 @@ it("round-trips a coding task through the HTTP API and publishes the reviewed di
   }
 });
 
+it("creates and updates task model selections through HTTP without touching assistant settings", async () => {
+  const { default: express } = await import("express");
+  const { codingRouter } = await import("../server/coding");
+  const global = structuredClone(config);
+  global.assistant = null;
+  global.providers.anthropic = { key: "fixture-claude-key", model: "global-claude" };
+  const before = structuredClone(global);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const seen: Config[] = [];
+  const s = service({
+    config: () => global,
+    generate: async (runConfig) => {
+      seen.push(runConfig);
+      await gate;
+      return "Answered.";
+    },
+  });
+  const app = express();
+  app.use(express.json());
+  app.use("/api/coding", codingRouter(s, async () => ""));
+  app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+    res.status(400).json({ error: error.message });
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/coding`;
+  const request = (url: string, method: string, body: object) => fetch(base + url, {
+    method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  let task: CodingTask | undefined;
+  try {
+    for (const selection of [
+      { provider: "unknown", model: "bad" },
+      { provider: "google", model: "disconnected" },
+      { provider: "openai", model: " " },
+      { provider: "openai" },
+      { model: "missing-provider" },
+    ]) {
+      const response = await request("/tasks", "POST", { prompt: "Invalid selection", ...selection });
+      expect(response.status).toBe(400);
+    }
+    expect(s.tasks.size).toBe(0);
+    const initial = { provider: "anthropic", model: "http-code-claude" };
+    const response = await request("/tasks", "POST", { prompt: "Use my chosen model", ...initial });
+    expect(response.status).toBe(202);
+    const created = await response.json();
+    expect(created).toMatchObject(initial);
+    task = s.get(created.id);
+    const url = `/tasks/${created.id}`;
+    const busy = await request(url + "/model", "PUT", { provider: "openai", model: "too-soon" });
+    expect(busy.status).toBe(400);
+    expect((await busy.json()).error).toContain("before changing its model");
+    release();
+    await settled(task);
+    expect(task).toMatchObject(initial);
+    for (const selection of [
+      { provider: "unknown", model: "bad" },
+      { provider: "google", model: "disconnected" },
+      { provider: "openai", model: " " },
+      { provider: "openai" },
+    ])
+      expect((await request(url + "/model", "PUT", selection)).status).toBe(400);
+    expect(task).toMatchObject(initial);
+    const next = { provider: "openai", model: "http-code-openai" };
+    const updated = await request(url + "/model", "PUT", next);
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject(next);
+    expect(await (await fetch(base + url)).json()).toMatchObject(next);
+    const info = await (await fetch(base)).json();
+    expect(info).toMatchObject({ available: true, provider: "openai", model: "fixture" });
+    expect(info.tasks[0]).toMatchObject(next);
+    expect(JSON.stringify(info)).not.toContain("fixture-claude-key");
+    expect((await request(url + "/reply", "POST", { message: "Use the saved choice" })).status).toBe(202);
+    await settled(task);
+    expect(seen.map((c) => ({ provider: c.assistant, model: c.providers[c.assistant!]!.model }))).toEqual([initial, next]);
+    expect(global).toEqual(before);
+  } finally {
+    release();
+    if (task) await settled(task);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+it("keeps the task model for queued turns when global settings change mid-run", async () => {
+  const global = structuredClone(config);
+  const seen: Config[] = [];
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const s = service({
+    config: () => global,
+    generate: async (runConfig) => {
+      seen.push(runConfig);
+      entered();
+      await gate;
+      return "Done.";
+    },
+  });
+  const task = await s.start("First turn", [], { provider: "openai", model: "task-only-model" });
+  try {
+    await started;
+    await s.reply(task.id, "Queued next turn");
+    global.assistant = null;
+    global.providers.openai!.model = "changed-global-model";
+  } finally {
+    release();
+    await settled(task);
+  }
+  expect(seen).toHaveLength(2);
+  for (const runConfig of seen) {
+    expect(runConfig.assistant).toBe("openai");
+    expect(runConfig.providers.openai!.model).toBe("task-only-model");
+  }
+  expect(global.assistant).toBeNull();
+  expect(global.providers.openai!.model).toBe("changed-global-model");
+});
+
 it("continues one conversation across turns, including after a push", async () => {
   const seen: { prompt: string; history: unknown[] }[] = [];
   const s = service({
@@ -761,6 +1067,8 @@ it("lists task summaries without transcripts or diffs", async () => {
   const [listed] = (await s.info()).tasks;
   expect(listed.id).toBe(task.id);
   expect(listed.fileCount).toBe(1);
+  expect(listed.provider).toBe(task.provider);
+  expect(listed.model).toBe(task.model);
   expect(listed.searchText).toContain("src/example.ts");
   expect(listed).not.toHaveProperty("transcript");
   expect(listed).not.toHaveProperty("diff");

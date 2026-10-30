@@ -26,6 +26,7 @@ import {
   sendAttachment,
 } from "./attachments";
 import type { Attachment } from "../shared/attachments";
+import { providers } from "../shared/scene";
 import {
   git,
   snapshot,
@@ -39,6 +40,7 @@ import {
   codingBusy,
   NARRATION,
   type CodingTask,
+  type CodingModelSelection,
   type CodingInfo,
   type CodingTaskSummary,
   type TranscriptEntry,
@@ -46,6 +48,10 @@ import {
 const exec = promisify(execFile);
 export const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const idSchema = z.string().uuid();
+const modelSelection = z.object({
+  provider: z.enum(providers),
+  model: z.string().trim().min(1).max(200),
+});
 /** Tasks that may run at once, each in its own checkout. */
 export const MAX_PARALLEL = 4;
 const TRANSCRIPT_LIMIT = 3000;
@@ -310,6 +316,8 @@ export class CodingService {
       id: task.id,
       prompt: task.prompt,
       branch: task.branch,
+      provider: task.provider,
+      model: task.model,
       status: task.status,
       created: task.created,
       updated: task.updated,
@@ -342,15 +350,16 @@ export class CodingService {
   async info(): Promise<CodingInfo> {
     let reason = await this.unavailable();
     const config = this.options.config();
-    if (!config.assistant || !config.providers[config.assistant]?.key)
+    const selection = this.defaultModel(config);
+    if (!selection)
       reason ||= "Choose a connected AI provider in Studio settings → Connections.";
     return {
       repository: path.basename(this.options.root),
       remote: await this.remote(),
       available: !reason,
       reason: reason || undefined,
-      provider: config.assistant,
-      model: config.assistant ? config.providers[config.assistant]?.model || "" : "",
+      provider: selection?.provider || null,
+      model: selection?.model || "",
       mcpServers: Object.keys(config.mcpServers || {}),
       maxSteps: codingStepLimit(),
       timeoutMinutes: codingTimeoutMinutes(),
@@ -359,20 +368,58 @@ export class CodingService {
         .map((t) => this.summary(t)),
     };
   }
-  private validConfig() {
-    const config = structuredClone(this.options.config());
-    modelFor(config, config.assistant); // Fail early if setup is incomplete.
-    return config;
+  /** Code defaults are independent of whether the scene assistant is enabled. */
+  private defaultModel(config: Config): CodingModelSelection | undefined {
+    for (const provider of providers) {
+      const model = config.providers[provider]?.model;
+      if (!model?.trim()) continue;
+      try {
+        modelFor(config, provider);
+        return { provider, model };
+      } catch {
+        // An incomplete connection (or denied ChatGPT plan usage) is not usable.
+      }
+    }
   }
-  async start(prompt: string, attachmentIds: string[] = []) {
+  private validConfig(selection?: CodingModelSelection) {
+    const config = structuredClone(this.options.config());
+    const choice = selection || this.defaultModel(config);
+    if (!choice)
+      throw Error("Choose a connected AI provider in Studio settings → Connections.");
+    const selected = modelSelection.parse(choice);
+    modelFor(config, selected.provider, selected.model); // Validate credentials, too.
+    config.assistant = selected.provider;
+    config.providers[selected.provider] = {
+      ...config.providers[selected.provider]!,
+      model: selected.model,
+    };
+    return { config, selection: selected };
+  }
+  /** Update an idle task without changing the assistant or another task. */
+  setModel(id: string, selection: CodingModelSelection) {
+    const task = this.get(id);
+    if (codingBusy(task.status) || this.running.has(id) || this.locks.has(id))
+      throw Error("Wait for the task to finish or stop it before changing its model.");
+    const selected = this.validConfig(selection).selection;
+    task.provider = selected.provider;
+    task.model = selected.model;
+    task.updated = Date.now();
+    this.save(task);
+    return task;
+  }
+  async start(
+    prompt: string,
+    attachmentIds: string[] = [],
+    selection?: CodingModelSelection,
+  ) {
     const busy = [...this.tasks.values()].filter((t) => codingBusy(t.status)).length;
     if (busy >= MAX_PARALLEL)
       throw Error(
         `${MAX_PARALLEL} tasks are already running. Wait for one to finish or stop one.`,
       );
-    const reason = (await this.info()).reason;
+    const reason = await this.unavailable();
     if (reason) throw Error(reason);
-    const config = this.validConfig();
+    const { config, selection: selected } = this.validConfig(selection);
     this.attachments.check(attachmentIds);
     const id = randomUUID();
     const task: CodingTask = {
@@ -388,8 +435,8 @@ export class CodingService {
       updated: Date.now(),
       step: 0,
       maxSteps: codingStepLimit(),
-      provider: config.assistant!,
-      model: config.providers[config.assistant!]?.model || "",
+      provider: selected.provider,
+      model: selected.model,
       summary: "",
       events: [],
       transcript: [],
@@ -471,7 +518,7 @@ export class CodingService {
     }
   }
   private resume(task: CodingTask, turn: Turn) {
-    const config = this.validConfig();
+    const { config } = this.validConfig(task);
     const failedChecks = task.checks.filter((c) => !c.ok);
     const feedback = failedChecks.length
       ? "\n\nThe last automated checks failed:\n" +
@@ -479,8 +526,6 @@ export class CodingService {
       : "";
     const prepare = !task.baseline;
     if (prepare) fs.rmSync(this.checkout(task.id), { recursive: true, force: true });
-    task.provider = config.assistant!;
-    task.model = config.providers[config.assistant!]?.model || "";
     task.status = prepare ? "preparing" : "working";
     task.error = undefined;
     task.previewUrl = undefined;
@@ -842,7 +887,15 @@ const words = z.string().trim().max(60_000);
 const filled = (body: { text: string; attachments: string[] }) =>
   !!body.text || body.attachments.length > 0;
 const newTask = z
-  .object({ prompt: words, attachments: attachmentIds })
+  .object({
+    prompt: words,
+    attachments: attachmentIds,
+    provider: modelSelection.shape.provider.optional(),
+    model: modelSelection.shape.model.optional(),
+  })
+  .refine((b) => (b.provider === undefined) === (b.model === undefined), {
+    message: "Choose both a provider and a model.",
+  })
   .refine((b) => filled({ text: b.prompt, attachments: b.attachments }), {
     message: "Write a message or attach a file.",
   });
@@ -864,10 +917,16 @@ export function codingRouter(
   router.use("/attachments", attachmentsRouter(service.attachments));
   router.post("/tasks", async (req, res) => {
     const body = newTask.parse(req.body);
-    res.status(202).json(service.summary(await service.start(body.prompt, body.attachments)));
+    const selection = body.provider && body.model
+      ? { provider: body.provider, model: body.model }
+      : undefined;
+    res.status(202).json(service.summary(await service.start(body.prompt, body.attachments, selection)));
   });
   router.post("/tasks/clear", (_req, res) => res.json(service.clear()));
   router.get("/tasks/:id", (req, res) => res.json(service.get(String(req.params.id))));
+  router.put("/tasks/:id/model", (req, res) =>
+    res.json(service.summary(service.setModel(String(req.params.id), modelSelection.parse(req.body)))),
+  );
   router.delete("/tasks/:id", (req, res) => res.json(service.delete(String(req.params.id))));
   router.post("/tasks/:id/stop", (req, res) =>
     res.json(service.summary(service.cancel(String(req.params.id)))),

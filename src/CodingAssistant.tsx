@@ -30,6 +30,7 @@ import {
   codingBusy,
   statusLabel,
   type CodingInfo,
+  type CodingModelSelection,
   type CodingTask,
   type CodingTaskSummary,
   type TranscriptEntry,
@@ -38,6 +39,8 @@ import { Markdown } from "./code/markdown";
 import { parseDiff } from "./code/diff";
 import { exportCodeTask, exportFilename } from "./code/transcriptExport";
 import { ChatExportMenu } from "./ChatExportMenu";
+import { CodeModelPicker } from "./CodeModelPicker";
+import { providerNames } from "./Connections";
 import {
   AttachButton,
   PendingChips,
@@ -147,7 +150,7 @@ function TaskList({
             <Code2 size={18} /> Code
           </h2>
           <p className="code-model">
-            {info.provider ? `${info.provider} · ${info.model}` : "No AI provider connected"}
+            Each task has its own provider and model
             <span>
               {info.maxSteps ? `${info.maxSteps} steps` : "Unlimited steps"} ·{" "}
               {info.timeoutMinutes ? `${info.timeoutMinutes} min limit` : "no time limit"} ·{" "}
@@ -192,6 +195,7 @@ function TaskList({
                   </span>
                 )}
                 <span className="code-task-branch">{task.branch}</span>
+                <span className="code-task-model">{providerNames[task.provider]} · {task.model}</span>
               </span>
             </button>
             {!codingBusy(task.status) && (
@@ -797,7 +801,10 @@ function Composer({
 
 /* ---------- Panel ---------- */
 
-export function CodingAssistant() {
+export function CodingAssistant({ revision, onConnections }: {
+  revision: number;
+  onConnections: () => void;
+}) {
   const [info, setInfo] = useState<CodingInfo | null>(null);
   const [view, setView] = useState<View>(readView);
   const [detail, setDetail] = useState<CodingTask | null>(null);
@@ -807,6 +814,7 @@ export function CodingAssistant() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [titleOpen, setTitleOpen] = useState(false);
+  const [newModel, setNewModel] = useState<CodingModelSelection | null>(null);
   const files = useCodeAttachments(setError);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -855,7 +863,7 @@ export function CodingAssistant() {
   }, [refresh]);
   useEffect(() => {
     void refresh().catch(() => {});
-  }, [view.screen, view.id, refresh]);
+  }, [view.screen, view.id, refresh, revision]);
   const anyBusy = !!info?.tasks.some((t) => codingBusy(t.status));
   useEffect(() => {
     if (!anyBusy) return;
@@ -916,6 +924,9 @@ export function CodingAssistant() {
         </p>
       </section>
     );
+  const selection = newModel || (info.provider
+    ? { provider: info.provider as CodingModelSelection["provider"], model: info.model }
+    : null);
   if (view.screen === "new")
     return (
       <section className="coding-assistant code-shell" aria-label="Coding assistant">
@@ -930,9 +941,14 @@ export function CodingAssistant() {
             Describe a feature, a fix or a question. The engineer works in a private checkout,
             narrates each step, runs the checks, and commits, pushes or deploys when you ask it to.
           </p>
-          <p className="code-model">
-            {info.provider ? `${info.provider} · ${info.model}` : "No AI provider connected"}
-          </p>
+          <CodeModelPicker
+            value={selection}
+            revision={revision}
+            disabled={busy}
+            onBusyChange={setBusy}
+            onConnections={onConnections}
+            onChange={async (next) => { setNewModel(next); }}
+          />
           {info.reason && <p className="code-notice">{info.reason}</p>}
           <ul className="code-examples">
             {[
@@ -954,7 +970,7 @@ export function CodingAssistant() {
           value={draft}
           onChange={setDraft}
           running={false}
-          disabled={busy || !info.available}
+          disabled={busy || !info.available || !selection}
           placeholder="What would you like to build or change?"
           {...fileProps}
           onSend={() =>
@@ -962,6 +978,7 @@ export function CodingAssistant() {
               const task = await post<CodingTaskSummary>("/api/coding/tasks", {
                 prompt: draft,
                 attachments: sentIds(),
+                ...selection,
               });
               setDrafts((d) => ({ ...d, new: "" }));
               files.clear("new");
@@ -1020,9 +1037,23 @@ export function CodingAssistant() {
               <GitBranch size={12} aria-hidden />{" "}
               <span>
                 {summary.branch}
-                {task ? ` · ${task.provider} · ${task.model}` : ""}
               </span>
             </p>
+            <CodeModelPicker
+              key={id}
+              value={{ provider: summary.provider, model: summary.model }}
+              revision={revision}
+              disabled={busy || running}
+              onBusyChange={setBusy}
+              onConnections={onConnections}
+              onChange={async (next) => {
+                await api(`/api/coding/tasks/${id}/model`, {
+                  method: "PUT", body: JSON.stringify(next),
+                });
+                await refresh();
+              }}
+            />
+            {running && <span className="code-model-note">Stop this task or wait for it to finish to change models.</span>}
           </div>
         )}
         {task ? (

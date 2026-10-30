@@ -1,4 +1,10 @@
 import type { Attachment } from "./attachments";
+import type { providers } from "./scene";
+/** An explicit model choice owned by one coding task, not the scene assistant. */
+export type CodingModelSelection = {
+  provider: (typeof providers)[number];
+  model: string;
+};
 export type CodingStatus =
   | "preparing"
   | "working"
@@ -59,7 +65,7 @@ export type CodingTask = {
   step?: number;
   /** Configured step limit; 0 means unlimited. */
   maxSteps?: number;
-  provider: string;
+  provider: CodingModelSelection["provider"];
   model: string;
   /** The engineer's last reply. */
   summary: string;
@@ -91,6 +97,8 @@ export type CodingTaskSummary = Pick<
   | "id"
   | "prompt"
   | "branch"
+  | "provider"
+  | "model"
   | "status"
   | "created"
   | "updated"

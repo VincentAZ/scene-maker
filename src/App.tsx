@@ -1518,12 +1518,6 @@ export default function App() {
             <ChevronDown size={14} />
           </button>
         </div>
-        <AssistantModelMenu
-          disabled={busy}
-          revision={connectionsRevision}
-          onBusyChange={setModelSwitchBusy}
-          onConnections={() => setModal("connections")}
-        />
         <div className="top-actions">
           <span
             className={`save-label ${saveState.includes("not") ? "warning" : ""}`}
@@ -2487,9 +2481,20 @@ export default function App() {
           onCollapse={() => setPanel(false)}
         >
           {rightTab === "code" ? (
-            <CodingAssistant />
+            <CodingAssistant
+              revision={connectionsRevision}
+              onConnections={() => setModal("connections")}
+            />
           ) : rightTab === "assistant" ? (
             <>
+              <div className="assistant-settings">
+                <AssistantModelMenu
+                  disabled={busy}
+                  revision={connectionsRevision}
+                  onBusyChange={setModelSwitchBusy}
+                  onConnections={() => setModal("connections")}
+                />
+              </div>
               <div className="assistant-heading">
                 <span className="assistant-orb">
                   <Sparkles size={22} />

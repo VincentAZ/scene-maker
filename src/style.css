@@ -3317,8 +3317,7 @@ label > span {
 
 .assistant-model-menu {
   position: relative;
-  flex: 0 1 280px;
-  min-width: 170px;
+  min-width: 0;
 }
 .assistant-model-trigger {
   display: flex;
@@ -3475,9 +3474,6 @@ label > span {
   .project-crumb > svg {
     display: none;
   }
-  .assistant-model-menu {
-    flex-basis: 230px;
-  }
 }
 @media (max-width: 800px) {
   .topbar {
@@ -3486,10 +3482,6 @@ label > span {
     min-height: 102px;
     padding: 10px 12px;
     gap: 10px;
-  }
-  .assistant-model-menu {
-    order: 3;
-    flex-basis: 100%;
   }
   .assistant-model-popover {
     max-height: calc(100dvh - 125px);
@@ -5563,4 +5555,41 @@ a.attach-chip {
 }
 .cinema-guide[hidden] {
   display: none;
+}
+
+/* Model choices live with the conversation or task they control. */
+.assistant-settings {
+  margin: 16px 20px 0;
+  flex-shrink: 0;
+}
+.assistant-settings .assistant-model-popover,
+.code-model-picker .assistant-model-popover {
+  width: 100%;
+  top: calc(100% + 6px);
+  max-height: clamp(160px, calc(100dvh - 330px), 500px);
+}
+.assistant-settings .assistant-model-popover {
+  max-height: calc(100dvh - 200px);
+}
+.code-model-picker {
+  position: relative;
+  min-width: 0;
+  margin-top: 8px;
+}
+.code-new-intro .code-model-picker .assistant-model-popover {
+  position: static;
+  margin-top: 8px;
+  max-height: none;
+  box-shadow: none;
+}
+.code-model-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #7f8d71;
+}
+.code-task-model {
+  width: 100%;
+  overflow-wrap: anywhere;
 }
