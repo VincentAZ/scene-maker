@@ -41,7 +41,7 @@ export type ViewportHandle = {
   /** The live canvas and dialogue overlay, for recording the view. */
   recordingSurface: () => RecordingSurface | null;
   /** Called after every rendered frame while set (for recordings). */
-  onFrame: (listener: (() => void) | null) => void;
+  onFrame: (listener: ((time: number) => void) | null) => void;
   exportGLB: () => Promise<ArrayBuffer>;
   reset: () => void;
   frame: (
@@ -112,7 +112,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       live = useRef(props);
     live.current = props;
     const readyKey = useRef("");
-    const frameListener = useRef<(() => void) | null>(null);
+    const frameListener = useRef<((time: number) => void) | null>(null);
     const bubbleOverlay = useRef<HTMLElement | null>(null);
     const requestedModelKey = modelKey(props.scene);
     const context = useRef<{
@@ -495,7 +495,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         if (controls.enabled) controls.update();
         renderer.render(world, camera);
         projectBubbles(elapsed);
-        frameListener.current?.();
+        frameListener.current?.(elapsed);
       };
       frame = requestAnimationFrame(loop);
       return () => {

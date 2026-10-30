@@ -41,8 +41,6 @@ import {
   Film,
   Lightbulb,
   PanelRightClose,
-  Circle,
-  Square,
 } from "lucide-react";
 import JSZip from "jszip";
 import { AssistantModelMenu } from "./AssistantModelMenu";
@@ -104,6 +102,7 @@ import {
 import { ConversationAside } from "./ConversationAside";
 import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
+import { RecordButton, type RecordingStatus } from "./RecordButton";
 import {
   SceneRecorder,
   recordingFileName,
@@ -314,20 +313,22 @@ export default function App() {
     setTimeout(() => setNotice(""), 4000);
   };
   // Recording the viewport during playback; the take ends when playback stops.
+  // The take follows the scene clock, so it can span a live cast conversation
+  // and skips the waits while the cast generates replies.
   const recorder = useRef<SceneRecorder | null>(null);
-  const [recording, setRecording] = useState<"idle" | "recording" | "saving">(
-    "idle",
-  );
+  const [recording, setRecording] = useState<RecordingStatus>("idle");
+  const [activeTake, setActiveTake] = useState<SceneRecorder | null>(null);
   const sceneEnd = Math.max(
     0,
     ...scene.entities.map((e) => e.clips.reduce((t, c) => t + c.duration, 0)),
   );
-  const startRecording = () => {
-    if (recording !== "idle" || recorder.current) return;
+  /** Arm a take; `play` also starts playback from the playhead. */
+  const startRecording = (play: boolean) => {
+    if (recording !== "idle" || recorder.current) return false;
     const surface = viewport.current?.recordingSurface();
     if (!surface) {
       report("Wait for the scene to finish loading, then record again.");
-      return;
+      return false;
     }
     const audio = voiceEnabled ? armRecordingAudio() : null;
     let take: SceneRecorder;
@@ -336,15 +337,26 @@ export default function App() {
     } catch (error) {
       disarmRecordingAudio();
       report((error as Error).message);
-      return;
+      return false;
     }
     recorder.current = take;
-    viewport.current?.onFrame(() => take.drawFrame());
+    setActiveTake(take);
+    viewport.current?.onFrame((t) => take.drawFrame(t));
     // Restart the current voice line so its audio joins the recording.
     voice.stop();
-    if (sceneEnd > 0 && time >= sceneEnd) setTime(0);
     setRecording("recording");
-    setPlaying(true);
+    if (play) {
+      if (sceneEnd > 0 && time >= sceneEnd) setTime(0);
+      setPlaying(true);
+    }
+    return true;
+  };
+  const recordConversation = () => {
+    if (startRecording(false)) void runConversation();
+  };
+  const stopRecording = () => {
+    if (!castProgress) setPlaying(false);
+    void finishRecording();
   };
   const finishRecording = useCallback(async () => {
     const take = recorder.current;
@@ -361,12 +373,16 @@ export default function App() {
     } catch (error) {
       report((error as Error).message);
     } finally {
+      setActiveTake(null);
       setRecording("idle");
     }
   }, [report]);
+  // A take ends when playback stops, unless a cast conversation is still
+  // generating (it pauses playback while waiting for the first reply).
   useEffect(() => {
-    if (recording === "recording" && !playing) void finishRecording();
-  }, [recording, playing, finishRecording]);
+    if (recording === "recording" && !playing && !castProgress)
+      void finishRecording();
+  }, [recording, playing, castProgress, finishRecording]);
   useEffect(
     () => () => {
       recorder.current?.stop().catch(() => {});
@@ -1764,7 +1780,7 @@ export default function App() {
               ) : (
                 <span className="view-label recording-label" role="status">
                   <span className="recording-dot" />
-                  {recording === "recording" ? "RECORDING" : "SAVING MP4…"}
+                  {recording === "recording" ? "REC" : "SAVING MP4…"}
                 </span>
               )}
               <div className="stage-pill">
@@ -1887,35 +1903,13 @@ export default function App() {
                     <Play size={15} fill="currentColor" />
                   )}
                 </button>
-                <button
-                  className={`icon-button record-button${recording === "recording" ? " active" : ""}`}
-                  aria-label={
-                    recording === "recording"
-                      ? "Stop recording"
-                      : "Record scene as MP4"
-                  }
-                  title={
-                    recording === "recording"
-                      ? "Stop recording and save the MP4"
-                      : recording === "saving"
-                        ? "Saving MP4…"
-                        : "Record the scene while it plays and save it as an MP4"
-                  }
-                  disabled={recording === "saving"}
-                  onClick={() =>
-                    recording === "recording"
-                      ? setPlaying(false)
-                      : startRecording()
-                  }
-                >
-                  {recording === "recording" ? (
-                    <Square size={13} fill="currentColor" />
-                  ) : recording === "saving" ? (
-                    <LoaderCircle size={15} className="spin" />
-                  ) : (
-                    <Circle size={14} fill="currentColor" />
-                  )}
-                </button>
+                <RecordButton
+                  status={recording}
+                  recorder={activeTake}
+                  label="Record the scene while it plays and save it as an MP4"
+                  onStart={() => startRecording(!castProgress)}
+                  onStop={stopRecording}
+                />
                 <span className="timecode">
                   {time.toFixed(1).padStart(4, "0")}{" "}
                   <span>/ {total.toFixed(1)}s</span>
@@ -2146,6 +2140,38 @@ export default function App() {
                     : "Let them talk"}
               </button>
             </div>
+            {recording === "idle" ? (
+              <button
+                className="record-conversation"
+                disabled={
+                  busy ||
+                  modelSwitchBusy ||
+                  !!castProgress ||
+                  cast.filter((e) => e.visible).length < 2
+                }
+                title="Generate the conversation and record it to an MP4 as it plays. Waits for replies are left out."
+                onClick={recordConversation}
+              >
+                <span className="record-dot" aria-hidden="true" />
+                {scene.transcript.length
+                  ? "Record while they continue"
+                  : "Record while they talk"}
+              </button>
+            ) : (
+              <div className="record-conversation-status">
+                <RecordButton
+                  status={recording}
+                  recorder={activeTake}
+                  onStart={() => {}}
+                  onStop={stopRecording}
+                />
+                <span className="small muted">
+                  {recording === "saving"
+                    ? "Saving your MP4…"
+                    : "Recording. The video skips the waits while the cast thinks."}
+                </span>
+              </div>
+            )}
             {castProgress && (
               <CastProgress progress={castProgress} onStop={stopConversation} />
             )}

@@ -6,6 +6,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { Server } from "node:http";
 import {
+  RecordingClock,
   chooseRecordingFormat,
   recordingFileName,
   recordingSize,
@@ -48,6 +49,25 @@ describe("recording helpers", () => {
       "three",
       "four",
     ]);
+  });
+  it("follows the scene clock: waits, records, pauses on holds, resumes", () => {
+    const clock = new RecordingClock(0.2);
+    // Scene frozen while the cast generates its first reply: nothing yet.
+    expect(clock.update(4, 0)).toBe("skip");
+    expect(clock.update(4, 500)).toBe("skip");
+    expect(clock.state).toBe("waiting");
+    // First reply plays.
+    expect(clock.update(4.02, 1000)).toBe("start");
+    expect(clock.update(4.04, 1016)).toBe("draw");
+    // Brief hold (e.g. a dropped frame) keeps drawing.
+    expect(clock.update(4.04, 1100)).toBe("draw");
+    // Held past the threshold while waiting for the next reply: pause.
+    expect(clock.update(4.04, 1300)).toBe("pause");
+    expect(clock.update(4.04, 5000)).toBe("skip");
+    expect(clock.recorded(5000)).toBeCloseTo(0.3);
+    // Next reply starts playing.
+    expect(clock.update(4.06, 5100)).toBe("resume");
+    expect(clock.recorded(6100)).toBeCloseTo(1.3);
   });
   it("identifies containers by content and builds ffmpeg arguments", () => {
     expect(recordingContainer(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))).toBe(

@@ -4992,30 +4992,144 @@ label > span {
   padding: 10px;
   border-radius: 8px;
 }
+/* Recording: camera-style red dot that blinks while a take is live. */
 .record-button {
-  color: #b5483c;
+  --rec: #e5352b;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 27px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s,
+    border-color 0.15s;
 }
-.record-button.active {
-  background: #b5483c22;
+.record-button .record-dot,
+.record-conversation .record-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--rec, #e5352b);
+  box-shadow: inset 0 -1px 2px #0003;
+  flex-shrink: 0;
 }
-.record-button:disabled {
-  opacity: 0.6;
+.record-button.idle {
+  width: 27px;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #e2c9c3;
+  box-shadow: 0 1px 2px #5a1d1814;
+}
+.record-button.idle:hover:not(:disabled) {
+  border-color: var(--rec);
+  box-shadow: 0 0 0 3px #e5352b26;
+}
+.record-button.idle:hover:not(:disabled) .record-dot {
+  transform: scale(1.12);
+}
+.record-button.idle:disabled {
+  opacity: 0.45;
+}
+.record-button.recording {
+  padding: 0 6px 0 9px;
+  background: #fff1ef;
+  border: 1px solid #f0a49c;
+  color: #a3241b;
+  box-shadow: 0 0 0 3px #e5352b1a;
+}
+.record-button.recording .record-dot {
+  box-shadow: 0 0 6px 1px #e5352b99;
+  animation: record-blink 1s steps(1, end) infinite;
+}
+.record-button.recording.held .record-dot {
+  animation: none;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.record-button .record-text em {
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #c0665e;
+}
+.record-button .record-stop {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #a3241b;
+  position: relative;
+}
+.record-button .record-stop::after {
+  content: "";
+  position: absolute;
+  inset: 5.5px;
+  border-radius: 1.5px;
+  background: #fff;
+}
+.record-button.recording:hover {
+  background: #ffe4e0;
+}
+.record-button.saving {
+  padding: 0 10px;
+  background: #f5f2ea;
+  border: 1px solid #e2dccd;
+  color: #6c6a5c;
   cursor: progress;
 }
+.record-conversation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #ecc4be;
+  background: #fff8f6;
+  color: #8f2a22;
+  font-weight: 600;
+}
+.record-conversation:hover:not(:disabled) {
+  border-color: #e5352b;
+  background: #fff0ed;
+}
+.record-conversation:disabled {
+  opacity: 0.5;
+}
+.record-conversation-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .recording-label {
-  color: #8e2f25;
+  color: #a3241b;
+  background: #fff1efe6 !important;
+  border-color: #f0a49c !important;
 }
 .recording-dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #d0443a;
+  background: #e5352b;
+  box-shadow: 0 0 5px #e5352b;
   flex-shrink: 0;
-  animation: recording-pulse 1.2s ease-in-out infinite;
+  animation: record-blink 1s steps(1, end) infinite;
 }
-@keyframes recording-pulse {
+@keyframes record-blink {
   50% {
-    opacity: 0.3;
+    opacity: 0.15;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .record-button.recording .record-dot,
+  .recording-dot {
+    animation: none;
   }
 }

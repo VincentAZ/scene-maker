@@ -89,11 +89,11 @@ export function drawBubbles(
   scale: number,
 ) {
   for (const bubble of Array.from(layer.children) as HTMLElement[]) {
-    if (bubble.hidden) continue;
+    // Thinking bubbles mark live generation, not the finished scene.
+    if (bubble.hidden || bubble.classList.contains("thought")) continue;
     const name = bubble.querySelector("strong")?.textContent ?? "";
     const words = bubble.querySelector("span");
     const text = words?.textContent ?? "";
-    const thought = bubble.classList.contains("thought");
     const rect = bubble.getBoundingClientRect();
     const textWidth =
       words?.getBoundingClientRect().width ?? Math.max(0, rect.width - 32);
@@ -101,17 +101,9 @@ export function drawBubbles(
     ctx.save();
     ctx.scale(scale, scale);
     ctx.translate(rect.left - origin.left, rect.top - origin.top);
-    const radius = thought ? 24 : 18;
-    // Tail below the bubble.
-    ctx.fillStyle = "#fffef8";
+    const radius = 18;
     ctx.strokeStyle = "#819776";
     ctx.lineWidth = 1;
-    if (thought) {
-      ctx.beginPath();
-      ctx.arc(rect.width / 2, rect.height + 9, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
     ctx.shadowColor = "#263a2420";
     ctx.shadowBlur = 20;
     ctx.shadowOffsetY = 5;
@@ -119,22 +111,19 @@ export function drawBubbles(
     roundRect(ctx, 0.5, 0.5, rect.width - 1, rect.height - 1, radius);
     ctx.fill();
     ctx.shadowColor = "transparent";
-    if (thought) ctx.setLineDash([3, 3]);
     ctx.stroke();
-    ctx.setLineDash([]);
-    if (!thought) {
-      ctx.beginPath();
-      ctx.moveTo(rect.width / 2 - 7, rect.height - 1);
-      ctx.lineTo(rect.width / 2, rect.height + 7);
-      ctx.lineTo(rect.width / 2 + 7, rect.height - 1);
-      ctx.fillStyle = "#fffef8";
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(rect.width / 2 - 7, rect.height - 0.5);
-      ctx.lineTo(rect.width / 2, rect.height + 7);
-      ctx.lineTo(rect.width / 2 + 7, rect.height - 0.5);
-      ctx.stroke();
-    }
+    // Tail below the bubble, pointing at the speaker.
+    ctx.beginPath();
+    ctx.moveTo(rect.width / 2 - 7, rect.height - 1);
+    ctx.lineTo(rect.width / 2, rect.height + 7);
+    ctx.lineTo(rect.width / 2 + 7, rect.height - 1);
+    ctx.fillStyle = "#fffef8";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(rect.width / 2 - 7, rect.height - 0.5);
+    ctx.lineTo(rect.width / 2, rect.height + 7);
+    ctx.lineTo(rect.width / 2 + 7, rect.height - 0.5);
+    ctx.stroke();
     ctx.textBaseline = "top";
     ctx.fillStyle = "#74846a";
     ctx.font = `600 10px ${family}`;
@@ -142,7 +131,7 @@ export function drawBubbles(
     ctx.fillText(name.toUpperCase(), 16, 13);
     if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
     ctx.fillStyle = "#31452c";
-    ctx.font = `${thought ? "italic " : ""}14px ${family}`;
+    ctx.font = `14px ${family}`;
     wrapText(text, textWidth + 1, (t) => ctx.measureText(t).width).forEach(
       (line, i) => ctx.fillText(line, 16, 32 + i * 21),
     );
@@ -161,6 +150,56 @@ export type Recording = {
 };
 
 /**
+ * Decides, frame by frame, whether the recording should be running. The take
+ * follows the scene clock: it starts when scene time first moves and pauses
+ * while time holds still (a cast still generating its next reply, a voice
+ * line loading, the end of the sequence), so the video has no dead waits.
+ */
+export class RecordingClock {
+  private last: number | null = null;
+  private movedAt = 0;
+  private segmentStart = 0;
+  private total = 0;
+  state: "waiting" | "recording" | "paused" = "waiting";
+  constructor(private hold = 0.2) {}
+  /** Feed the scene time shown this frame; returns what the recorder should do. */
+  update(
+    time: number,
+    now: number,
+  ): "start" | "resume" | "pause" | "draw" | "skip" {
+    const moved = this.last !== null && Math.abs(time - this.last) > 1e-4;
+    this.last = time;
+    if (moved) this.movedAt = now;
+    if (this.state === "waiting") {
+      if (!moved) return "skip";
+      this.state = "recording";
+      this.segmentStart = now;
+      return "start";
+    }
+    if (this.state === "paused") {
+      if (!moved) return "skip";
+      this.state = "recording";
+      this.segmentStart = now;
+      return "resume";
+    }
+    if (!moved && now - this.movedAt > this.hold * 1000) {
+      this.state = "paused";
+      this.total += now - this.segmentStart;
+      return "pause";
+    }
+    return "draw";
+  }
+  /** Seconds of video recorded so far. */
+  recorded(now: number) {
+    return (
+      (this.total +
+        (this.state === "recording" ? now - this.segmentStart : 0)) /
+      1000
+    );
+  }
+}
+
+/**
  * Records the live viewport in real time: every rendered frame is composited
  * (3D view + dialogue bubbles) onto an offscreen canvas captured by
  * MediaRecorder, optionally with a voice audio track.
@@ -172,6 +211,7 @@ export class SceneRecorder {
   private chunks: Blob[] = [];
   private stream: MediaStream;
   private done: Promise<Recording>;
+  private clock = new RecordingClock();
   readonly format: RecordingFormat;
   constructor(
     private surface: RecordingSurface,
@@ -192,7 +232,7 @@ export class SceneRecorder {
     const ctx = this.frame.getContext("2d");
     if (!ctx) throw Error("This browser cannot record video.");
     this.ctx = ctx;
-    this.drawFrame();
+    this.paint();
     this.stream = this.frame.captureStream(30);
     if (audio) this.stream.addTrack(audio);
     this.recorder = new MediaRecorder(this.stream, {
@@ -205,7 +245,6 @@ export class SceneRecorder {
     });
     this.done = new Promise((resolve, reject) => {
       this.recorder.addEventListener("stop", () => {
-        for (const track of this.stream.getVideoTracks()) track.stop();
         const blob = new Blob(this.chunks, {
           type: format.mimeType.split(";")[0],
         });
@@ -217,13 +256,28 @@ export class SceneRecorder {
         reject(Error("The browser stopped the recording unexpectedly.")),
       );
     });
-    this.recorder.start(1000);
   }
-  get active() {
-    return this.recorder.state === "recording";
+  /** "waiting" until the scene first plays, "paused" while its clock holds. */
+  get state() {
+    return this.clock.state;
   }
-  /** Copy the latest rendered viewport frame into the recording. */
-  drawFrame() {
+  /** Seconds of video recorded so far. */
+  get seconds() {
+    return this.clock.recorded(performance.now());
+  }
+  /** Called after each rendered viewport frame with the scene time shown. */
+  drawFrame(time: number) {
+    const step = this.clock.update(time, performance.now());
+    if (step === "skip") return;
+    if (step === "pause") {
+      this.recorder.pause();
+      return;
+    }
+    this.paint();
+    if (step === "start") this.recorder.start(1000);
+    if (step === "resume") this.recorder.resume();
+  }
+  private paint() {
     const { canvas, overlay } = this.surface;
     const { width, height } = this.frame;
     this.ctx.drawImage(canvas, 0, 0, width, height);
@@ -231,7 +285,12 @@ export class SceneRecorder {
     if (box.width) drawBubbles(this.ctx, overlay, box, width / box.width);
   }
   stop(): Promise<Recording> {
-    if (this.recorder.state !== "inactive") this.recorder.stop();
+    for (const track of this.stream.getVideoTracks()) track.stop();
+    if (this.recorder.state === "inactive")
+      return Promise.reject(
+        Error("Nothing played while recording, so no video was saved."),
+      );
+    this.recorder.stop();
     return this.done;
   }
 }
