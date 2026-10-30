@@ -1,0 +1,105 @@
+{
+  "status": "PARTIAL_BLOCKED_ADOBE_LOGIN",
+  "files": [
+    {
+      "path": "artifacts/archival-office.blend",
+      "bytes": 7057811,
+      "sha256": "2c20719868daa232435ed304b7c5df49389f1bfb3246b0aec67a11ced7c0470d"
+    },
+    {
+      "path": "artifacts/archival-office.glb",
+      "bytes": 5906536,
+      "sha256": "c8309e41a5ee51928fe05ec54bdc410091b716813723fc5463ce7b7c8529354d"
+    },
+    {
+      "path": "artifacts/archival-office.json",
+      "bytes": 3863,
+      "sha256": "b75362f22895d326ebe7bb049b2719366096dbb12290ce7977bb2e1cbe092bab"
+    },
+    {
+      "path": "artifacts/archivist-male-hunyuan-remote-untextured.glb",
+      "bytes": 7517232,
+      "sha256": "d823ba6432519dd14f78ccb2807e7f9b177a997bc9d835967445c76ecc195a75"
+    },
+    {
+      "path": "artifacts/archivist-male-hunyuan-remote-untextured.json",
+      "bytes": 1658,
+      "sha256": "bdf3a4aa8da6918501ead7e855eb29f0517bc5a0f300747040f6da2303ad9e63"
+    },
+    {
+      "path": "artifacts/archivist-male-reference.json",
+      "bytes": 1006,
+      "sha256": "a4185128e809f2d24a9546d7aafeae51d2c6457c49e0e6af0a53cc3e48d4be6d"
+    },
+    {
+      "path": "artifacts/archivist-male-reference.png",
+      "bytes": 322587,
+      "sha256": "256216d1d4eb06cf8d9b5b175966091bd41aaac10dba6ad653ee353c3e442813"
+    },
+    {
+      "path": "artifacts/bankers-lamp-hunyuan-remote-untextured.glb",
+      "bytes": 4295892,
+      "sha256": "0eea5e7d4a1866d9316ff790c0d2405909076bd503106adb4818c975dd8fef3e"
+    },
+    {
+      "path": "artifacts/bankers-lamp-hunyuan-remote-untextured.json",
+      "bytes": 1107,
+      "sha256": "25586ea29dcb4b605963156c7e4022dfe9509660f8561ca3d599ed6610ca8569"
+    },
+    {
+      "path": "artifacts/bankers-lamp-reference.json",
+      "bytes": 842,
+      "sha256": "9c903fcf3beb2e12d9a7e2ce47e29f2f0b23c308f0f57dfeffcb0daec94322e8"
+    },
+    {
+      "path": "artifacts/bankers-lamp-reference.png",
+      "bytes": 309014,
+      "sha256": "914925842af1d53cbf5bb480479fe3b17177fb92d5855e2a4297423103b2d82e"
+    },
+    {
+      "path": "evidence/archival-office-preview.png",
+      "bytes": 2084952,
+      "sha256": "46c23f75521b79e8d368a0b695e13e64596e5244d82511f5dd7bfaae3ae9a021"
+    },
+    {
+      "path": "evidence/archivist-male-clay-inspection.png",
+      "bytes": 460770,
+      "sha256": "a952ff3b9c33122e8638276ab38dbec8df1cf5755d4364936db4dd589a5f561a"
+    },
+    {
+      "path": "evidence/bankers-lamp-clay-inspection.png",
+      "bytes": 427356,
+      "sha256": "779b018ec2d4a4c14294847294f3185d347937af91f57fb72697d5394e2d1583"
+    },
+    {
+      "path": "evidence/generation-panel.png",
+      "bytes": 290260,
+      "sha256": "4907482c58c900d5024457dd91c6ee3cc9984f6c60cd48717b8f86055050229c"
+    },
+    {
+      "path": "evidence/mixamo-access-check.json",
+      "bytes": 1949,
+      "sha256": "d29f7a1f71dde2551a796ffcc608d015e8849e475b3de01b01bcea98f529ea5f"
+    },
+    {
+      "path": "evidence/mixamo-access-check.png",
+      "bytes": 669087,
+      "sha256": "7da04371cf7fde941341a2ee4ffda53fbf7649ae5dc6da259d8d04e042cc33d7"
+    },
+    {
+      "path": "evidence/mixamo-panel.png",
+      "bytes": 315137,
+      "sha256": "f5d1b6bb51f89d8f584e2459227200b9ed135aa401e24d8e45b377d943143154"
+    },
+    {
+      "path": "licenses/Hunyuan3D-2-LICENSE.txt",
+      "bytes": 17822,
+      "sha256": "bfd3eec40c5777595b813c73c105f1aa33c403eecca49198f4faf0fea7b76a11"
+    },
+    {
+      "path": "licenses/SDXL-LICENSE.md",
+      "bytes": 14107,
+      "sha256": "5f44a64473fdb1019fc616d999d351f60bf061a4d77272b4b7309f799dba3676"
+    }
+  ]
+}

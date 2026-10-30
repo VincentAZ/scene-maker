@@ -1,0 +1,36 @@
+{
+  "model": "tencent/Hunyuan3D-2/hunyuan3d-dit-v2-0",
+  "space": "tencent/Hunyuan3D-2",
+  "space_revision": "40b9abf02675534b9e80e3150bd97b85c135c8c8",
+  "license": "Tencent Hunyuan 3D 2.0 Community License Agreement",
+  "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE",
+  "license_limitations": "Excludes EU UK South Korea; >1M MAU special license; see downloaded full license",
+  "input_reference": ".data/ai-pilot/references/bankers-lamp.png",
+  "seed": 39001,
+  "steps": 30,
+  "guidance_scale": 5,
+  "octree_resolution": 256,
+  "background_removal": false,
+  "geometry": [
+    {
+      "vertices": 104549,
+      "faces": 253340,
+      "visual": null
+    }
+  ],
+  "bounds": [
+    [
+      -0.5220603346824646,
+      -0.9982870817184448,
+      -0.379517525434494
+    ],
+    [
+      0.48293977975845337,
+      0.9430308938026428,
+      0.3408513367176056
+    ]
+  ],
+  "sha256": "0eea5e7d4a1866d9316ff790c0d2405909076bd503106adb4818c975dd8fef3e",
+  "bytes": 4295892,
+  "status": "Actual AI-generated shape from FLUX-generated reference, untextured; visual quality not reviewed"
+}

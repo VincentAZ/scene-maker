@@ -21,6 +21,7 @@ export type ConnectionsData = {
     elevenlabs: boolean;
     piper: { engine: boolean; voices: number };
   };
+  generation?: { meshy: boolean };
   mcpServers?: Record<
     string,
     {
@@ -80,6 +81,8 @@ export function Connections({
   const [mcpText, setMcpText] = useState("");
   const [mcpStatus, setMcpStatus] = useState("");
   const [mcpBusy, setMcpBusy] = useState(false);
+  const [meshyKey, setMeshyKey] = useState("");
+  const [meshyBusy, setMeshyBusy] = useState(false);
   async function load() {
     try {
       const d = await api<ConnectionsData>("/api/connections");
@@ -282,7 +285,11 @@ export function Connections({
               setMcpBusy(true);
               try {
                 const parsed = JSON.parse(mcpText) as unknown;
-                if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+                if (
+                  !parsed ||
+                  typeof parsed !== "object" ||
+                  Array.isArray(parsed)
+                )
                   throw Error("Enter a JSON object keyed by server name.");
                 await save({ mcpServers: parsed });
                 setMcpText("");
@@ -359,8 +366,8 @@ export function Connections({
         <p className="integration-note">
           Unreal Engine opens the project included in a production package.
           Unpack it and open SceneMaker.uproject; setup runs on first launch.
-          For Mixamo, download your character as FBX and choose “Import asset”
-          in the library. Blender converts it for the studio.
+          For Mixamo, use “Generate with AI · Rig with Mixamo” in the library:
+          it prepares the file, opens mixamo.com and picks up your downloads.
         </p>
         <a
           className="text-link"
@@ -370,6 +377,65 @@ export function Connections({
         >
           Open Mixamo <ExternalLink size={13} />
         </a>
+      </details>
+      <details className="connection-details">
+        <summary>3D generation</summary>
+        <p className="integration-note">
+          Meshy turns a description into a textured 3D model. Scene Maker then
+          cleans it up in Blender and, for characters, prepares it for Mixamo
+          rigging. Meshy bills per generation; review its current output and
+          redistribution terms before publishing generated assets.
+        </p>
+        <label>
+          Meshy API key{" "}
+          {data.generation?.meshy && (
+            <small className="muted">· saved, paste to replace</small>
+          )}
+          <input
+            type="password"
+            autoComplete="off"
+            value={meshyKey}
+            placeholder={data.generation?.meshy ? "Key saved" : "msy_…"}
+            onChange={(e) => setMeshyKey(e.target.value)}
+          />
+        </label>
+        <div className="row">
+          <button
+            className="secondary"
+            disabled={meshyBusy || !meshyKey.trim()}
+            onClick={async () => {
+              setMeshyBusy(true);
+              try {
+                await save({ meshyKey: meshyKey.trim() });
+                setMeshyKey("");
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setMeshyBusy(false);
+              }
+            }}
+          >
+            {meshyBusy ? "Saving…" : "Save Meshy key"}
+          </button>
+          {data.generation?.meshy && (
+            <button
+              className="text-button"
+              disabled={meshyBusy}
+              onClick={async () => {
+                setMeshyBusy(true);
+                try {
+                  await save({ meshyKey: "" });
+                } catch (e) {
+                  onError((e as Error).message);
+                } finally {
+                  setMeshyBusy(false);
+                }
+              }}
+            >
+              Remove key
+            </button>
+          )}
+        </div>
       </details>
     </div>
   );

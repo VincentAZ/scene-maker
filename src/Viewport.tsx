@@ -15,6 +15,7 @@ import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
 import { setMotionSources } from "./rig";
 import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
+import { EnvironmentModel, environmentModelKey } from "./environmentModel";
 import { libraryEntry } from "../shared/characterLibrary";
 import type { SeatBody } from "../shared/seating";
 import type { PathFrame } from "../shared/path";
@@ -29,7 +30,6 @@ import { type Scene, allAssets, allMotions, duration } from "../shared/scene";
 import {
   createCharacter,
   createProp,
-  createEnvironment,
   applyAnimatedEntityPose,
   disposeObject,
 } from "./world";
@@ -99,7 +99,7 @@ const assetIndex = (scene: Scene) =>
 const modelKey = (scene: Scene) => {
   const assets = assetIndex(scene);
   return JSON.stringify([
-    scene.environment,
+    environmentModelKey(scene),
     scene.lighting,
     scene.entities.map((e) => [e.id, entityModelKey(scene, e, assets)]),
   ]);
@@ -127,8 +127,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       dragging: ReturnType<typeof sceneDragging>;
       // Incremental model state: what is placed, what is loading, and the
       // original imported files shared as motion sources.
-      environment: T.Object3D | null;
-      environmentKey: string;
+      environment: EnvironmentModel;
       placedKeys: Map<string, string>;
       pending: Map<string, PendingModel>;
       sources: Map<string, Promise<T.Group>>;
@@ -383,8 +382,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         transform,
         renderAt,
         dragging,
-        environment: null,
-        environmentKey: "",
+        environment: new EnvironmentModel(content),
         placedKeys: new Map(),
         pending: new Map(),
         sources: new Map(),
@@ -519,6 +517,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         controls.dispose();
         const ctx = context.current;
         if (ctx) {
+          ctx.environment.dispose();
           ctx.pending.clear();
           for (const source of ctx.sources.values())
             source.then(disposeObject, () => {});
@@ -554,15 +553,14 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         }
         return pending;
       };
-      if (ctx.environmentKey !== scene.environment) {
-        if (ctx.environment) {
-          ctx.content.remove(ctx.environment);
-          disposeObject(ctx.environment);
-        }
-        ctx.environment = createEnvironment(scene.environment);
-        ctx.environmentKey = scene.environment;
-        ctx.content.add(ctx.environment);
-      }
+      const settle = () => {
+        if (
+          context.current === ctx &&
+          !ctx.pending.size &&
+          ctx.environment.ready
+        )
+          readyKey.current = ctx.currentKey;
+      };
       const color =
         props.scene.lighting === "moonlight"
           ? "#8c9eae"
@@ -594,9 +592,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       }
       for (const [id, job] of [...ctx.pending])
         if (wanted.get(id) !== job.key) ctx.pending.delete(id);
-      const settle = () => {
-        if (!ctx.pending.size) readyKey.current = ctx.currentKey;
-      };
       const setup = async (obj: T.Group, entity: Entity, job: PendingModel) => {
         const stale = () => ctx.pending.get(entity.id) !== job;
         try {
@@ -669,6 +664,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             job,
           );
       }
+      // A built-in environment settles synchronously. Register all entity
+      // loads first so it cannot publish readiness before they enter pending.
+      ctx.environment.update(scene, settle, (message) =>
+        live.current.onError(message),
+      );
       settle();
     }, [requestedModelKey]);
     useEffect(() => {
@@ -757,6 +757,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             await new Promise<void>((resolve) =>
               requestAnimationFrame(() => resolve()),
             );
+            if (
+              context.current?.currentKey === models &&
+              context.current.environment.error
+            )
+              throw context.current.environment.error;
             if (
               context.current &&
               readyKey.current === models &&
@@ -868,10 +873,18 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         async exportGLB() {
           const c = context.current;
           if (!c) throw Error("The scene is still loading.");
-          if (c.objects.size !== live.current.scene.entities.length)
+          if (c.environment.error) throw c.environment.error;
+          if (
+            readyKey.current !== modelKey(live.current.scene) ||
+            !c.environment.ready ||
+            c.objects.size !== live.current.scene.entities.length
+          )
             throw Error("Wait for imported assets to finish loading.");
           const animation = bakeAnimation(
-            c.objects.values(),
+            [
+              ...c.objects.values(),
+              ...(c.environment.root ? [c.environment.root] : []),
+            ],
             duration(live.current.scene),
             c.renderAt,
             live.current.scene.entities.flatMap((entity) => {

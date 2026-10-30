@@ -119,6 +119,7 @@ import {
 import { Viewport, type ViewportHandle } from "./Viewport";
 import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
+import { GenerateAsset, type ImportedModel } from "./GenerateAsset";
 import { Connections } from "./Connections";
 import { CharacterModelPicker } from "./CharacterModelPicker";
 import { UpdateCheck } from "./UpdateCheck";
@@ -183,6 +184,7 @@ export default function App() {
       | "projects"
       | "export"
       | "import"
+      | "generate"
       | "conversation"
       | "path"
       | "character"
@@ -1205,6 +1207,54 @@ export default function App() {
       setBusy(false);
     }
   }
+  function placeImportedModel(
+    model: ImportedModel,
+    category: "characters" | "props",
+  ) {
+    const asset: Asset = {
+      id: uid(),
+      name: model.name.slice(0, 100),
+      category,
+      style: "Mixamo",
+      url: model.url,
+      color: "#a8b89b",
+      skin: "#b98a69",
+      body: "masculine",
+      description: "Rigged and animated with Mixamo.",
+    };
+    execute([
+      { type: "createAsset", asset },
+      ...model.animations
+        .filter((a) => a.duration <= 60)
+        .map((a) => ({
+          type: "createMotion" as const,
+          motion: {
+            id: uid(),
+            name: a.name.slice(0, 100),
+            kind: "imported" as const,
+            duration: a.duration,
+            distance: 0,
+            poses: [],
+            sourceAssetId: asset.id,
+            animationName: a.name,
+          },
+        })),
+      { type: "add", assetId: asset.id },
+    ]);
+    setSelected(sceneRef.current.entities.at(-1)!.id);
+    setModal(null);
+    toast(`${asset.name} is ready`);
+  }
+  function placeGeneratedAsset(asset: Asset) {
+    const exists = sceneRef.current.customAssets.some((a) => a.id === asset.id);
+    execute([
+      ...(exists ? [] : [{ type: "createAsset" as const, asset }]),
+      { type: "add", assetId: asset.id },
+    ]);
+    setSelected(sceneRef.current.entities.at(-1)!.id);
+    setModal(null);
+    toast(`${asset.name} placed`);
+  }
   async function exportScene(
     kind: "project" | "package" | "blender" | "unreal",
     propagate = false,
@@ -1612,6 +1662,13 @@ export default function App() {
           </div>
           <button className="import-button" onClick={() => setModal("import")}>
             <Upload size={15} /> Import your own asset
+            <ChevronRight size={15} />
+          </button>
+          <button
+            className="import-button"
+            onClick={() => setModal("generate")}
+          >
+            <Sparkles size={15} /> Generate with AI · Rig with Mixamo
             <ChevronRight size={15} />
           </button>
           <div className="scene-list">
@@ -3239,6 +3296,29 @@ export default function App() {
               </div>
             )}
           </div>
+        </Modal>
+      )}
+      {modal === "generate" && (
+        <Modal
+          wide
+          error={error}
+          onDismissError={() => setError("")}
+          title="Make something new"
+          onClose={() => setModal(null)}
+        >
+          <GenerateAsset
+            selected={(() => {
+              const entity = scene.entities.find((e) => e.id === selected);
+              const asset =
+                entity && allAssets(scene).find((a) => a.id === entity.assetId);
+              return asset && asset.category === "characters"
+                ? { name: asset.name, url: asset.url }
+                : undefined;
+            })()}
+            onPlace={placeGeneratedAsset}
+            onImported={placeImportedModel}
+            report={report}
+          />
         </Modal>
       )}
       {modal === "import" && (

@@ -1,0 +1,157 @@
+{
+  "title": "City Archive \u2014 Records & Inquiries",
+  "generator": "AI-authored Blender Python, executed with Blender 4.5.3 LTS",
+  "script": "scripts/ai-pilot/build_archival_office.py",
+  "seed": 82741,
+  "provenance": {
+    "geometry": "Original scripted architectural/furniture geometry; no external meshes.",
+    "textures": "Original deterministic NumPy/math wood grain, plaster, upholstery patterns; NOT diffusion-generated.",
+    "license": "Original project contribution; no third-party art or textures.",
+    "externalAssets": [],
+    "aiRole": "Composition, Blender code and material authorship; not a trained 3D diffusion output."
+  },
+  "coordinates": {
+    "units": "metres",
+    "up": "+Y",
+    "front": "+Z",
+    "blenderMapping": "(x, -z, y)",
+    "floorHeight": 0,
+    "preserveAuthoredOrigin": true
+  },
+  "roomInteriorDimensions": [
+    7,
+    3.3,
+    6
+  ],
+  "geometryBounds": {
+    "min": [
+      -3.6050000190734863,
+      -0.12999999523162842,
+      -3.1050000190734863
+    ],
+    "max": [
+      3.6050000190734863,
+      3.299999952316284,
+      3.0
+    ]
+  },
+  "desk": {
+    "topHeight": 0.78,
+    "center": [
+      0,
+      0.745,
+      -1.65
+    ],
+    "width": 2.55,
+    "depth": 1.04
+  },
+  "lampPlacement": {
+    "position": [
+      -0.9,
+      0.79,
+      -1.6
+    ],
+    "surfaceY": 0.78,
+    "note": "Separate generated lamp; adjust its pivot/base offset to rest on desktop. No lamp included."
+  },
+  "actorSuggestions": [
+    {
+      "position": [
+        -1,
+        0,
+        0.55
+      ],
+      "facingYawRadians": 3.141592653589793
+    },
+    {
+      "position": [
+        1,
+        0,
+        0.55
+      ],
+      "facingYawRadians": 3.141592653589793
+    }
+  ],
+  "walkableBoundsSuggested": {
+    "x": [
+      -2.2,
+      2.2
+    ],
+    "z": [
+      -0.5,
+      1.8
+    ],
+    "note": "Suggestion, not navmesh; avoid visitor chairs centered at z=-.36. Clear main stage is z .20 to 1.8."
+  },
+  "seatingAnchors": [
+    {
+      "name": "Archivist chair",
+      "position": [
+        0,
+        0.53,
+        -2.53
+      ],
+      "facingYawRadians": 0,
+      "note": "Static authored chair; placement suggestion only, not runtime seating support."
+    },
+    {
+      "name": "Visitor left",
+      "position": [
+        -0.88,
+        0.53,
+        -0.36
+      ],
+      "facingYawRadians": 3.231592653589793,
+      "note": "Static authored chair; placement suggestion only, not runtime seating support."
+    },
+    {
+      "name": "Visitor right",
+      "position": [
+        0.88,
+        0.53,
+        -0.36
+      ],
+      "facingYawRadians": 3.0515926535897933,
+      "note": "Static authored chair; placement suggestion only, not runtime seating support."
+    }
+  ],
+  "stats": {
+    "editableMeshObjects": 808,
+    "exportMeshObjects": 19,
+    "evaluatedTriangles": 100732,
+    "materials": 19,
+    "packedTextureImages": 4
+  },
+  "exportOptimization": "Static meshes batched by material with world-space geometry; room origin unchanged. Editable per-object geometry retained in blend.",
+  "preview": {
+    "cameraGltf": [
+      7,
+      5,
+      9
+    ],
+    "renderer": "Cycles CPU",
+    "samples": 24,
+    "resolution": [
+      1500,
+      1200
+    ],
+    "visuallyReviewed": false
+  },
+  "limitations": [
+    "Static furniture, no working drawers or runtime seating system.",
+    "Open front and camera-side cutaway wall; no ceiling.",
+    "Lighting/camera saved in blend but excluded from GLB; studio lighting governs imported appearance.",
+    "Small mathematical color textures, no photographed or diffusion PBR maps."
+  ],
+  "outputs": [
+    "archival-office.glb",
+    "archival-office.blend",
+    "archival-office-preview.png",
+    "archival-office.json"
+  ],
+  "fileSizesBytes": {
+    "archival-office.glb": 5906536,
+    "archival-office.blend": 7057811,
+    "archival-office-preview.png": 2084952
+  }
+}

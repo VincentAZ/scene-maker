@@ -258,6 +258,8 @@ export const sceneSchema = z.object({
     "street",
     "room",
   ]),
+  // Absent in legacy scenes; imported environments use the studio lighting/base.
+  environmentAssetId: z.string().min(1).nullable().optional(),
   lighting: z.enum(["golden", "daylight", "moonlight"]),
   mission: z.string().max(4000),
   entities: z.array(entitySchema).max(100),
@@ -302,7 +304,13 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("scene"),
     changes: sceneSchema
-      .pick({ name: true, environment: true, lighting: true, mission: true })
+      .pick({
+        name: true,
+        environment: true,
+        environmentAssetId: true,
+        lighting: true,
+        mission: true,
+      })
       .partial(),
   }),
   z.object({ type: z.literal("createAsset"), asset: assetSchema }),
@@ -481,7 +489,9 @@ export function applyCommands(
       if (!a) throw Error("Asset not found.");
       if (a.category === "environments") {
         clearDressing();
-        s.environment = a.style as Scene["environment"];
+        s.environment = a.url ? "studio" : (a.style as Scene["environment"]);
+        if (a.url) s.environmentAssetId = a.id;
+        else delete s.environmentAssetId;
         const layout = setLayout(a.id);
         if (layout) {
           for (const placed of layout.props) {
@@ -596,9 +606,20 @@ export function applyCommands(
       }
     }
     if (cmd.type === "scene") {
-      if (cmd.changes.environment && cmd.changes.environment !== s.environment)
+      const changes = cmd.changes;
+      if (
+        (changes.environment &&
+          (changes.environment !== s.environment || s.environmentAssetId)) ||
+        (changes.environmentAssetId !== undefined &&
+          changes.environmentAssetId !== s.environmentAssetId)
+      )
         clearDressing();
-      Object.assign(s, cmd.changes);
+      // An explicit built-in selection clears an imported set, even when the
+      // underlying built-in style was already studio.
+      if (changes.environment && changes.environmentAssetId === undefined)
+        delete s.environmentAssetId;
+      Object.assign(s, changes);
+      if (changes.environmentAssetId) s.environment = "studio";
     }
     if (cmd.type === "createAsset") {
       if (allAssets(s).some((a) => a.id === cmd.asset.id))
@@ -651,6 +672,21 @@ export function validateScene(
     !unique(allMotions(s).map((m) => m.id))
   )
     throw Error("Duplicate IDs in scene.");
+  if (s.environmentAssetId) {
+    const environment = s.customAssets.find(
+      (asset) => asset.id === s.environmentAssetId,
+    );
+    if (
+      !environment ||
+      environment.category !== "environments" ||
+      !environment.url
+    )
+      throw Error(
+        "The imported environment must reference a custom environment asset with a model URL.",
+      );
+    if (s.environment !== "studio")
+      throw Error("Imported environments use the studio base.");
+  }
   for (const e of s.entities) {
     if (!allAssets(s).some((a) => a.id === e.assetId))
       throw Error("Unknown asset in scene.");

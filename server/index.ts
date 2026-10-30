@@ -36,6 +36,8 @@ import {
   type Scene,
 } from "../shared/scene";
 import { generateCharacter } from "./characters";
+import { createGenerationService } from "./generation";
+import { createMixamoService } from "./mixamo";
 import { conversationHistorySchema } from "../shared/studio";
 const run = promisify(execFile);
 const configFile = path.join(dataDir, "connections.json");
@@ -144,7 +146,12 @@ app.post("/api/restart", async (req, res) => {
     return;
   }
   if (body.rebuild !== false) {
-    const build = await runShell(repositoryRoot, "npm run build", new AbortController().signal, 0);
+    const build = await runShell(
+      repositoryRoot,
+      "npm run build",
+      new AbortController().signal,
+      0,
+    );
     if (build.exitCode !== 0) {
       res.status(500).json({
         error: `The rebuild failed, so the studio was not restarted.\n${build.output.slice(-3000)}`,
@@ -183,12 +190,21 @@ function connectionSummary(c: Config) {
     assistant: c.assistant,
     blender: c.blender,
     speech: speech.summary(c),
+    generation: { meshy: !!c.generation?.meshy?.key },
     mcpServers: Object.fromEntries(
       Object.entries(c.mcpServers || {}).map(([name, server]) => [
         name,
         server.transport === "stdio"
-          ? { transport: "stdio", command: [server.command, ...(server.args || [])].join(" "), env: Object.keys(server.env || {}) }
-          : { transport: server.transport, url: server.url, headers: Object.keys(server.headers || {}) },
+          ? {
+              transport: "stdio",
+              command: [server.command, ...(server.args || [])].join(" "),
+              env: Object.keys(server.env || {}),
+            }
+          : {
+              transport: server.transport,
+              url: server.url,
+              headers: Object.keys(server.headers || {}),
+            },
       ]),
     ),
     providers: Object.fromEntries(
@@ -228,6 +244,7 @@ app.put("/api/connections", (req, res) => {
         assistant: z.enum(providers).nullable().optional(),
         blender: z.string().min(1).max(1000).optional(),
         elevenlabsKey: z.string().trim().max(1000).optional(),
+        meshyKey: z.string().trim().max(1000).optional(),
         mcpServers: z
           .record(
             z.string().trim().min(1).max(60),
@@ -263,6 +280,13 @@ app.put("/api/connections", (req, res) => {
       ...(body.elevenlabsKey
         ? { elevenlabs: { key: body.elevenlabsKey } }
         : { elevenlabs: undefined }),
+    };
+  if (body.meshyKey !== undefined)
+    c.generation = {
+      ...c.generation,
+      ...(body.meshyKey
+        ? { meshy: { key: body.meshyKey } }
+        : { meshy: undefined }),
     };
   if (body.provider) {
     const prev = c.providers[body.provider];
@@ -529,6 +553,92 @@ app.post("/api/import", upload.single("file"), async (req, res) => {
     if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
   }
 });
+// AI 3D generation (Meshy) → Blender cleanup → studio asset.
+const local3dRoot = path.resolve(
+  process.env.SCENE_MAKER_LOCAL_3D_ROOT || path.join(dataDir, "ai-pilot"),
+);
+const local3dPython = path.join(local3dRoot, "venv", "bin", "python");
+const generation = createGenerationService({
+  config,
+  ...(fs.existsSync(local3dPython) &&
+  fs.existsSync(path.join(local3dRoot, "Hunyuan3D-2"))
+    ? { local: { python: local3dPython, root: local3dRoot } }
+    : {}),
+});
+app.get("/api/generate", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    configured: generation.configured(),
+    providers: generation.providers(),
+    jobs: generation.list(),
+  });
+});
+app.post("/api/generate", (req, res) => {
+  res.json(generation.start(req.body));
+});
+app.get("/api/generate/:id", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const job = generation.get(req.params.id);
+  if (!job) {
+    res.status(404).json({ error: "Unknown generation." });
+    return;
+  }
+  res.json(job);
+});
+app.delete("/api/generate/:id", (req, res) => {
+  res.json({ ok: generation.cancel(req.params.id) });
+});
+// Guided Mixamo round trip: prepare FBX → mixamo.com → import the downloads.
+const mixamo = createMixamoService({ config });
+app.post("/api/mixamo/prepare", async (req, res) => {
+  const body = z.object({ url: z.string().max(500) }).parse(req.body);
+  res.json({ ...(await mixamo.prepare(body.url)), mixamo: mixamo.url });
+});
+app.post("/api/mixamo/watch", (_req, res) => {
+  res.json(mixamo.startWatch());
+});
+app.get("/api/mixamo/downloads", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ directory: mixamo.downloadsDirectory(), files: mixamo.poll() });
+});
+app.post("/api/mixamo/import", async (req, res) => {
+  res.json(await mixamo.importBundle(req.body));
+});
+app.post(
+  "/api/mixamo/upload",
+  multer({
+    dest: path.join(dataDir, "uploads"),
+    limits: { fileSize: 100 * 1024 * 1024, files: 40 },
+  }).array("files", 40),
+  async (req, res) => {
+    const files = (req.files as Express.Multer.File[] | undefined) || [];
+    if (!files.length) throw Error("Choose the Mixamo FBX files to import.");
+    const named: string[] = [];
+    try {
+      for (const f of files) {
+        if (!/\.fbx$/i.test(f.originalname))
+          throw Error("Mixamo downloads are FBX files.");
+        const target = path.join(
+          path.dirname(f.path),
+          path.basename(f.path) +
+            "-" +
+            path.basename(f.originalname).replace(/[^a-zA-Z0-9_.-]/g, "_"),
+        );
+        fs.renameSync(f.path, target);
+        named.push(target);
+      }
+      res.json(
+        await mixamo.importFiles(
+          named,
+          files.map((f) => f.originalname),
+        ),
+      );
+    } finally {
+      for (const f of files) fs.rmSync(f.path, { force: true });
+      for (const f of named) fs.rmSync(f, { force: true });
+    }
+  },
+);
 app.post("/api/blender", upload.single("file"), async (req, res) => {
   const f = req.file;
   if (!f) throw Error("No scene was supplied.");

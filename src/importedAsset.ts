@@ -53,12 +53,16 @@ export function prepareImportedAsset(
   const group = new T.Group(),
     imported = gltf.scene;
   // Keep node UUIDs: original animation tracks may bind to unnamed nodes.
-  const bounds = new T.Box3().setFromObject(imported);
-  const height = bounds.max.y - bounds.min.y;
-  imported.scale.setScalar(
-    asset.category === "characters" ? 1.85 / (height || 1) : 1,
-  );
-  imported.position.y = -bounds.min.y * imported.scale.y;
+  // Rooms must keep their authored transforms: grounding by bounds can lift
+  // a whole interior when its foundation extends below the floor.
+  if (asset.category !== "environments") {
+    const bounds = new T.Box3().setFromObject(imported);
+    const height = bounds.max.y - bounds.min.y;
+    imported.scale.setScalar(
+      asset.category === "characters" ? 1.85 / (height || 1) : 1,
+    );
+    imported.position.y = -bounds.min.y * imported.scale.y;
+  }
   group.add(imported);
   if (asset.category === "characters")
     configureImportedRig(group, imported, gltf.animations);

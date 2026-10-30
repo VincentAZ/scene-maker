@@ -1,0 +1,55 @@
+{
+  "model": "tencent/Hunyuan3D-2/hunyuan3d-dit-v2-0",
+  "space": "tencent/Hunyuan3D-2",
+  "space_revision": "40b9abf02675534b9e80e3150bd97b85c135c8c8",
+  "license": "Tencent Hunyuan 3D 2.0 Community License Agreement",
+  "license_url": "https://huggingface.co/tencent/Hunyuan3D-2/blob/main/LICENSE",
+  "license_limitations": "Excludes EU UK South Korea; >1M MAU special license; see downloaded full license",
+  "input_reference": ".data/ai-pilot/references/archivist-male.png",
+  "input_sha256": "256216d1d4eb06cf8d9b5b175966091bd41aaac10dba6ad653ee353c3e442813",
+  "server_stats": {
+    "model": {
+      "shapegen": "tencent/Hunyuan3D-2/hunyuan3d-dit-v2-0",
+      "texgen": "tencent/Hunyuan3D-2"
+    },
+    "params": {
+      "caption": null,
+      "steps": 40,
+      "guidance_scale": 5,
+      "seed": 39002,
+      "octree_resolution": 384,
+      "check_box_rembg": false,
+      "num_chunks": 16000
+    },
+    "number_of_faces": 486252,
+    "number_of_vertices": 140082,
+    "time": {
+      "shape generation": 8.112916946411133,
+      "export to trimesh": 0.0642855167388916,
+      "total": 8.179453611373901
+    }
+  },
+  "seed": 39002,
+  "geometry": [
+    {
+      "vertices": 140082,
+      "faces": 486252,
+      "visual": null
+    }
+  ],
+  "bounds": [
+    [
+      -0.9674517512321472,
+      -1.0004976987838745,
+      -0.28845077753067017
+    ],
+    [
+      0.8202155828475952,
+      0.9647727012634277,
+      0.2089644968509674
+    ]
+  ],
+  "bytes": 7517232,
+  "sha256": "d823ba6432519dd14f78ccb2807e7f9b177a997bc9d835967445c76ecc195a75",
+  "status": "Actual AI-generated shape, untextured and unrigged; visual quality and riggability require review"
+}

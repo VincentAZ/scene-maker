@@ -1,0 +1,13 @@
+{
+  "model": "black-forest-labs/FLUX.1-schnell",
+  "space": "black-forest-labs/FLUX.1-schnell",
+  "space_revision": "2569ee41266dd6d3a5e84c2a5ea3f4ad6e4ff25e",
+  "license": "Apache-2.0",
+  "prompt": "Full body studio photograph of a realistic middle aged male archivist, short brown hair, clean shaven, wearing a fitted brown tweed vest over a cream long sleeved shirt and dark brown trousers, brown leather shoes, standing facing camera in a symmetrical T pose, both arms extended straight horizontally to sides, palms facing down, fingers straight, legs straight and feet shoulder width apart, entire body visible including both hands and feet, isolated on pure white background, neutral expression, realistic human proportions, professional character reference photography",
+  "seed": 29002,
+  "steps": 4,
+  "width": 1024,
+  "height": 1024,
+  "sha256": "256216d1d4eb06cf8d9b5b175966091bd41aaac10dba6ad653ee353c3e442813",
+  "status": "Actual AI-generated reference; visual pose quality requires review"
+}

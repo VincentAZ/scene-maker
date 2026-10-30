@@ -46,6 +46,8 @@ export type Config = {
   blender: string;
   /** Speech-only services; OpenAI voices reuse the OpenAI provider key. */
   speech?: { elevenlabs?: { key: string } };
+  /** AI 3D generation services (text → textured mesh). */
+  generation?: { meshy?: { key: string } };
   /** MCP servers the studio engineer connects to for every coding task. */
   mcpServers?: Record<string, McpServerConfig>;
 };

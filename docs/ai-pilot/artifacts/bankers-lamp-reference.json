@@ -1,0 +1,13 @@
+{
+  "model": "black-forest-labs/FLUX.1-schnell",
+  "space": "black-forest-labs/FLUX.1-schnell",
+  "space_revision": "2569ee41266dd6d3a5e84c2a5ea3f4ad6e4ff25e",
+  "license": "Apache-2.0",
+  "prompt": "Product photograph of one antique bankers desk lamp, emerald green curved rectangular glass lampshade, polished golden brass vertical stem, oval heavy brass base, small pull chain, elegant realistic proportions, entire lamp fully visible, isolated on pure white background, three quarter front view, studio softbox lighting, extremely detailed, realistic materials, professional catalogue photograph",
+  "seed": 29001,
+  "steps": 4,
+  "width": 1024,
+  "height": 1024,
+  "output_sha256": "914925842af1d53cbf5bb480479fe3b17177fb92d5855e2a4297423103b2d82e",
+  "status": "Actual AI-generated reference image from public official demo, no token"
+}
