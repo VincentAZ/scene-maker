@@ -374,3 +374,49 @@ it("routes offline requests to the named destination and stops workflows after a
   ).toEqual(["walk", "walk", "pick", "sip", "place"]);
   for (const object of objects.values()) disposeObject(object);
 });
+
+it("plans around backdrop walls while excluding floor meshes from route footprints", async () => {
+  const scene = fixture();
+  const objects = await objectsFor(scene);
+  const environment = new T.Group();
+  const floor = new T.Mesh(new T.BoxGeometry(30, 0.1, 30));
+  floor.position.y = -0.05;
+  const wall = new T.Mesh(new T.BoxGeometry(0.3, 3, 5));
+  wall.position.y = 1.5;
+  environment.add(floor, wall);
+  const original = JSON.stringify(scene);
+  const before = routeContext(scene, objects, "actor");
+  const context = routeContext(scene, objects, "actor", undefined, environment);
+  const backdropFootprints = context.footprints.filter(
+    (p) => p.name === "the backdrop",
+  );
+  expect(backdropFootprints).toHaveLength(1);
+  expect(context.footprints.length).toBe(before.footprints.length + 1);
+  const motion = planObjectRoute(
+    scene,
+    objects,
+    "actor",
+    "destination",
+    "walk",
+    undefined,
+    environment,
+  );
+  const expanded = context.footprints.map((p) => ({
+    ...p,
+    minX: p.minX - context.radius - 0.04,
+    maxX: p.maxX + context.radius + 0.04,
+    minZ: p.minZ - context.radius - 0.04,
+    maxZ: p.maxZ + context.radius + 0.04,
+  }));
+  const samples = compilePath(motion.path!).samples.map((s) =>
+    pathToWorld(s.point, context.frame),
+  );
+  samples
+    .slice(1)
+    .forEach((point, index) =>
+      expect(clearSegment(samples[index], point, expanded)).toBe(true),
+    );
+  expect(JSON.stringify(scene)).toBe(original);
+  objects.forEach((object) => disposeObject(object));
+  disposeObject(environment);
+});

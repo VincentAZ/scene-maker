@@ -19,6 +19,7 @@ import {
 import type { Point } from "../shared/ladder";
 import { applyAnimatedEntityPose } from "./world";
 import { reachableGrip } from "./interactions";
+import { snapshotCollider } from "./collision";
 
 export type RouteContext = {
   frame: PathFrame;
@@ -43,6 +44,7 @@ export function routeContext(
   objects: Map<string, T.Group>,
   actorId: string,
   beforeClipId?: string,
+  environment?: T.Object3D | null,
 ): RouteContext {
   const actor = scene.entities.find((e) => e.id === actorId),
     rig = objects.get(actorId);
@@ -94,6 +96,23 @@ export function routeContext(
         },
       ];
     });
+  if (environment) {
+    for (const [index, box] of snapshotCollider(environment).boxes.entries()) {
+      if (
+        box.max.y < frame.position[1] + 0.08 * actor.scale ||
+        box.min.y > frame.position[1] + 1.9 * actor.scale
+      )
+        continue;
+      footprints.push({
+        id: `environment-${index}`,
+        name: "the backdrop",
+        minX: box.min.x,
+        maxX: box.max.x,
+        minZ: box.min.z,
+        maxZ: box.max.z,
+      });
+    }
+  }
   const bones = rig.userData.bones as Record<string, T.Bone> | undefined;
   const shoulderWidth =
     bones?.leftArm && bones.rightArm
@@ -115,6 +134,7 @@ export function planObjectRoute(
   targetId: string,
   kind: "walk" | "run",
   beforeClipId?: string,
+  environment?: T.Object3D | null,
 ): Motion {
   const target = scene.entities.find((e) => e.id === targetId),
     actor = scene.entities.find((e) => e.id === actorId);
@@ -129,6 +149,7 @@ export function planObjectRoute(
     objects,
     actorId,
     beforeClipId,
+    environment,
   );
   const rig = objects.get(actorId)!,
     prop = objects.get(targetId)!;

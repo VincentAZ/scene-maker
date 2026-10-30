@@ -2519,6 +2519,7 @@ label > span {
   gap: 12px;
 }
 .path-options label,
+.path-point-action label,
 .path-coordinate label {
   display: grid;
   gap: 7px;
@@ -2528,6 +2529,8 @@ label > span {
 }
 .path-options input,
 .path-options select,
+.path-point-action input,
+.path-point-action select,
 .path-coordinate input {
   width: 100%;
   min-width: 0;
@@ -2551,6 +2554,43 @@ label > span {
   height: 16px;
   margin: 0;
   accent-color: #6b8053;
+}
+.path-point-actions {
+  border-top: 1px solid #e2e7da;
+  padding: 16px 0;
+}
+.path-point-actions h3 {
+  margin: 0 0 8px;
+  color: #526743;
+  font-size: 14px;
+}
+.path-point-actions > .muted {
+  line-height: 1.6;
+}
+.path-point-action {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(85px, 120px);
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+.path-point-number {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e5edda;
+  color: #526743;
+  font-size: 12px;
+  font-weight: 600;
+}
+.path-point-action input:disabled {
+  background: #f3f5ef;
+  opacity: 0.65;
+}
+.path-point-actions > .path-note {
+  margin-bottom: 0;
 }
 .path-coordinates {
   border-top: 1px solid #e2e7da;

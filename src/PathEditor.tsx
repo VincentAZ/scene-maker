@@ -13,6 +13,8 @@ import {
   compilePath,
   pathToWorld,
   worldToPath,
+  pointActionMotions,
+  type PointAction,
   type PathFrame,
 } from "../shared/path";
 import type { Point } from "../shared/ladder";
@@ -26,7 +28,7 @@ type Props = {
   footprints?: Footprint[];
   speechDuration?: number;
   onPlan?: (targetId: string, movement: "walk" | "run") => Motion;
-  onSave: (motion: Motion) => void;
+  onSave: (motion: Motion, pointActions?: PointAction[]) => void;
   onClose: () => void;
 };
 export function PathEditor({
@@ -40,12 +42,40 @@ export function PathEditor({
   onSave,
   onClose,
 }: Props) {
-  const [points, setPoints] = useState<Point[]>(
-    () =>
+  const [waypoints, setWaypoints] = useState<
+    {
+      id: string;
+      point: Point;
+      action?: Omit<PointAction, "pointIndex">;
+    }[]
+  >(() =>
+    (
       motion?.path?.points.map((p) => pathToWorld(p, frame)) || [
-        [...frame.position],
-      ],
+        [...frame.position] as Point,
+      ]
+    ).map((point) => ({ id: uid(), point })),
   );
+  const points = useMemo(
+    () => waypoints.map((waypoint) => waypoint.point),
+    [waypoints],
+  );
+  const pointActions: PointAction[] =
+    speechDuration === undefined
+      ? waypoints.flatMap((waypoint, pointIndex) =>
+          waypoint.action ? [{ ...waypoint.action, pointIndex }] : [],
+        )
+      : [];
+  const actionSeconds = pointActions.reduce(
+    (total, action) => total + action.duration,
+    0,
+  );
+  const invalidAction = pointActions.some(
+    (action) =>
+      !Number.isFinite(action.duration) ||
+      action.duration < 0.2 ||
+      action.duration > 60,
+  );
+  const [planNotice, setPlanNotice] = useState("");
   const [name, setName] = useState(motion?.name || `${actor.name}'s route`),
     [kind, setKind] = useState<"walk" | "run">(
       motion?.kind === "run" ? "run" : "walk",
@@ -165,7 +195,20 @@ export function PathEditor({
     ];
   };
   const replace = (index: number, point: Point) =>
-    setPoints((old) => old.map((p, i) => (i === index ? point : p)));
+    setWaypoints((old) =>
+      old.map((waypoint, i) =>
+        i === index ? { ...waypoint, point } : waypoint,
+      ),
+    );
+  const setAction = (
+    index: number,
+    action: Omit<PointAction, "pointIndex"> | undefined,
+  ) =>
+    setWaypoints((old) =>
+      old.map((waypoint, i) =>
+        i === index ? { ...waypoint, action } : waypoint,
+      ),
+    );
   const add = (point: Point) => {
     if (points.length >= 32) {
       setError("Use up to 31 points after the start.");
@@ -176,7 +219,7 @@ export function PathEditor({
       0.05 * frame.scale
     )
       return;
-    setPoints((old) => [...old, point]);
+    setWaypoints((old) => [...old, { id: uid(), point }]);
   };
   const submit = () => {
     try {
@@ -193,7 +236,11 @@ export function PathEditor({
         setError(parsed.error.issues[0].message);
         return;
       }
-      onSave(parsed.data);
+      if (invalidAction) {
+        setError("Each point action needs a duration from 0.2 to 60 seconds.");
+        return;
+      }
+      onSave(parsed.data, pointActions.length ? pointActions : undefined);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Check the route and try again.",
@@ -247,7 +294,32 @@ export function PathEditor({
                   const route = planned.path!.points.map((p) =>
                     pathToWorld(p, frame),
                   );
-                  setPoints(route);
+                  const unused = new Set(
+                    waypoints.map((waypoint) => waypoint.id),
+                  );
+                  const replanned = route.map((point) => {
+                    const previous = waypoints.find(
+                      (waypoint) =>
+                        unused.has(waypoint.id) &&
+                        Math.hypot(
+                          ...point.map((n, axis) => n - waypoint.point[axis]),
+                        ) <
+                          0.01 * frame.scale,
+                    );
+                    if (previous) unused.delete(previous.id);
+                    return previous
+                      ? { ...previous, point }
+                      : { id: uid(), point };
+                  });
+                  const removed = waypoints.filter(
+                    (waypoint) => unused.has(waypoint.id) && waypoint.action,
+                  ).length;
+                  setWaypoints(replanned);
+                  setPlanNotice(
+                    removed
+                      ? `${removed} point action${removed === 1 ? " was" : "s were"} removed because those points are not on the new route. Unchanged points kept their actions.`
+                      : "",
+                  );
                   setBounds(fitMap(route));
                   setSmooth(planned.path!.smooth);
                   setEndHeading(planned.path!.endHeading);
@@ -266,6 +338,11 @@ export function PathEditor({
               Plan a clear route
             </button>
           </div>
+        )}
+        {planNotice && (
+          <p className="path-note" role="status">
+            {planNotice}
+          </p>
         )}
         <div className="path-map-heading">
           <span>YOUR SCENE · TOP VIEW</span>
@@ -367,7 +444,7 @@ export function PathEditor({
             const [x, y] = map(point);
             return (
               <g
-                key={i}
+                key={waypoints[i].id}
                 transform={`translate(${x} ${y})`}
                 className={i ? "path-point" : "path-start"}
                 onPointerDown={(event) => {
@@ -380,7 +457,13 @@ export function PathEditor({
               >
                 <circle
                   r={i ? 12 : 15}
-                  fill={i ? "#f7faef" : "#d4e99b"}
+                  fill={
+                    i && waypoints[i].action
+                      ? "#d4e99b"
+                      : i
+                        ? "#f7faef"
+                        : "#d4e99b"
+                  }
                   stroke="#526743"
                   strokeWidth="2"
                 />
@@ -408,7 +491,10 @@ export function PathEditor({
           </button>
           <button
             className="text-button"
-            onClick={() => setPoints([[...frame.position]])}
+            onClick={() => {
+              setWaypoints([{ id: uid(), point: [...frame.position] }]);
+              setPlanNotice("");
+            }}
             disabled={points.length < 2}
           >
             <RotateCcw size={14} /> Start over
@@ -438,7 +524,9 @@ export function PathEditor({
           <label>
             {speechDuration
               ? "Timed to this line (seconds)"
-              : "Duration (seconds)"}
+              : pointActions.length
+                ? "Movement time (seconds)"
+                : "Duration (seconds)"}
             <input
               type="number"
               min=".2"
@@ -479,6 +567,93 @@ export function PathEditor({
             </button>
           )}
         </div>
+        {speechDuration === undefined ? (
+          <section
+            className="path-point-actions"
+            aria-label="Actions at route points"
+          >
+            <h3>At each point</h3>
+            <p className="muted small">
+              Choose a separate action on arrival at any numbered point. Its
+              time is added to movement time. Actions follow points when you
+              move them; removing a point removes its action. Replanning keeps
+              actions only at unchanged points.
+            </p>
+            {!points.slice(1).length && (
+              <p className="muted small">
+                Add a route point to choose its action.
+              </p>
+            )}
+            {waypoints.slice(1).map((waypoint, index) => (
+              <div className="path-point-action" key={waypoint.id}>
+                <span className="path-point-number">{index + 1}</span>
+                <label>
+                  On arrival
+                  <select
+                    aria-label={`Point ${index + 1} action`}
+                    value={waypoint.action?.motionId || ""}
+                    onChange={(event) => {
+                      const selected = pointActionMotions.find(
+                        (candidate) => candidate.id === event.target.value,
+                      );
+                      setAction(
+                        index + 1,
+                        selected
+                          ? {
+                              motionId: selected.id,
+                              duration:
+                                waypoint.action?.duration ?? selected.duration,
+                            }
+                          : undefined,
+                      );
+                    }}
+                  >
+                    <option value="">Keep moving · no action</option>
+                    {pointActionMotions.map((action) => (
+                      <option key={action.id} value={action.id}>
+                        {action.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Action seconds
+                  <input
+                    type="number"
+                    min=".2"
+                    max="60"
+                    step=".1"
+                    aria-label={`Point ${index + 1} action duration`}
+                    disabled={!waypoint.action}
+                    value={waypoint.action?.duration ?? ""}
+                    onChange={(event) =>
+                      waypoint.action &&
+                      setAction(index + 1, {
+                        ...waypoint.action,
+                        duration: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            ))}
+            {pointActions.length > 0 && (
+              <p className="path-note">
+                {Number.isFinite(actionSeconds)
+                  ? `${(duration + actionSeconds).toFixed(1)} seconds total · `
+                  : ""}
+                Saves movement and point actions as separate sequence clips for
+                playback and export. After saving, edit each clip separately;
+                this combined route is not kept as one editable action.
+              </p>
+            )}
+          </section>
+        ) : (
+          <p className="path-note">
+            Point actions are unavailable on a dialogue route: this route must
+            stay timed to the spoken line.
+          </p>
+        )}
         <details className="path-coordinates">
           <summary>Fine-tune the points</summary>
           <p className="muted small">
@@ -486,7 +661,7 @@ export function PathEditor({
             linked to the previous action.
           </p>
           {points.slice(1).map((point, i) => (
-            <div className="path-coordinate" key={i}>
+            <div className="path-coordinate" key={waypoints[i + 1].id}>
               <span>{i + 1}</span>
               {([0, 2] as const).map((axis) => (
                 <label key={axis}>
@@ -508,7 +683,9 @@ export function PathEditor({
                 className="icon-button"
                 aria-label={`Remove point ${i + 1}`}
                 onClick={() =>
-                  setPoints((old) => old.filter((_, index) => index !== i + 1))
+                  setWaypoints((old) =>
+                    old.filter((_, index) => index !== i + 1),
+                  )
                 }
               >
                 <Trash2 size={15} />
@@ -517,9 +694,10 @@ export function PathEditor({
           ))}
         </details>
         <p className="path-note">
-          Planned routes leave room around the objects shown here and face the
-          destination on arrival. Replan after moving furniture. Check backdrop
-          walls, moving objects, and hand-drawn edits before playback.
+          Planned routes leave room around the objects and backdrop geometry
+          shown here, and face the destination on arrival. Replan after moving
+          furniture. Check moving objects and hand-drawn edits before playback;
+          collision warnings do not automatically reroute an animation.
         </p>
         <div className="path-footer">
           <button className="secondary" onClick={onClose}>
@@ -532,7 +710,8 @@ export function PathEditor({
               !name.trim() ||
               !Number.isFinite(duration) ||
               duration < 0.2 ||
-              duration > 60
+              duration > 60 ||
+              invalidAction
             }
             onClick={submit}
           >
