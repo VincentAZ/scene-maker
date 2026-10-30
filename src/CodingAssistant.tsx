@@ -38,6 +38,15 @@ import { Markdown } from "./code/markdown";
 import { parseDiff } from "./code/diff";
 import { exportCodeTask, exportFilename } from "./code/transcriptExport";
 import { ChatExportMenu } from "./ChatExportMenu";
+import {
+  AttachButton,
+  PendingChips,
+  SentAttachments,
+  pastedFiles,
+  useCodeAttachments,
+  useFileDrop,
+  type PendingAttachment,
+} from "./Attachments";
 
 const storageKey = "scene-maker-code-view-v1";
 type View = { screen: "list" | "thread" | "new"; id?: string };
@@ -427,7 +436,13 @@ function Transcript({ task, now }: { task: CodingTask; now: number }) {
                     {entry.queued && <span>Delivered at the engineer’s next step</span>}
                     {entry.dropped && <span>Not delivered: the task was stopped</span>}
                   </div>
-                  <p>{entry.text}</p>
+                  {entry.text && <p>{entry.text}</p>}
+                  {entry.attachments && (
+                    <SentAttachments
+                      attachments={entry.attachments}
+                      href={(a) => `/api/coding/tasks/${task.id}/attachments/${a.id}`}
+                    />
+                  )}
                 </div>
               );
             case "assistant":
@@ -691,6 +706,9 @@ function Composer({
   disabled,
   placeholder,
   autoFocus,
+  attachments,
+  onFiles,
+  onRemoveFile,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -700,6 +718,9 @@ function Composer({
   disabled: boolean;
   placeholder: string;
   autoFocus?: boolean;
+  attachments: PendingAttachment[];
+  onFiles: (files: File[]) => void;
+  onRemoveFile: (key: string) => void;
 }) {
   const box = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -711,17 +732,22 @@ function Composer({
   useEffect(() => {
     if (autoFocus) box.current?.focus();
   }, [autoFocus]);
+  const uploading = attachments.some((a) => a.status === "uploading");
+  const ready = !uploading && (!!value.trim() || attachments.length > 0);
   const send = () => {
-    if (value.trim() && !disabled) onSend();
+    if (ready && !disabled) onSend();
   };
+  const drop = useFileDrop(onFiles);
   return (
     <form
-      className="code-composer"
+      className={`code-composer${drop.dragging ? " dragging" : ""}`}
+      {...drop.handlers}
       onSubmit={(e) => {
         e.preventDefault();
         send();
       }}
     >
+      <PendingChips items={attachments} onRemove={onRemoveFile} />
       <textarea
         ref={box}
         rows={2}
@@ -730,6 +756,12 @@ function Composer({
         placeholder={placeholder}
         aria-label="Message the studio engineer"
         onChange={(e) => onChange(e.target.value)}
+        onPaste={(e) => {
+          const files = pastedFiles(e);
+          if (!files.length) return;
+          e.preventDefault();
+          onFiles(files);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -739,14 +771,23 @@ function Composer({
       />
       <div className="code-composer-bar">
         <span>
-          {running ? "Read at its next step" : "Enter to send"} · Shift+Enter for a new line
+          {drop.dragging
+            ? "Drop files to attach them"
+            : uploading
+              ? "Uploading attachments…"
+              : `${running ? "Read at its next step" : "Enter to send"} · Shift+Enter for a new line`}
         </span>
+        <AttachButton
+          onFiles={onFiles}
+          className="code-attach"
+          label="Attach files (or drop or paste them here)"
+        />
         {onStop && (
           <button type="button" className="code-stop" onClick={onStop} title="Stop the engineer">
             <Square size={11} /> Stop
           </button>
         )}
-        <button className="code-send" aria-label="Send" disabled={disabled || !value.trim()}>
+        <button className="code-send" aria-label="Send" disabled={disabled || !ready}>
           <ArrowUp size={16} />
         </button>
       </div>
@@ -766,6 +807,7 @@ export function CodingAssistant() {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [titleOpen, setTitleOpen] = useState(false);
+  const files = useCodeAttachments(setError);
   const viewRef = useRef(view);
   viewRef.current = view;
   useEffect(() => {
@@ -835,6 +877,13 @@ export function CodingAssistant() {
   const draftKey = view.screen === "thread" && view.id ? view.id : "new";
   const draft = drafts[draftKey] || "";
   const setDraft = (value: string) => setDrafts((d) => ({ ...d, [draftKey]: value }));
+  const pending = files.list(draftKey);
+  const sentIds = () => pending.flatMap((p) => (p.attachment ? [p.attachment.id] : []));
+  const fileProps = {
+    attachments: pending,
+    onFiles: (chosen: File[]) => files.add(draftKey, chosen),
+    onRemoveFile: (key: string) => files.remove(draftKey, key),
+  };
   const open = (id: string) => {
     setDetail(null);
     setError("");
@@ -907,10 +956,15 @@ export function CodingAssistant() {
           running={false}
           disabled={busy || !info.available}
           placeholder="What would you like to build or change?"
+          {...fileProps}
           onSend={() =>
             void action(async () => {
-              const task = await post<CodingTaskSummary>("/api/coding/tasks", { prompt: draft });
+              const task = await post<CodingTaskSummary>("/api/coding/tasks", {
+                prompt: draft,
+                attachments: sentIds(),
+              });
               setDrafts((d) => ({ ...d, new: "" }));
+              files.clear("new");
               open(task.id);
             })
           }
@@ -995,12 +1049,17 @@ export function CodingAssistant() {
               ? () => void action(() => post(`/api/coding/tasks/${id}/stop`))
               : undefined
           }
+          {...fileProps}
           onSend={() =>
             void action(async () => {
               const text = draft;
               setDraft("");
               try {
-                await post(`/api/coding/tasks/${id}/reply`, { message: text });
+                await post(`/api/coding/tasks/${id}/reply`, {
+                  message: text,
+                  attachments: sentIds(),
+                });
+                files.clear(id);
               } catch (e) {
                 setDraft(text);
                 throw e;
