@@ -795,3 +795,149 @@ it("trims old tool output once a conversation gets large", async () => {
   const small = [{ role: "user" as const, content: "hi" }];
   expect(trimContext(small)).toBe(small);
 });
+
+it("trims in batches down to the target so the trimmed prefix stays stable", async () => {
+  const { trimContext } = await import("../server/codingAgent");
+  const big = "y".repeat(50_000);
+  const pair = (i: number) => [
+    {
+      role: "assistant" as const,
+      content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: "readFile", input: {} }],
+    },
+    {
+      role: "tool" as const,
+      content: [
+        { type: "tool-result" as const, toolCallId: `c${i}`, toolName: "readFile", output: { type: "text" as const, value: big } },
+      ],
+    },
+  ];
+  const messages = [{ role: "user" as const, content: "start" }, ...Array.from({ length: 10 }, (_, i) => pair(i)).flat()];
+  const size = (m: unknown) => JSON.stringify(m).length;
+  const trimmed = trimContext(messages, 400_000, 2);
+  const total = trimmed.reduce((n, m) => n + size(m), 0);
+  expect(total).toBeLessThanOrEqual(300_000);
+  const flags = trimmed.filter((m) => m.role === "tool").map((m) => JSON.stringify(m).includes("trimmed to save context"));
+  // Oldest results are trimmed first, as one contiguous prefix, and no more than needed.
+  expect(flags).toEqual([true, true, true, true, true, false, false, false, false, false]);
+  // Already under the limit: the same array comes back, so nothing moves between steps.
+  expect(trimContext(trimmed, 400_000, 2)).toBe(trimmed);
+  // Below the target floor only the newest `keepRecent` are protected.
+  const hard = trimContext(messages, 0, 4, 0);
+  expect(hard.filter((m) => m.role === "tool").map((m) => JSON.stringify(m).includes("trimmed"))).toEqual([
+    true, true, true, true, true, true, false, false, false, false,
+  ]);
+});
+
+it("marks the last message as an Anthropic cache breakpoint and persists trimming into the history", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { runCodingAgent } = await import("../server/codingAgent");
+  const anthropic: Config = {
+    assistant: "anthropic",
+    providers: { anthropic: { key: "fixture-key", model: "claude-fixture" } },
+    blender: "blender",
+  };
+  const big = "z".repeat(20_000);
+  const earlier = Array.from({ length: 24 }, (_, i) => [
+    {
+      role: "assistant" as const,
+      content: [{ type: "tool-call" as const, toolCallId: `old${i}`, toolName: "readFile", input: { path: "a" } }],
+    },
+    {
+      role: "tool" as const,
+      content: [
+        { type: "tool-result" as const, toolCallId: `old${i}`, toolName: "readFile", output: { type: "text" as const, value: big } },
+      ],
+    },
+  ]).flat();
+  const model = new MockLanguageModelV4({
+    doGenerate: [toolCall("readFile", { path: "src/example.ts" }, "r1"), finalText("Done reading.")],
+  });
+  const saved: unknown[][] = [];
+  const result = await runCodingAgent(
+    anthropic,
+    root,
+    "Continue",
+    new AbortController().signal,
+    () => {},
+    () => model,
+    { history: [{ role: "user", content: "earlier" }, ...earlier], onHistory: (m) => saved.push([...m]) },
+  );
+  expect(result).toBe("Done reading.");
+  for (const call of model.doGenerateCalls) {
+    const marked = call.prompt.filter((m) => JSON.stringify(m.providerOptions ?? {}).includes("ephemeral"));
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toBe(call.prompt[call.prompt.length - 1]);
+  }
+  // 24 × 20k is over the limit: the oldest results were trimmed until under the target,
+  // the trimmed conversation was written back (and saved), and the cache marker was not.
+  const sent = JSON.stringify(model.doGenerateCalls[0].prompt);
+  expect(sent).toContain("trimmed to save context");
+  const persisted = JSON.stringify(saved[saved.length - 1]);
+  expect(persisted).toContain("trimmed to save context");
+  expect(persisted).not.toContain("ephemeral");
+  expect(persisted.length).toBeLessThan(sent.length + 1_000);
+  // The second step sent the already-trimmed history unchanged apart from the new turn.
+  expect(JSON.stringify(model.doGenerateCalls[1].prompt).match(/trimmed to save context/g)?.length).toBe(
+    sent.match(/trimmed to save context/g)?.length,
+  );
+  // Other providers get no Anthropic marker.
+  const plain = new MockLanguageModelV4({ doGenerate: [finalText("ok")] });
+  await runCodingAgent(config, root, "Hi", new AbortController().signal, () => {}, () => plain);
+  expect(JSON.stringify(plain.doGenerateCalls[0].prompt)).not.toContain("ephemeral");
+});
+
+it("trims hard and retries once when the provider reports a context overflow", async () => {
+  const { MockLanguageModelV4 } = await import("ai/test");
+  const { APICallError } = await import("@ai-sdk/provider");
+  const { runCodingAgent } = await import("../server/codingAgent");
+  const big = "w".repeat(20_000);
+  const earlier = Array.from({ length: 6 }, (_, i) => [
+    {
+      role: "assistant" as const,
+      content: [{ type: "tool-call" as const, toolCallId: `old${i}`, toolName: "readFile", input: { path: "a" } }],
+    },
+    {
+      role: "tool" as const,
+      content: [
+        { type: "tool-result" as const, toolCallId: `old${i}`, toolName: "readFile", output: { type: "text" as const, value: big } },
+      ],
+    },
+  ]).flat();
+  const overflow = () =>
+    new APICallError({
+      message: "prompt is too long: 250000 tokens > 200000 maximum",
+      url: "https://example.invalid",
+      requestBodyValues: {},
+      statusCode: 400,
+      responseBody: JSON.stringify({
+        type: "error",
+        error: { type: "invalid_request_error", message: "prompt is too long: 250000 tokens > 200000 maximum" },
+      }),
+    });
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) throw overflow();
+      return finalText("Fits now.");
+    },
+  });
+  const rec = recorder();
+  const result = await runCodingAgent(config, root, "Continue", new AbortController().signal, rec.emit, () => model, {
+    history: [{ role: "user", content: "earlier" }, ...earlier],
+  });
+  expect(result).toBe("Fits now.");
+  expect(rec.events.some((e) => e.includes("no longer fits") && e.includes("retrying"))).toBe(true);
+  // Below the normal limit, so the first attempt sent everything; the retry kept only the newest 4 results.
+  expect(JSON.stringify(model.doGenerateCalls[0].prompt)).not.toContain("trimmed to save context");
+  const retried = model.doGenerateCalls[1].prompt.filter((m) => m.role === "tool");
+  expect(retried.map((m) => JSON.stringify(m).includes("trimmed to save context"))).toEqual([
+    true, true, false, false, false, false,
+  ]);
+  // A second overflow is not retried again; it surfaces with the provider's explanation.
+  const always = new MockLanguageModelV4({ doGenerate: async () => { throw overflow(); } });
+  await expect(
+    runCodingAgent(config, root, "Continue", new AbortController().signal, () => {}, () => always),
+  ).rejects.toThrow("prompt is too long");
+  expect(always.doGenerateCalls).toHaveLength(2);
+});

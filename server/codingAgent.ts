@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { modelFor, thinkingFor, type Config } from "./ai";
+import { contextOverflowError } from "./providerErrors";
 import { providers } from "../shared/scene";
 import {
   git,
@@ -207,22 +208,36 @@ function instrument(tools: ToolSet, emit: AgentEmit, depth: number): ToolSet {
 }
 
 const TRIM_ABOVE = 400_000;
+const TRIM_TARGET = 300_000;
 const KEEP_RECENT_RESULTS = 12;
 /**
- * Keep long sessions inside the model's context: once the conversation is
- * large, older tool outputs are replaced by a note. The engineer can re-run a
- * tool if it needs the output again. Recent results stay intact.
+ * Keep long sessions inside the model's context. Once the conversation passes
+ * `limit`, the oldest large tool outputs are replaced by a note until it is back
+ * under `target`; the engineer can re-run a tool if it needs the output again.
+ * The `keepRecent` newest results always stay intact. Trimming happens in
+ * batches rather than one message per step, so the prompt prefix stays the same
+ * across many steps and provider prompt caching keeps hitting. Returns the same
+ * array when nothing changes.
  */
-export function trimContext(messages: ModelMessage[], limit = TRIM_ABOVE) {
+export function trimContext(
+  messages: ModelMessage[],
+  limit = TRIM_ABOVE,
+  keepRecent = KEEP_RECENT_RESULTS,
+  target = Math.min(limit, TRIM_TARGET),
+) {
   const size = (m: unknown) => JSON.stringify(m).length;
-  if (messages.reduce((n, m) => n + size(m), 0) <= limit) return messages;
+  let total = messages.reduce((n, m) => n + size(m), 0);
+  if (total <= limit) return messages;
   const toolIndexes = messages
     .map((m, i) => (m.role === "tool" ? i : -1))
     .filter((i) => i >= 0);
-  const older = new Set(toolIndexes.slice(0, -KEEP_RECENT_RESULTS));
-  return messages.map((message, index) => {
-    if (!older.has(index) || message.role !== "tool") return message;
-    return {
+  const result = [...messages];
+  let changed = false;
+  for (const index of toolIndexes.slice(0, Math.max(0, toolIndexes.length - keepRecent))) {
+    if (total <= target) break;
+    const message = messages[index];
+    if (message.role !== "tool") continue;
+    const replaced = {
       ...message,
       content: message.content.map((part) =>
         part.type === "tool-result" && size(part.output) > 1_500
@@ -236,7 +251,36 @@ export function trimContext(messages: ModelMessage[], limit = TRIM_ABOVE) {
           : part,
       ),
     };
-  });
+    const saved = size(message) - size(replaced);
+    if (saved <= 0) continue;
+    result[index] = replaced;
+    total -= saved;
+    changed = true;
+  }
+  return changed ? result : messages;
+}
+/** Hard trim after the provider reported a context overflow: keep only the newest few results. */
+const OVERFLOW_KEEP_RESULTS = 4;
+
+/**
+ * Mark the last message as a prompt-cache breakpoint for Anthropic, so the next
+ * step reads everything before it from the cache instead of paying for it again.
+ * Earlier messages never carry the marker (it is added to a copy, never stored).
+ */
+export function cacheable(messages: ModelMessage[], provider: string | null) {
+  if (provider !== "anthropic" || !messages.length) return messages;
+  const last = messages[messages.length - 1];
+  const marked = {
+    ...last,
+    providerOptions: {
+      ...last.providerOptions,
+      anthropic: {
+        ...(last.providerOptions?.anthropic as Record<string, unknown> | undefined),
+        cacheControl: { type: "ephemeral" },
+      },
+    },
+  } as ModelMessage;
+  return [...messages.slice(0, -1), marked];
 }
 
 export function runShell(
@@ -677,6 +721,14 @@ export async function runCodingAgent(
       },
     } as Parameters<typeof wrapLanguageModel>[0]["middleware"],
   });
+  // The conversation so far. A lost connection resumes from the last complete
+  // step instead of failing the task; nothing the engineer did is repeated.
+  const history: ModelMessage[] = [
+    ...(options.history || []),
+    { role: "user", content: prompt },
+  ];
+  // Set after a context overflow: the next step trims hard, once.
+  let hardTrim = false;
   const agent = new ToolLoopAgent({
     model,
     reasoning: thinkingFor(config, config.assistant),
@@ -692,19 +744,29 @@ Progress feedback matters: the person watches a live transcript. Before each bat
     stopWhen: maxSteps > 0 ? isStepCount(maxSteps) : () => false,
     maxOutputTokens: 32_000,
     maxRetries: options.maxRetries ?? 2,
-    prepareStep: ({ messages }) => ({ messages: trimContext(messages) }),
+    prepareStep: ({ messages }) => {
+      // The SDK's copy of the conversation and `history` hold the same messages.
+      // Trimming is written back into `history` so it persists across steps and
+      // resumes; recomputing it from untrimmed messages every step would move
+      // the trimmed boundary each time and defeat prompt caching.
+      const aligned =
+        messages.length === history.length &&
+        messages.every((m, i) => m.role === history[i].role);
+      const current = aligned ? history : messages;
+      const trimmed = hardTrim
+        ? trimContext(current, 0, OVERFLOW_KEEP_RESULTS, 0)
+        : trimContext(current);
+      hardTrim = false;
+      if (aligned && trimmed !== current) history.splice(0, history.length, ...trimmed);
+      return { messages: cacheable(trimmed, config.assistant) };
+    },
     providerOptions:
       config.assistant === "openai" ? { openai: { store: false } } : undefined,
     tools: instrument(tools, emit, depth),
   });
   let steps = 0;
-  // The conversation so far. A lost connection resumes from the last complete
-  // step instead of failing the task; nothing the engineer did is repeated.
-  const history: ModelMessage[] = [
-    ...(options.history || []),
-    { role: "user", content: prompt },
-  ];
   let outages = 0;
+  let overflowed = false;
   try {
     let result;
     for (;;) {
@@ -730,7 +792,19 @@ Progress feedback matters: the person watches a live transcript. Before each bat
         });
         break;
       } catch (error) {
-        const reason = signal.aborted ? undefined : transientProviderError(error);
+        if (signal.aborted) throw error;
+        if (!overflowed && contextOverflowError(error)) {
+          // One hard trim and retry; a second overflow fails the task with the
+          // provider's explanation.
+          overflowed = true;
+          hardTrim = true;
+          status(
+            `The conversation no longer fits the model's context. Trimming older tool output and retrying from step ${steps}.`,
+            "warning",
+          );
+          continue;
+        }
+        const reason = transientProviderError(error);
         if (!reason) throw error;
         outages += 1;
         const wait = Math.min(
