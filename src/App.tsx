@@ -61,6 +61,7 @@ import { savePathCommands, type PathFrame } from "../shared/path";
 import { PathEditor } from "./PathEditor";
 import type { Footprint } from "../shared/navigation";
 import {
+  dialogueAt,
   dialogueSubtitles,
   dialogueTiming,
   appendSpeech,
@@ -104,6 +105,7 @@ import { StudioAside } from "./StudioAside";
 import { useConversationVoice } from "./conversationVoice";
 import { RecordButton, type RecordingStatus } from "./RecordButton";
 import {
+  CINEMA,
   SceneRecorder,
   recordingFileName,
   recordingToMp4,
@@ -325,17 +327,25 @@ export default function App() {
   /** Arm a take; `play` also starts playback from the playhead. */
   const startRecording = (play: boolean) => {
     if (recording !== "idle" || recorder.current) return false;
-    const surface = viewport.current?.recordingSurface();
-    if (!surface) {
-      report("Wait for the scene to finish loading, then record again.");
+    // Film camera: 1920×1080 from the preview's view, no editor helpers.
+    const film = viewport.current?.startCinema(CINEMA.width, CINEMA.height);
+    if (!film) {
+      report(
+        "The film camera could not start. Wait for the scene to load, then record again.",
+      );
       return false;
     }
     const audio = voiceEnabled ? armRecordingAudio() : null;
     let take: SceneRecorder;
     try {
-      take = new SceneRecorder(surface, audio);
+      take = new SceneRecorder(
+        film,
+        (t) => dialogueAt(sceneRef.current, t),
+        audio,
+      );
     } catch (error) {
       disarmRecordingAudio();
+      viewport.current?.stopCinema();
       report((error as Error).message);
       return false;
     }
@@ -365,8 +375,10 @@ export default function App() {
     viewport.current?.onFrame(null);
     disarmRecordingAudio();
     setRecording("saving");
+    const finished = take.stop();
+    viewport.current?.stopCinema();
     try {
-      const mp4 = await recordingToMp4(await take.stop());
+      const mp4 = await recordingToMp4(await finished);
       download(mp4, recordingFileName(sceneRef.current.name), "video/mp4");
       setNotice("Recording saved as MP4.");
       setTimeout(() => setNotice(""), 4000);
@@ -387,6 +399,7 @@ export default function App() {
     () => () => {
       recorder.current?.stop().catch(() => {});
       recorder.current = null;
+      viewport.current?.stopCinema();
       disarmRecordingAudio();
     },
     [],

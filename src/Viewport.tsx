@@ -9,7 +9,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { exportSnapshot } from "./exportSnapshot";
-import type { RecordingSurface } from "./sceneRecorder";
+import { cinemaFov, frameGuide } from "./sceneRecorder";
 import { bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
 import { configureRigContacts } from "./ik";
@@ -38,8 +38,12 @@ export type ViewportHandle = {
   suppressAssetClick: () => boolean;
   seatingBody: (actorId: string) => SeatBody | undefined;
   screenshot: () => void;
-  /** The live canvas and dialogue overlay, for recording the view. */
-  recordingSurface: () => RecordingSurface | null;
+  /**
+   * Start the film camera: a separate width × height render of the preview
+   * view without editor helpers. Returns its canvas for recording.
+   */
+  startCinema: (width: number, height: number) => HTMLCanvasElement | null;
+  stopCinema: () => void;
   /** Called after every rendered frame while set (for recordings). */
   onFrame: (listener: ((time: number) => void) | null) => void;
   exportGLB: () => Promise<ArrayBuffer>;
@@ -113,7 +117,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
     live.current = props;
     const readyKey = useRef("");
     const frameListener = useRef<((time: number) => void) | null>(null);
-    const bubbleOverlay = useRef<HTMLElement | null>(null);
     const requestedModelKey = modelKey(props.scene);
     const context = useRef<{
       renderer: T.WebGLRenderer;
@@ -124,6 +127,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       content: T.Group;
       transform: TransformControls;
       renderAt: (t: number) => void;
+      startCinema: (width: number, height: number) => HTMLCanvasElement | null;
+      stopCinema: () => void;
       dragging: ReturnType<typeof sceneDragging>;
       // Incremental model state: what is placed, what is loading, and the
       // original imported files shared as motion sources.
@@ -162,7 +167,6 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       bubbleLayer.className = "scene-bubble-layer";
       bubbleLayer.setAttribute("aria-label", "In-scene conversation");
       host.current.appendChild(bubbleLayer);
-      bubbleOverlay.current = bubbleLayer;
       const bubbles = new Map<string, HTMLDivElement>();
       const projectBubbles = (time: number) => {
         const lines = dialogueAt(live.current.scene, time).map((l) => ({
@@ -373,7 +377,92 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           .slice(0, 2)
           .join(" ");
       };
+      // Film camera for recordings: its own renderer at a fixed 16:9 size,
+      // following the preview camera, with editor helpers hidden.
+      let cinema: {
+        renderer: T.WebGLRenderer;
+        camera: T.PerspectiveCamera;
+      } | null = null;
+      const guide = document.createElement("div");
+      guide.className = "cinema-guide";
+      guide.hidden = true;
+      guide.setAttribute("aria-hidden", "true");
+      host.current.appendChild(guide);
+      const placeGuide = () => {
+        if (!cinema) return;
+        const box = frameGuide(
+          renderer.domElement.clientWidth,
+          renderer.domElement.clientHeight,
+          cinema.camera.aspect,
+        );
+        Object.assign(guide.style, {
+          left: `${box.left}px`,
+          top: `${box.top}px`,
+          width: `${box.width}px`,
+          height: `${box.height}px`,
+        });
+      };
+      const startCinema = (width: number, height: number) => {
+        if (cinema) return cinema.renderer.domElement;
+        let film: T.WebGLRenderer;
+        try {
+          film = new T.WebGLRenderer({
+            antialias: true,
+            preserveDrawingBuffer: true,
+          });
+        } catch {
+          return null;
+        }
+        film.setPixelRatio(1);
+        film.setSize(width, height, false);
+        film.shadowMap.enabled = true;
+        film.shadowMap.type = T.PCFSoftShadowMap;
+        film.outputColorSpace = T.SRGBColorSpace;
+        film.toneMapping = T.ACESFilmicToneMapping;
+        cinema = {
+          renderer: film,
+          camera: new T.PerspectiveCamera(camera.fov, width / height, 0.1, 100),
+        };
+        guide.hidden = false;
+        placeGuide();
+        return film.domElement;
+      };
+      const stopCinema = () => {
+        if (!cinema) return;
+        cinema.renderer.dispose();
+        cinema.renderer.forceContextLoss();
+        cinema = null;
+        guide.hidden = true;
+      };
+      const renderCinema = () => {
+        if (!cinema) return;
+        const film = cinema.camera;
+        film.position.copy(camera.position);
+        film.quaternion.copy(camera.quaternion);
+        film.near = camera.near;
+        film.far = camera.far;
+        film.fov = cinemaFov(camera.fov, camera.aspect, film.aspect);
+        film.updateProjectionMatrix();
+        // Only the scene content and its lights belong in the film.
+        const hidden: T.Object3D[] = [];
+        for (const child of world.children)
+          if (
+            child !== content &&
+            !(child instanceof T.Light) &&
+            child.visible
+          ) {
+            child.visible = false;
+            hidden.push(child);
+          }
+        try {
+          cinema.renderer.render(world, film);
+        } finally {
+          for (const child of hidden) child.visible = true;
+        }
+      };
       context.current = {
+        startCinema,
+        stopCinema,
         renderer,
         world,
         camera,
@@ -396,6 +485,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         renderer.setSize(width, height);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
+        placeGuide();
       });
       resize.observe(host.current);
       let pointer = [0, 0];
@@ -495,13 +585,15 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         if (controls.enabled) controls.update();
         renderer.render(world, camera);
         projectBubbles(elapsed);
+        renderCinema();
         frameListener.current?.(elapsed);
       };
       frame = requestAnimationFrame(loop);
       return () => {
         cancelAnimationFrame(frame);
         bubbleLayer.remove();
-        bubbleOverlay.current = null;
+        stopCinema();
+        guide.remove();
         resize.disconnect();
         window.removeEventListener("keydown", cancelGizmo);
         renderer.domElement.removeEventListener(
@@ -843,13 +935,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             c.controls.target.set(0, 0.85, -0.5);
           }
         },
-        recordingSurface() {
-          const c = context.current;
-          if (!c || !bubbleOverlay.current) return null;
-          return {
-            canvas: c.renderer.domElement,
-            overlay: bubbleOverlay.current,
-          };
+        startCinema(width, height) {
+          return context.current?.startCinema(width, height) ?? null;
+        },
+        stopCinema() {
+          context.current?.stopCinema();
         },
         onFrame(listener) {
           frameListener.current = listener;

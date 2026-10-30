@@ -20,13 +20,6 @@ export function chooseRecordingFormat(
   return candidates.find((c) => isTypeSupported(c.mimeType)) ?? null;
 }
 
-/** Recording frame size: canvas pixels, capped, with even sides for H.264. */
-export function recordingSize(width: number, height: number, max = 1920) {
-  const scale = Math.min(1, max / Math.max(width, height, 1));
-  const even = (n: number) => Math.max(2, Math.floor((n * scale) / 2) * 2);
-  return { width: even(width), height: even(height), scale };
-}
-
 export function recordingFileName(name: string, date = new Date()) {
   const base =
     name
@@ -61,88 +54,65 @@ export function wrapText(
   return lines;
 }
 
-const roundRect = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) => {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-};
+/** Cinematic output: Full HD, 16:9, regardless of the editor's layout. */
+export const CINEMA = { width: 1920, height: 1080 } as const;
 
 /**
- * Paint the in-scene dialogue bubbles (DOM overlays in the live view) onto
- * the recording frame, matching the .scene-bubble styling.
+ * Vertical field of view for the film camera so its 16:9 frame is the
+ * largest centred 16:9 area of the preview: wide previews crop the sides
+ * (same vertical view), tall previews crop top and bottom.
  */
-export function drawBubbles(
-  ctx: CanvasRenderingContext2D,
-  layer: HTMLElement,
-  origin: DOMRect,
-  scale: number,
-) {
-  for (const bubble of Array.from(layer.children) as HTMLElement[]) {
-    // Thinking bubbles mark live generation, not the finished scene.
-    if (bubble.hidden || bubble.classList.contains("thought")) continue;
-    const name = bubble.querySelector("strong")?.textContent ?? "";
-    const words = bubble.querySelector("span");
-    const text = words?.textContent ?? "";
-    const rect = bubble.getBoundingClientRect();
-    const textWidth =
-      words?.getBoundingClientRect().width ?? Math.max(0, rect.width - 32);
-    const family = getComputedStyle(bubble).fontFamily || "sans-serif";
-    ctx.save();
-    ctx.scale(scale, scale);
-    ctx.translate(rect.left - origin.left, rect.top - origin.top);
-    const radius = 18;
-    ctx.strokeStyle = "#819776";
-    ctx.lineWidth = 1;
-    ctx.shadowColor = "#263a2420";
-    ctx.shadowBlur = 20;
-    ctx.shadowOffsetY = 5;
-    ctx.fillStyle = "#fffef8f5";
-    roundRect(ctx, 0.5, 0.5, rect.width - 1, rect.height - 1, radius);
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    ctx.stroke();
-    // Tail below the bubble, pointing at the speaker.
-    ctx.beginPath();
-    ctx.moveTo(rect.width / 2 - 7, rect.height - 1);
-    ctx.lineTo(rect.width / 2, rect.height + 7);
-    ctx.lineTo(rect.width / 2 + 7, rect.height - 1);
-    ctx.fillStyle = "#fffef8";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(rect.width / 2 - 7, rect.height - 0.5);
-    ctx.lineTo(rect.width / 2, rect.height + 7);
-    ctx.lineTo(rect.width / 2 + 7, rect.height - 0.5);
-    ctx.stroke();
-    ctx.textBaseline = "top";
-    ctx.fillStyle = "#74846a";
-    ctx.font = `600 10px ${family}`;
-    if ("letterSpacing" in ctx) ctx.letterSpacing = "0.8px";
-    ctx.fillText(name.toUpperCase(), 16, 13);
-    if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
-    ctx.fillStyle = "#31452c";
-    ctx.font = `14px ${family}`;
-    wrapText(text, textWidth + 1, (t) => ctx.measureText(t).width).forEach(
-      (line, i) => ctx.fillText(line, 16, 32 + i * 21),
-    );
-    ctx.restore();
-  }
+export function cinemaFov(fov: number, viewAspect: number, aspect: number) {
+  if (viewAspect >= aspect) return fov;
+  const half = (fov * Math.PI) / 360;
+  return (Math.atan((Math.tan(half) * viewAspect) / aspect) * 360) / Math.PI;
 }
 
-export type RecordingSurface = {
-  canvas: HTMLCanvasElement;
-  overlay: HTMLElement;
-};
+/** The largest centred rectangle of `aspect` inside a width × height view. */
+export function frameGuide(width: number, height: number, aspect: number) {
+  const w = Math.min(width, height * aspect);
+  const h = w / aspect;
+  return { left: (width - w) / 2, top: (height - h) / 2, width: w, height: h };
+}
+
+export type Caption = { text: string };
+
+/** Film-style subtitles: white, outlined, centred near the bottom. */
+export function drawCaptions(
+  ctx: CanvasRenderingContext2D,
+  captions: Caption[],
+  width: number,
+  height: number,
+) {
+  if (!captions.length) return;
+  const size = Math.round(height * 0.037);
+  const lineHeight = size * 1.28;
+  ctx.save();
+  ctx.font = `500 ${size}px "Helvetica Neue", Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.lineJoin = "round";
+  const lines = captions.flatMap((c) =>
+    wrapText(
+      (captions.length > 1 ? "– " : "") + c.text.replace(/\s+/g, " "),
+      width * 0.72,
+      (t) => ctx.measureText(t).width,
+    ),
+  );
+  const bottom = height * 0.92;
+  lines.forEach((line, i) => {
+    const y = bottom - (lines.length - 1 - i) * lineHeight;
+    ctx.shadowColor = "#000a";
+    ctx.shadowBlur = size * 0.35;
+    ctx.lineWidth = size * 0.14;
+    ctx.strokeStyle = "#000c";
+    ctx.strokeText(line, width / 2, y);
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(line, width / 2, y);
+  });
+  ctx.restore();
+}
 
 export type Recording = {
   blob: Blob;
@@ -200,8 +170,8 @@ export class RecordingClock {
 }
 
 /**
- * Records the live viewport in real time: every rendered frame is composited
- * (3D view + dialogue bubbles) onto an offscreen canvas captured by
+ * Records the film camera in real time: each frame of the dedicated 16:9
+ * render (no editor helpers) gets film subtitles and is captured by
  * MediaRecorder, optionally with a voice audio track.
  */
 export class SceneRecorder {
@@ -214,7 +184,8 @@ export class SceneRecorder {
   private clock = new RecordingClock();
   readonly format: RecordingFormat;
   constructor(
-    private surface: RecordingSurface,
+    private source: HTMLCanvasElement,
+    private captions: (time: number) => Caption[],
     audio: MediaStreamTrack | null,
   ) {
     if (typeof MediaRecorder === "undefined")
@@ -225,14 +196,13 @@ export class SceneRecorder {
     if (!format)
       throw Error("This browser cannot record video. Try Chrome or Safari.");
     this.format = format;
-    const size = recordingSize(surface.canvas.width, surface.canvas.height);
     this.frame = document.createElement("canvas");
-    this.frame.width = size.width;
-    this.frame.height = size.height;
+    this.frame.width = source.width;
+    this.frame.height = source.height;
     const ctx = this.frame.getContext("2d");
     if (!ctx) throw Error("This browser cannot record video.");
     this.ctx = ctx;
-    this.paint();
+    this.paint(0);
     this.stream = this.frame.captureStream(30);
     if (audio) this.stream.addTrack(audio);
     this.recorder = new MediaRecorder(this.stream, {
@@ -273,16 +243,14 @@ export class SceneRecorder {
       this.recorder.pause();
       return;
     }
-    this.paint();
+    this.paint(time);
     if (step === "start") this.recorder.start(1000);
     if (step === "resume") this.recorder.resume();
   }
-  private paint() {
-    const { canvas, overlay } = this.surface;
+  private paint(time: number) {
     const { width, height } = this.frame;
-    this.ctx.drawImage(canvas, 0, 0, width, height);
-    const box = canvas.getBoundingClientRect();
-    if (box.width) drawBubbles(this.ctx, overlay, box, width / box.width);
+    this.ctx.drawImage(this.source, 0, 0, width, height);
+    drawCaptions(this.ctx, this.captions(time), width, height);
   }
   stop(): Promise<Recording> {
     for (const track of this.stream.getVideoTracks()) track.stop();

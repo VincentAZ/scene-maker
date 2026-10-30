@@ -563,6 +563,7 @@ button svg {
   position: absolute;
   inset: 0;
   touch-action: none;
+  overflow: hidden;
 }
 .viewport-canvas canvas {
   display: block;
@@ -5132,4 +5133,15 @@ label > span {
   .recording-dot {
     animation: none;
   }
+}
+/* Film frame shown on the stage while recording; outside it is dimmed. */
+.cinema-guide {
+  position: absolute;
+  pointer-events: none;
+  outline: 1px solid #ffffffb3;
+  box-shadow: 0 0 0 100vmax #10140f73;
+  z-index: 1;
+}
+.cinema-guide[hidden] {
+  display: none;
 }
