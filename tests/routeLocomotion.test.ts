@@ -103,7 +103,13 @@ describe("route locomotion selection", () => {
     expect(defaultRouteLocomotion(scene, actor)).toBe(carry);
     actor.clips = [];
     scene.customMotions = [];
-    expect(defaultRouteLocomotion(scene, actor).id).toBe("authored-walk");
+    expect(defaultRouteLocomotion(scene, actor).id).toBe(
+      "captured-walking-stride",
+    );
+    expect(defaultRouteLocomotion(scene, actor).path?.sourceRange).toEqual({
+      start: 0.4,
+      end: 1.525,
+    });
     expect(defaultRouteLocomotion(scene, actor, "run").id).toBe("authored-run");
   });
 

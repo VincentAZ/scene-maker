@@ -278,18 +278,18 @@ describe("PathEditor waypoint actions", () => {
 });
 
 describe("PathEditor imported locomotion", () => {
-  it("defaults new routes to an authored walking gait while keeping legacy route choices unchanged", async () => {
+  it("defaults new routes to a captured walking stride while keeping legacy route choices unchanged", async () => {
     await render({ motion: undefined });
     expect(
       query<HTMLSelectElement>('select[aria-label="Route locomotion"]').value,
-    ).toBe("authored-walk");
+    ).toBe("captured-walking-stride");
     expect(container.textContent).toContain("Keeps the original animation");
     await click("Add point");
     await click("Add to sequence");
     expect(onSave.mock.lastCall?.[0]).toMatchObject({
       kind: "imported",
-      sourceAssetId: "quaternius-action-source",
-      animationName: "Walk",
+      sourceAssetId: "cmu-capture-35-01",
+      animationName: "35_01",
       distance: 0,
       poses: [],
     });
@@ -431,13 +431,13 @@ it("preserves a selected source interval through edits and saves exact imported 
   expect(onSave.mock.lastCall![0].path.sourceRange).toBeUndefined();
   expect(onSave.mock.lastCall![0].path.strideScale).toBeUndefined();
 });
-function measuredSource(animationName = "Walk") {
+function measuredSource(animationName = "35_01") {
   const source = new T.Group();
   source.userData.animations = [new T.AnimationClip(animationName, 2, [])];
-  vi.mocked(locomotionProfile).mockImplementation((_source, clip) => ({
+  vi.mocked(locomotionProfile).mockImplementation((_source, clip, range) => ({
     frames: [],
     distance: 1.5,
-    duration: clip.duration,
+    duration: range ? range.end - range.start : clip.duration,
     startHeading: 0,
     warning: "",
     mode: "travel",
@@ -462,19 +462,19 @@ describe("PathEditor production gait measurement", () => {
       true,
     );
     await act(async () => pending.resolve(source));
-    // 1.5 source metres * target/source ratio 2 / full source duration 2.
+    // 1.5 source metres * target/source ratio 2 over the selected 1.125-second stride.
     expect(
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
-    ).toBe("4");
-    expect(container.textContent).toContain("Measured natural pace: 1.50 m/s");
+    ).toBe("2.25");
+    expect(container.textContent).toContain("Measured natural pace: 2.67 m/s");
     expect(locomotionProfile).toHaveBeenCalledWith(
       source,
       source.userData.animations[0],
-      undefined,
+      { start: 0.4, end: 1.525 },
     );
     expect(loadImportedAsset).toHaveBeenCalledTimes(1);
     await click("Add to sequence");
-    expect(onSave.mock.lastCall?.[0].duration).toBe(4);
+    expect(onSave.mock.lastCall?.[0].duration).toBe(2.25);
   });
 
   it("retains a manually chosen duration when asynchronous measurement finishes", async () => {

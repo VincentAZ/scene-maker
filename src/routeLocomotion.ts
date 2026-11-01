@@ -5,7 +5,7 @@ import {
   type Motion,
   type Scene,
 } from "../shared/scene";
-import { motionSource } from "../shared/motionLibrary";
+import { motionSource, capturedRouteGaits } from "../shared/motionLibrary";
 
 export type RouteMovement = "walk" | "run";
 /** Distance in actor-local units, before the placed entity scale is applied. */
@@ -106,6 +106,7 @@ export function routeLocomotions(
       (source.id !== motionSource.id || !!namedRouteMovement(motion))
     );
   });
+  imported.push(...capturedRouteGaits);
   // A route remains editable even if its original action was renamed/removed,
   // or its source is temporarily unavailable. Playback reports missing sources.
   if (current?.kind === "imported") imported.push(current);
@@ -133,7 +134,7 @@ export function matchingRouteLocomotion(
 }
 
 /** Prefer the actor's established/native gait; otherwise use the authored
- * library loop, not a procedural replacement of an imported performance. */
+ * captured stride before an authored or procedural fallback. */
 export function defaultRouteLocomotion(
   scene: Scene,
   actor: Entity,
@@ -154,6 +155,9 @@ export function defaultRouteLocomotion(
   }
   return (
     matching.find((motion) => motion.sourceAssetId === actor.assetId) ||
+    matching.find((motion) =>
+      capturedRouteGaits.some((gait) => gait.id === motion.id),
+    ) ||
     matching.find((motion) => motion.id === `authored-${movement}`) ||
     available.find((motion) => motion.id === movement)!
   );

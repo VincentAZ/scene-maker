@@ -37,6 +37,24 @@ export const capturedMotions: Motion[] = capturedCatalogue.map(
     poses: [],
   }),
 );
+/** Route selector presets reference original takes and saved source intervals.
+ * They are not extra animations or replacements for any saved scene action. */
+export const capturedRouteGaits: Motion[] = [
+  {
+    ...capturedMotions.find((motion) => motion.animationName === "35_01")!,
+    id: "captured-walking-stride",
+    name: "Captured walking stride",
+    duration: 1.125,
+    path: {
+      points: [
+        [0, 0, 0],
+        [0, 0, 1.629091561409043],
+      ],
+      smooth: false,
+      sourceRange: { start: 0.4, end: 1.525 },
+    },
+  },
+];
 export const libraryMotions: Motion[] = catalogue.map(
   ([animationName, name]) => ({
     id:

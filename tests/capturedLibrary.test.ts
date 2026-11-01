@@ -134,6 +134,9 @@ it("finds grounded stance in the shipped captured stride without altering the so
     new Set(["left", "right"]),
   );
   expect(profile.contacts!.every((c) => c.end > c.start)).toBe(true);
+  const left = profile.contacts!.filter((c) => c.side === "left");
+  expect(left[0].start).toBe(0);
+  expect(left.at(-1)!.end).toBeCloseTo(profile.duration, 8);
   expect(clip.tracks.map((t) => Array.from(t.values))).toEqual(before);
   disposeObject(group);
 });

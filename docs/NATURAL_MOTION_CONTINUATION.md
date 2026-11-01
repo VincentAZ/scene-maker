@@ -298,7 +298,7 @@ normal-speed evidence saved. This turn adds the captures to the real library.
   captured foot landmarks before trusting route planting. Do not interpret an
   empty warning as sufficient quality evidence or change defaults from it.
 - Private API was restarted to load new catalogue code: current handle 66444,
-  port4413. Vite4546 handle80797; Chrome9451 remains live. A final UI-only badge
+  port4413. Vite4546 handle80797; Chrome 9451 remains live. A final UI-only badge
   edit requires a fresh Vite port per existing no-HMR practice.
 
 Still required: natural default walking/running and remaining actions, source
@@ -376,3 +376,61 @@ Make a reviewed captured stride available as a route option/default when its
 visible quality is established. Running and other natural defaults, independent
 provider coverage, waits/arrival/collision/export visual gates still remain.
 Do not mark complete or interpret this detector change as completion.
+
+## Continuation update — preserved cut contacts and captured walking default
+
+Prior turn was **progress**: a generic bounded stance detector enabled actual
+capture contact intervals. This turn fixes their behavior at selected cuts and
+uses the stride in normal route creation.
+
+- Added `trimFootContacts` in `src/routeContacts.ts`. It trims full-take support
+  evidence, interpolating boundary ankle/sole samples and preserving interior
+  samples. `locomotionProfile` uses uninterrupted native support for selected
+  travelling intervals with sole geometry. This avoids losing contact solely
+  because a detector's lookaround window extends outside a selected stride.
+  The 0.4–1.525 s stride now retains left support at both interval boundaries.
+- Added `capturedRouteGaits` selector preset **Captured walking stride**. It
+  references original 35_01, source range 0.4–1.525 s; no generated keyframes or
+  new GLB. `defaultRouteLocomotion` uses it for new walking routes with no
+  established/native gait. Existing performances keep priority. Running still
+  falls back to the authored run; existing saved routes are not migrated.
+- Production PathEditor UI verified on private project
+  `captured-route-default-review`: selected captured-walking-stride by default,
+  measured Party Woman at 1.20 m/s, saved a 6 m route in 4.987045 seconds with the
+  exact source ID/animation/sourceRange and collisions=true. No console errors.
+  Evidence: `/tmp/scene-natural-motion/default-captured-route-saved.json`,
+  `default-captured-route-ui.log`, `captured-default-editor.png`.
+  Driver: `test-results/default-captured-route-ui.mjs`.
+- UI harness initially had wrong button matching, missing Boolean coercion of
+  a DOM query, quoting errors and stale revision on its own disposable project.
+  Corrected the driver; final real save/reload assertions pass. These were
+  harness errors, not requests to modify the protected user project.
+- Six-cycle, 6.75-second, 60-fps normal-speed evidence after contact trimming:
+  `/tmp/scene-natural-motion/cmu-long/stride-route-preserved-contacts-1x.mp4`
+  (source skeleton/Party Woman). Also rendered source/Sage (Casual Female):
+  `stride-route-casual-female-full-body-1x.mp4`. The earlier
+  `stride-route-casual-female-1x.mp4` clipped the stylized head; harness body
+  framing now uses full model bounds rather than hip-to-floor length.
+- Party Woman lower-foot median/p90 speed changed from 0.1703/2.0446 m/s to
+  0.1669/1.9782 m/s with preserved cut contacts. This remains a mixed swing/stance
+  metric, not a no-skating or naturalness proof. Sage's corresponding values
+  are 0.0695/0.7243 m/s, with different proportions; do not compare them as a
+  cross-provider quality score. Both render runs reported no GL errors.
+- Full suite: **1078 tests /95 files**, TypeScript and isolated build pass.
+  Logs: `full-suite-captured-default.log`, `build-captured-default.log` under
+  `/tmp/scene-natural-motion/`. Existing PathEditor mocks/expectations were
+  updated to the captured source and selected 1.125-second interval. Authored
+  gait selection and existing-route tests remain. After changing source lookup
+  to explicit 35_01 rather than array order, 15 focused tests and TypeScript pass.
+- Baked/reloaded six-cycle route export: max sampled joint/skin error <0.058 mm
+  source, <0.039 mm receiver. Report `cmu-long/default-stride-export-export.json`.
+  This is the harness's initial timestamp sample set, not full-take visual QA.
+- Latest Vite 4551 handle 48460; API 4413 and Chrome 9451 remain live. Vite predates
+  only the equivalent explicit 35_01 preset lookup; use a fresh port for further
+  runtime changes. No original workspace or protected project was modified.
+
+Next work remains substantial: running/other natural defaults; verify the saved
+new default in a real scene through arrivals, waits, detours and export; more
+provider rigs and close sole/hand views. Native source and receiver aesthetics
+still need acceptance. Do not turn this walking-default milestone into a claim
+that the whole natural-animation objective is complete.

@@ -84,8 +84,15 @@ redistribution. The terms and requested attribution accompany the assets in
 `public/library/actions/cmu/LICENSE.txt` and in production ZIPs referencing
 these captures. These assets are not CC0.
 
-The complete walking take has unmatched endpoint foot poses. It is available
-for native-speed performances, but is not yet the default repeated route gait.
-Stride-window selection, source-contact calibration and normal-speed route
-verification remain open. Do not treat inclusion in the library as a claim
-that these captures solve natural movement across every receiver.
+The complete walking take has unmatched endpoint foot poses. New walking routes
+without an established or native gait now select **Captured walking stride**,
+which references source seconds 0.4–1.525 of 35_01. The editor measures that
+interval and receiver proportions to offer the original pace. It saves the
+source identity and interval on the route; it does not alter the original take
+or migrate saved routes. Running currently retains the authored fallback.
+
+Contact evidence is measured on the uninterrupted capture and trimmed to the
+selected stride, preserving support when a cut falls inside a planted step.
+Normal-speed route evidence exists for Party Woman and Casual Female. Broader
+provider coverage, contact quality, arrival/wait visual verification, and other
+natural defaults remain unfinished; this is not a universal quality claim.

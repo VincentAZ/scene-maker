@@ -5,6 +5,7 @@ import { gaitTravelTime } from "./routeLocomotion";
 import {
   detectFootContacts,
   detectNativeFootContacts,
+  trimFootContacts,
   footContactPosition,
   type FootContact,
 } from "./routeContacts";
@@ -542,6 +543,29 @@ export function locomotionProfile(
         (_, i) => footSeams[i] <= standingHeight(source) * 0.035,
       ),
     } as LocomotionProfile;
+    if (
+      interval &&
+      hasSoles &&
+      mode === "travel" &&
+      (sourceStart > 0 || sourceEnd < clip.duration)
+    ) {
+      const full = locomotionProfile(source, clip);
+      if (full?.mode === "travel" && full.nativeContacts?.length) {
+        // Detect on the uninterrupted performance, then retain support through
+        // the selected boundaries. Otherwise the detector's lookaround window
+        // creates a release/replant at every repetition of a cut stride.
+        result.contacts = trimFootContacts(
+          full.nativeContacts,
+          sourceStart,
+          sourceEnd,
+        );
+        result.nativeContacts = trimFootContacts(
+          full.nativeContacts,
+          sourceStart,
+          sourceEnd,
+        );
+      }
+    }
     if (flight)
       result.contacts = flightFootContacts(
         result.contacts!,

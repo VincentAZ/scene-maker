@@ -162,6 +162,54 @@ export function detectNativeFootContacts(
     return result;
   });
 }
+/** Trim existing support evidence instead of redetecting stance at a cut.
+ * A source interval may start/end inside a planted foot's support window. */
+export function trimFootContacts(
+  contacts: FootContact[],
+  start: number,
+  end: number,
+): FootContact[] {
+  return contacts.flatMap((contact) => {
+    const a = Math.max(start, contact.start),
+      b = Math.min(end, contact.end);
+    if (b <= a || !contact.samples.length) return [];
+    const boundary = (time: number) => {
+      let next = contact.samples.findIndex((sample) => sample.time >= time);
+      if (next < 0) next = contact.samples.length - 1;
+      const hi = contact.samples[next],
+        lo = contact.samples[Math.max(0, next - 1)];
+      const mix =
+        hi.time > lo.time ? (time - lo.time) / (hi.time - lo.time) : 0;
+      return {
+        time: time - start,
+        point: lo.point.clone().lerp(hi.point, mix),
+        ...(lo.sole && hi.sole
+          ? { sole: lo.sole.clone().lerp(hi.sole, mix) }
+          : {}),
+      };
+    };
+    return [
+      {
+        ...contact,
+        start: a - start,
+        end: b - start,
+        samples: [
+          boundary(a),
+          ...contact.samples
+            .filter((sample) => sample.time > a && sample.time < b)
+            .map((sample) => ({
+              ...sample,
+              time: sample.time - start,
+              point: sample.point.clone(),
+              ...(sample.sole ? { sole: sample.sole.clone() } : {}),
+            })),
+          boundary(b),
+        ],
+      },
+    ];
+  });
+}
+
 export function contactPoint(contact: FootContact, time: number) {
   const frames = contact.samples;
   let low = 0,
