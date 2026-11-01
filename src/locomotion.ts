@@ -449,6 +449,7 @@ export function locomotionProfile(
         );
       return {
         time: frame.time,
+        heights: frame.soleHeights,
         feet: frame.feet.map((foot) => foot.clone().add(virtualTravel)),
         contactFeet: frame.contactFeet.map((foot) =>
           foot.clone().add(virtualTravel),

@@ -2,7 +2,51 @@ import * as T from "three";
 import { solveLimb } from "./ik";
 import { footSurfaceContact, sampleFootSurfaces } from "./footSurface";
 
-export type FootSample = { time: number; feet: T.Vector3[] };
+export type FootSample = {
+  time: number;
+  feet: T.Vector3[];
+  contactFeet?: T.Vector3[];
+  heights?: [number, number];
+};
+
+/** Optical captures contain small stance jitter and ankle roll. Use a short
+ * bounded region as additional evidence, never smoothing the output samples.
+ * Actual sole heights are required: a low point in a jump is not a floor. */
+function boundedGroundSupport(
+  frames: FootSample[],
+  index: number,
+  side: number,
+  legHeight: number,
+) {
+  const time = frames[index].time;
+  let first = index,
+    last = index;
+  while (first > 0 && time - frames[first - 1].time <= 0.075) first--;
+  while (last + 1 < frames.length && frames[last + 1].time - time <= 0.075)
+    last++;
+  if (frames[last].time - frames[first].time < 0.1 - 1e-9) return false;
+  const point = (frame: FootSample) =>
+    frame.contactFeet?.[side] ?? frame.feet[side];
+  const origin = point(frames[index]);
+  const start = point(frames[first]),
+    end = point(frames[last]);
+  if (Math.hypot(end.x - start.x, end.z - start.z) > legHeight * 0.01)
+    return false;
+  for (let i = first; i <= last; i++) {
+    const height = frames[i].heights?.[side],
+      p = point(frames[i]);
+    if (
+      !Number.isFinite(p.x + p.z + origin.x + origin.z) ||
+      height === undefined ||
+      !Number.isFinite(height) ||
+      height < -legHeight * 0.08 ||
+      height > legHeight * 0.035 ||
+      Math.hypot(p.x - origin.x, p.z - origin.z) > legHeight * 0.012
+    )
+      return false;
+  }
+  return true;
+}
 export type FootContact = {
   side: "left" | "right";
   start: number;
@@ -70,8 +114,9 @@ export function detectFootContacts(
       const delta = b.feet[foot].clone().sub(a.feet[foot]);
       const speed = Math.hypot(delta.x, delta.z) / (b.time - a.time);
       const contact =
-        speed <= legHeight * (first < 0 ? 0.035 : 0.055) &&
-        frames[i].feet[foot].y <= floor + legHeight * 0.035;
+        (speed <= legHeight * (first < 0 ? 0.035 : 0.055) &&
+          frames[i].feet[foot].y <= floor + legHeight * 0.035) ||
+        boundedGroundSupport(frames, i, foot, legHeight);
       if (contact) {
         if (first < 0) first = i;
       } else if (first >= 0) finish(i - 1);

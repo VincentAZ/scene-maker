@@ -324,3 +324,55 @@ Final-port UI run initially logged one unlocated HTTP404 while all preview
 assertions passed. Repeated with URL-bearing log capture: no errors, only
 headless Chrome software-WebGL deprecation warnings. The original 404 URL was
 not retained, so its cause is unproven; do not claim it was a known favicon.
+
+## Continuation update — bounded capture stance detection
+
+Previous turn was **progress**: captured assets reached the actual library with
+UI/export integration. This turn investigated the zero-contact result.
+
+- Diagnostic `test-results/capture-contact-diagnostic.mjs` sampled the shipped
+  35_01 at 120 Hz, measuring ankles, toes and sole contact points. Output:
+  `/tmp/scene-natural-motion/cmu-long/contact-diagnostic.json`. Ankle planar
+  speeds at the 25th percentile were about 0.12/0.15 m/s; the original detector
+  required about 0.037 m/s to enter stance. Even sole contact points had enough
+  jitter/roll to repeatedly interrupt the required 0.12-second support.
+- `src/routeContacts.ts` retains its original strict detector and adds bounded
+  ground support evidence. A centered 150 ms window must contain at least 100 ms,
+  have ground-height evidence throughout, stay within 1.2% of leg height, and
+  have endpoint displacement below 1% of leg height. Prefer measured sole
+  contact points when present. Reject missing ground evidence, airborne heights,
+  nonfinite points and larger travel. Original animation/sample values remain
+  unchanged. This is generic temporal/spatial evidence, no provider-name logic.
+- `src/locomotion.ts` now passes already-measured sole heights to route-contact
+  detection (previously they were supplied only to the native-contact pass).
+- A first window implementation accidentally excluded many 60 Hz windows due to
+  the minimum duration versus sample spacing. Corrected the window bound and
+  numeric tolerance; added both 60 Hz and 120 Hz noisy-capture tests.
+- Shipped stride interval 0.4–1.525s now yields 3 contact intervals across both
+  feet, versus zero. Regression test checks the actual shipped asset and verifies
+  source key arrays remain unchanged. Synthetic tests reject airborne/missing
+  height evidence and sliding feet, and check preservation of every raw sample.
+- Six native-pace repetitions on a curved route rendered at 60 fps,6.75 seconds:
+  `/tmp/scene-natural-motion/cmu-long/stride-route-contact-window-1x.mp4`.
+  Same take/range/path/camera baseline:
+  `stride-route-before-contact-window-1x.mp4`. Old port 4547 was confirmed to
+  serve code without boundedGroundSupport; new 4549 served it. Both 406 frames.
+  Native skeleton is left, Party Woman right. No slowing or padded final hold.
+- A/B ankle placement differs by up to 4.54 cm on the original and 3.58 cm on the
+  receiver. Lower-foot median planar speed improves on the source but is
+  unchanged on the receiver (~0.170m/s); p 90 increases slightly. These crude
+  statistics include swing and are NOT proof of reduced skating. Inspect
+  actual stance trajectories and loop boundaries before claiming naturalness.
+- Full suite before the final nonfinite-point guard: **1078 tests /95 files**,
+  log `/tmp/scene-natural-motion/full-suite-contact-window-final.log`.
+  Focused route-contact/captured-library tests and TypeScript rerun after guard.
+- Newest Vite is 4549, exec handle 44548; it predates only the nonfinite guard.
+  Private API 4413 and Chrome 9451 remain live. Captured harness now supports
+  `CMU_RANGE` JSON and `CMU_REPEATS`; use both to reproduce multi-cycle routes.
+
+Next: quantify and inspect actual sole/stance behavior at repeats; contact
+windows truncate at interval edges, so inspect seam continuity carefully.
+Make a reviewed captured stride available as a route option/default when its
+visible quality is established. Running and other natural defaults, independent
+provider coverage, waits/arrival/collision/export visual gates still remain.
+Do not mark complete or interpret this detector change as completion.

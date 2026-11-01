@@ -1037,6 +1037,44 @@ describe("source-contact route correction", () => {
     expect(contacts[0].end).toBe(1);
     expect(detectFootContacts(frames.slice(0, 4), 1)).toEqual([]);
   });
+  it.each([60, 120])(
+    "recognizes bounded grounded capture jitter at %s Hz while retaining every original sample",
+    (fps) => {
+      const frames = Array.from({ length: fps + 1 }, (_, i) => {
+        const time = i / fps;
+        return {
+          time,
+          feet: [
+            new T.Vector3(0.003 * Math.sin(time * 120), 0.1, 0.05 * time),
+            new T.Vector3(0.2, 0.3, time),
+          ],
+          heights: [0, 0.2] as [number, number],
+        };
+      });
+      const contacts = detectFootContacts(frames, 1);
+      expect(contacts.length).toBeGreaterThan(0);
+      expect(contacts.every((c) => c.side === "left")).toBe(true);
+      for (const sample of contacts[0].samples)
+        expect(sample.point.toArray()).toEqual(
+          frames.find((f) => f.time === sample.time)!.feet[0].toArray(),
+        );
+      for (const height of [undefined, 0.2]) {
+        const airborne = frames.map((f) => ({
+          ...f,
+          heights:
+            height === undefined
+              ? undefined
+              : ([height, height] as [number, number]),
+        }));
+        expect(detectFootContacts(airborne, 1)).toEqual([]);
+      }
+      const sliding = frames.map((f) => ({
+        ...f,
+        feet: [new T.Vector3(0, 0.1, f.time * 0.5), f.feet[1]],
+      }));
+      expect(detectFootContacts(sliding, 1)).toEqual([]);
+    },
+  );
   it("corrects horizontal drift without changing foot orientation, height or bone lengths", () => {
     const f = rig();
     f.foot.rotation.set(0.3, 0.1, -0.2);

@@ -20,6 +20,7 @@ import {
   prepareImportedAsset,
   requiredMotionSources,
 } from "../src/importedAsset";
+import { locomotionProfile } from "../src/locomotion";
 import { productionPackage } from "../src/productionPackage";
 import {
   emptyStudioLibrary,
@@ -122,4 +123,17 @@ it("packages referenced capture files and their terms without changing the cast"
         : read(input, options),
     ),
   ).rejects.toThrow("capture terms");
+});
+
+it("finds grounded stance in the shipped captured stride without altering the source take", async () => {
+  const { group, gltf } = await load(capturedMotionSources[0]);
+  const clip = gltf.animations[0];
+  const before = clip.tracks.map((t) => Array.from(t.values));
+  const profile = locomotionProfile(group, clip, { start: 0.4, end: 1.525 })!;
+  expect(new Set(profile.contacts!.map((c) => c.side))).toEqual(
+    new Set(["left", "right"]),
+  );
+  expect(profile.contacts!.every((c) => c.end > c.start)).toBe(true);
+  expect(clip.tracks.map((t) => Array.from(t.values))).toEqual(before);
+  disposeObject(group);
 });
