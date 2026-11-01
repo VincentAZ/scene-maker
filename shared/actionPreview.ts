@@ -3,6 +3,8 @@ import {
   applyCommands,
   starterScene,
   validateScene,
+  allMotions,
+  resolveMotionSource,
   type Scene,
   type Motion,
 } from "./scene";
@@ -12,6 +14,7 @@ export function actionPreview(
   motion: Motion,
   actorId?: string,
   seatScale?: number,
+  view: "character" | "original" = "character",
 ) {
   const original = scene.entities.find(
     (e) =>
@@ -28,18 +31,53 @@ export function actionPreview(
     customMotions: structuredClone(scene.customMotions),
     transcript: [],
   } as Scene;
+  let performerAssetId = original?.assetId || "quaternius-casual-female";
+  let performedMotion = motion;
+  let sourceName: string | undefined;
+  if (view === "original") {
+    const source = resolveMotionSource(scene, motion.sourceAssetId);
+    if (motion.kind !== "imported" || motion.path || !source?.url)
+      throw Error(
+        "Choose an imported take with its original file to compare performances.",
+      );
+    // The bundled source is intentionally absent from the cast catalogue.
+    // Register a private alias in this disposable scene, and bind the take to
+    // that same asset so playback uses its native skeleton, not retargeting.
+    const occupied = new Set([
+      ...allAssets(preview).map((a) => a.id),
+      ...allMotions(preview).map((m) => m.id),
+    ]);
+    const unique = (base: string) => {
+      let id = base;
+      for (let i = 1; occupied.has(id); i++) id = `${base}-${i}`;
+      occupied.add(id);
+      return id;
+    };
+    performerAssetId = unique("preview-original-source");
+    preview.customAssets.push({
+      ...structuredClone(source),
+      id: performerAssetId,
+    });
+    performedMotion = {
+      ...structuredClone(motion),
+      id: unique("preview-original-take"),
+      sourceAssetId: performerAssetId,
+    };
+    preview.customMotions.push(performedMotion);
+    sourceName = source.name;
+  }
   preview = applyCommands(preview, [
     {
       type: "add",
       id: "preview-performer",
-      assetId: original?.assetId || "quaternius-casual-female",
+      assetId: performerAssetId,
       position: [0, 0, 0],
     },
   ]);
   const actor = preview.entities[0];
-  actor.name = original?.name || "Preview performer";
-  actor.scale = original?.scale || 1;
-  if (original?.color) actor.color = original.color;
+  actor.name = sourceName || original?.name || "Preview performer";
+  actor.scale = view === "original" ? 1 : original?.scale || 1;
+  if (view === "character" && original?.color) actor.color = original.color;
   let targetId: string | undefined;
   if (["sit", "stand"].includes(motion.kind)) {
     preview = applyCommands(preview, [
@@ -90,7 +128,7 @@ export function actionPreview(
       : []),
     {
       id: "preview-action",
-      motionId: motion.id,
+      motionId: performedMotion.id,
       duration: motion.duration,
       ...(motion.kind === "imported" ? { playbackRate: 1 } : {}),
       targetId: motion.kind === "stand" ? undefined : targetId,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Plus } from "lucide-react";
-import type { Scene, Motion } from "../shared/scene";
+import { resolveMotionSource, type Scene, type Motion } from "../shared/scene";
 import { actionPreview } from "../shared/actionPreview";
 import { motionDetails } from "../shared/motionLibrary";
 import { Viewport, type ViewportHandle } from "./Viewport";
@@ -20,9 +20,17 @@ export function ActionPreview({
   onAdd?: () => void;
 }) {
   const [seatScale, setSeatScale] = useState<number>();
+  const [view, setView] = useState<"character" | "original">("character");
+  const source =
+    motion.kind === "imported" && !motion.path
+      ? resolveMotionSource(scene, motion.sourceAssetId)
+      : undefined;
+  const recipient = scene.entities.find(
+    (entity) => entity.id === actorId,
+  )?.name;
   const rehearsal = useMemo(
-    () => actionPreview(scene, motion, actorId, seatScale),
-    [scene, motion, actorId, seatScale],
+    () => actionPreview(scene, motion, actorId, seatScale, view),
+    [scene, motion, actorId, seatScale, view],
   );
   const viewport = useRef<ViewportHandle>(null);
   const [time, setTime] = useState(0),
@@ -32,6 +40,8 @@ export function ActionPreview({
     [warning, setWarning] = useState("");
   useEffect(() => {
     setReady(false);
+    setWarning("");
+    setError("");
     let cancelled = false;
     const controller = new AbortController();
     void viewport
@@ -72,6 +82,30 @@ export function ActionPreview({
     >
       <div className="action-preview-body">
         <p className="muted small">{details.description}</p>
+        {source?.url && (
+          <div role="group" aria-label="Compare animation performance">
+            {(["character", "original"] as const).map((option) => (
+              <button
+                key={option}
+                className="secondary"
+                aria-pressed={view === option}
+                onClick={() => {
+                  setPlaying(false);
+                  setView(option);
+                }}
+              >
+                {option === "original"
+                  ? "Original performance"
+                  : `On ${recipient || "sample character"}`}
+              </button>
+            ))}
+            <p className="muted small">
+              {view === "original"
+                ? `Original take on ${source.name}, at 1×. No transfer to another character.`
+                : `Same take on ${recipient || "the sample character"}, at 1×.`}
+            </p>
+          </div>
+        )}
         <div className="action-preview-stage">
           <Viewport
             ref={viewport}
@@ -137,8 +171,10 @@ export function ActionPreview({
         )}
         <p className="muted small">
           A separate rehearsal with{" "}
-          {actorId ? rehearsal.actor.name : "a sample performer"}. Your scene
-          stays as it is. Drag to orbit.
+          {view === "original" || actorId
+            ? rehearsal.actor.name
+            : "a sample performer"}
+          . Your scene stays as it is. Drag to orbit.
           {["sit", "stand"].includes(motion.kind)
             ? " The rehearsal bench is sized for this performer. Choose the scene’s seat in Details after adding Sit down."
             : ""}
@@ -157,7 +193,7 @@ export function ActionPreview({
           >
             <Plus size={15} />
             {onAdd
-              ? `Add to ${rehearsal.actor.name}`
+              ? `Add to ${recipient || rehearsal.actor.name}`
               : "Choose a character to add this"}
           </button>
         </div>

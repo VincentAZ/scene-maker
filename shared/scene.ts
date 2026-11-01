@@ -234,8 +234,9 @@ export const assetSchema = z
     url: z
       .string()
       .refine(
-        (url) =>
+        (url): boolean =>
           /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
+          url === motionSource.url ||
           libraryAssetURLs.has(url) ||
           furnitureURLs.has(url),
         "Choose an uploaded file or an existing library asset.",

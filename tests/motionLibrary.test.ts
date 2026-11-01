@@ -23,7 +23,11 @@ import {
   createCharacter,
   disposeObject,
 } from "../src/world";
-import { nativeRootMotion, setMotionSources } from "../src/rig";
+import {
+  nativeRootMotion,
+  setMotionSources,
+  sampleNativeClip,
+} from "../src/rig";
 import { offlinePlan, offlineCommands } from "../server/ai";
 import { validatePlan } from "../shared/studio";
 import { productionPackage } from "../src/productionPackage";
@@ -36,6 +40,72 @@ async function load(asset: Asset) {
   return prepareImportedAsset(asset, gltf);
 }
 const point = (bone: T.Bone) => bone.getWorldPosition(new T.Vector3());
+it("previews original imported performances on their own skeleton at native timing without modifying the project", async () => {
+  const scene = starterScene();
+  const motion = libraryMotions.find((m) => m.animationName === "Walk")!;
+  const before = JSON.stringify(scene);
+  const preview = actionPreview(
+    scene,
+    motion,
+    scene.entities[0].id,
+    undefined,
+    "original",
+  );
+  const asset = preview.scene.customAssets.find(
+    (a) => a.id === preview.actor.assetId,
+  )!;
+  const take = allMotions(preview.scene).find(
+    (m) => m.id === preview.actor.clips[0].motionId,
+  )!;
+  expect(take.sourceAssetId).toBe(preview.actor.assetId);
+  expect(take.animationName).toBe(motion.animationName);
+  expect(asset.url).toBe(motionSource.url);
+  expect(requiredMotionSources(preview.scene, preview.actor)).toEqual([]);
+  expect(preview.actor.clips[0].playbackRate).toBe(1);
+  const group = await load(asset),
+    reference = await load(motionSource);
+  const clip = reference.userData.animations.find(
+    (c: T.AnimationClip) => c.name === motion.animationName,
+  );
+  for (const time of [0.113, 0.419, 0.947, 0.113]) {
+    applyAnimatedEntityPose(group, preview.actor, preview.scene, time);
+    sampleNativeClip(reference, clip, time);
+    for (const name of boneNames) {
+      const a = group.userData.bones[name],
+        b = reference.userData.bones[name];
+      if (!a || !b) continue;
+      expect(a.position.distanceTo(b.position), name).toBeLessThan(1e-8);
+      expect(a.quaternion.angleTo(b.quaternion), name).toBeLessThan(1e-7);
+    }
+  }
+  disposeObject(group);
+  disposeObject(reference);
+  expect(JSON.stringify(scene)).toBe(before);
+  const external = {
+    ...motionSource,
+    id: "unfamiliar-source",
+    name: "Original provider rig",
+  };
+  scene.customAssets.push(external, {
+    ...motionSource,
+    id: "preview-original-source",
+  });
+  const imported = { ...motion, id: "user-walk", sourceAssetId: external.id };
+  scene.customMotions.push(imported);
+  const importedPreview = actionPreview(
+    scene,
+    imported,
+    undefined,
+    undefined,
+    "original",
+  );
+  expect(importedPreview.actor.name).toBe(external.name);
+  expect(importedPreview.actor.assetId).not.toBe("preview-original-source");
+  expect(
+    requiredMotionSources(importedPreview.scene, importedPreview.actor),
+  ).toEqual([]);
+});
+
 it("shares all 17 actual authored motions across every bundled body and the procedural rig without drift or missing dependencies", async () => {
   const source = await load(motionSource);
   expect(source.userData.animations).toHaveLength(17);
