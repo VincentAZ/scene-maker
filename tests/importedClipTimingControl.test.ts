@@ -32,7 +32,9 @@ function render(clip: Entity["clips"][number]) {
   return onChange;
 }
 function setRate(value: string) {
-  const input = container.querySelector("input")!;
+  const input = container.querySelector<HTMLInputElement>(
+    '[aria-label="Action 1 playback speed"]',
+  )!;
   const set = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,
     "value",
@@ -51,7 +53,11 @@ describe("imported clip timing controls", () => {
       duration: 6,
       playbackRate: 1,
     });
-    expect(container.querySelector("input")!.value).toBe("1");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[aria-label="Action 1 playback speed"]',
+      )!.value,
+    ).toBe("1");
     expect(container.textContent).toContain("hold the final pose for 2s");
     expect(container.textContent).toContain("never changes speed");
     expect(container.querySelector('[role="status"]')).toBeNull();
@@ -74,7 +80,11 @@ describe("imported clip timing controls", () => {
       playbackRate: 1,
     });
     setRate("0");
-    expect(container.querySelector("input")!.value).toBe("0");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[aria-label="Action 1 playback speed"]',
+      )!.value,
+    ).toBe("0");
     expect(onChange).not.toHaveBeenCalled();
     setRate("0.5");
     expect(onChange).toHaveBeenCalledWith({
@@ -94,7 +104,11 @@ describe("imported clip timing controls", () => {
     expect(container.querySelector('[role="status"]')!.textContent).toContain(
       "Legacy fit preserved at 0.5×",
     );
-    expect(container.querySelector("input")!.value).toBe("0.5");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[aria-label="Action 1 playback speed"]',
+      )!.value,
+    ).toBe("0.5");
     act(() => container.querySelector("button")!.click());
     expect(onChange).toHaveBeenCalledWith({
       playbackRate: 1,
@@ -104,7 +118,50 @@ describe("imported clip timing controls", () => {
 
   it("also labels unvalidated old clips rather than displaying them as native", () => {
     render({ id: "old", motionId: motion.id, duration: 2 });
-    expect(container.querySelector("input")!.value).toBe("2");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[aria-label="Action 1 playback speed"]',
+      )!.value,
+    ).toBe("2");
     expect(container.textContent).toContain("Legacy fit preserved at 2×");
   });
+});
+
+it("selects an exact source start without changing the playback rate", () => {
+  const onChange = render({
+    id: "clip",
+    motionId: motion.id,
+    duration: 3,
+    playbackRate: 0.5,
+    sourceStart: 1,
+  });
+  const input = container.querySelector<HTMLInputElement>(
+    '[aria-label="Action 1 source start"]',
+  )!;
+  expect(input.value).toBe("1");
+  const set = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )!.set!;
+  for (const value of ["1.25", "", "-1", "4"])
+    act(() => {
+      set.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange).toHaveBeenCalledWith({
+    sourceStart: 1.25,
+    playbackRate: 0.5,
+  });
+});
+
+it("does not label a new source range as legacy fitted timing", () => {
+  render({ id: "range", motionId: motion.id, duration: 5, sourceStart: 2 });
+  expect(
+    container.querySelector<HTMLInputElement>(
+      '[aria-label="Action 1 playback speed"]',
+    )!.value,
+  ).toBe("1");
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.textContent).toContain("Starts at 2s");
 });

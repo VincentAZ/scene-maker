@@ -9,6 +9,7 @@ import {
   routeLocomotionFields,
   routeLocomotions,
   routePace,
+  gaitTravelTime,
 } from "../src/routeLocomotion";
 
 function fixture() {
@@ -40,6 +41,28 @@ function fixture() {
   scene.customMotions.push(walk);
   return { scene, actor, walk };
 }
+
+it.each([1e-8, 1, 1e8])(
+  "retains complete cycles with endpoint pauses after path-length rounding at scale %s",
+  (scale) => {
+    const cycle = {
+      distance: scale,
+      duration: 1,
+      samples: [
+        { time: 0, distance: 0 },
+        { time: 0.2, distance: 0 },
+        { time: 0.8, distance: scale },
+        { time: 1, distance: scale },
+      ],
+    };
+    for (const count of [1, 3, 17])
+      for (const error of [-Number.EPSILON, 0, Number.EPSILON])
+        expect(gaitTravelTime(cycle, count * scale * (1 + error))).toBe(count);
+    // A real partial next cycle must still include its authored entry pause.
+    expect(gaitTravelTime(cycle, scale * (1 + 1e-7))).toBeGreaterThan(1.2);
+    expect(gaitTravelTime(cycle, scale * (1 - 1e-7))).toBeLessThan(0.8);
+  },
+);
 
 describe("route locomotion selection", () => {
   it("keeps procedural fallbacks, bundled gaits and uploaded clips without offering bundled non-gaits", () => {
@@ -143,6 +166,22 @@ describe("route locomotion selection", () => {
 });
 
 describe("distance-driven original gait timing", () => {
+  it("uses partial-take timing including pauses when suggesting natural route pace", () => {
+    const { walk } = fixture();
+    const cycle = {
+      distance: 3,
+      duration: 4,
+      samples: [0, 1, 2, 3, 4].map((time, i) => ({
+        time,
+        distance: [0, 1, 1, 2, 3][i],
+      })),
+    };
+    expect(gaitTravelTime(cycle, 1.5)).toBeCloseTo(2.5);
+    expect(gaitTravelTime(cycle, 4.5)).toBeCloseTo(6.5);
+    expect(gaitTravelTime(cycle, 3)).toBe(4);
+    expect(routePace(walk, 2, cycle, 3)).toBeCloseTo(3 / 2.5);
+    expect(routePace(walk, 2, cycle, 9)).toBeCloseTo(9 / 6.5);
+  });
   it("samples native cycles by distance rather than route duration or frame history", () => {
     expect(routeCycleTime(0, 1.5, 0.8)).toBe(0);
     expect(routeCycleTime(0.375, 1.5, 0.8)).toBeCloseTo(0.2);

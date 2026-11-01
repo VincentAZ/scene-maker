@@ -79,6 +79,7 @@ if not skinned:
     fail("the first FBX mesh is not skinned to its armature: " + first_path)
 
 track_names = []
+action_rates = {}
 
 
 def push_to_track(action, slot, name):
@@ -87,6 +88,8 @@ def push_to_track(action, slot, name):
         rig.animation_data_create()
     action.name = name
     action.use_fake_user = False
+    scene = bpy.context.scene
+    action_rates[action] = (scene.render.fps, scene.render.fps_base)
     track = rig.animation_data.nla_tracks.new()
     track.name = name
     start = int(round(action.frame_range[0]))
@@ -135,6 +138,35 @@ for path in extra_paths:
             collection.remove(data)
     bpy.context.view_layer.update()
 
+# FBX import changes scene FPS. Actions already imported keep frame-number keys,
+# so exporting at the last file's FPS would speed up/slow down earlier takes.
+# Keep the highest source sampling rate, and rebase all action times in seconds.
+if action_rates:
+    fps, fps_base = max(action_rates.values(), key=lambda rate: rate[0] / rate[1])
+    output_rate = fps / fps_base
+    for action, (source_fps, source_base) in action_rates.items():
+        factor = output_rate / (source_fps / source_base)
+        if abs(factor - 1.0) < 1e-9:
+            continue
+        if getattr(action, "is_action_layered", False):
+            curves = [curve for layer in action.layers for strip in layer.strips
+                      for bag in strip.channelbags for curve in bag.fcurves]
+        else:
+            curves = list(action.fcurves)
+        for curve in curves:
+            for key in curve.keyframe_points:
+                frame, left, right = key.co.x, key.handle_left.x, key.handle_right.x
+                key.co.x = frame * factor
+                key.handle_left.x = left * factor
+                key.handle_right.x = right * factor
+            curve.update()
+        if action.use_frame_range:
+            first_frame, last_frame = action.frame_start, action.frame_end
+            action.frame_end = last_frame * factor
+            action.frame_start = first_frame * factor
+    bpy.context.scene.render.fps = fps
+    bpy.context.scene.render.fps_base = fps_base
+
 bpy.context.scene.frame_set(0)
 bpy.ops.object.select_all(action="DESELECT")
 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +175,7 @@ Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 bpy.ops.export_scene.gltf(
     filepath=output_path, export_format="GLB", export_animations=True,
     export_animation_mode="ACTIONS", export_image_format="AUTO", export_yup=True,
-    export_skins=True, export_def_bones=False, export_frame_range=True,
+    export_skins=True, export_def_bones=False, export_frame_range=False,
     export_force_sampling=True, export_optimize_animation_size=False, export_apply=False,
 )
 if not Path(output_path).is_file() or Path(output_path).stat().st_size == 0:

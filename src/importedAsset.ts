@@ -54,20 +54,31 @@ export function prepareImportedAsset(
   const group = new T.Group(),
     imported = gltf.scene;
   repairOpaqueImportedMaterials(imported);
+  let content: T.Object3D = imported;
   // Keep node UUIDs: original animation tracks may bind to unnamed nodes.
   // Rooms must keep their authored transforms: grounding by bounds can lift
   // a whole interior when its foundation extends below the floor.
   if (asset.category !== "environments") {
     const bounds = new T.Box3().setFromObject(imported);
     const height = bounds.max.y - bounds.min.y;
-    imported.scale.setScalar(
-      asset.category === "characters" ? 1.85 / (height || 1) : 1,
-    );
-    imported.position.y = -bounds.min.y * imported.scale.y;
+    // Normalize outside the animation hierarchy. Provider-authored transforms
+    // (and tracks targeting them) must retain their original units and values.
+    const normalization = new T.Group();
+    const factor = asset.category === "characters" ? 1.85 / (height || 1) : 1;
+    normalization.scale.setScalar(factor);
+    normalization.position.y = -bounds.min.y * factor;
+    normalization.add(imported);
+    content = normalization;
   }
-  group.add(imported);
+  group.add(content);
   if (asset.category === "characters")
-    configureImportedRig(group, imported, gltf.animations);
+    configureImportedRig(
+      group,
+      content,
+      gltf.animations,
+      imported,
+      asset.rigMapping,
+    );
   else {
     group.userData.mixer = new T.AnimationMixer(imported);
     group.userData.animations = gltf.animations;

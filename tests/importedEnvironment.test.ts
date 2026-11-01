@@ -185,6 +185,37 @@ describe("imported environment lifecycle", () => {
     }
   });
 
+  it("preserves provider root transforms and animated units during normalization", () => {
+    const scene = new T.Group();
+    scene.name = "ProviderRoot";
+    scene.position.set(2, 3, 4);
+    scene.scale.set(0.01, 0.02, 0.01);
+    scene.add(new T.Mesh(new T.BoxGeometry(100, 200, 100)));
+    const clip = new T.AnimationClip("Root travel", 1, [
+      new T.VectorKeyframeTrack(
+        "ProviderRoot.position",
+        [0, 1],
+        [2, 3, 4, 2, 5, 4],
+      ),
+    ]);
+    const prepared = prepareImportedAsset(
+      { ...asset, category: "characters" },
+      { scene, animations: [clip] },
+    );
+    expect(scene.position.toArray()).toEqual([2, 3, 4]);
+    expect(scene.scale.toArray()).toEqual([0.01, 0.02, 0.01]);
+    const bounds = new T.Box3().setFromObject(prepared);
+    expect(bounds.min.y).toBeCloseTo(0);
+    expect(bounds.getSize(new T.Vector3()).y).toBeCloseTo(1.85);
+    const before = scene.getWorldPosition(new T.Vector3());
+    const mixer = prepared.userData.mixer as T.AnimationMixer;
+    mixer.clipAction(clip).setLoop(T.LoopOnce, 1).play();
+    mixer.setTime(0.5);
+    const after = scene.getWorldPosition(new T.Vector3());
+    expect(after.y - before.y).toBeCloseTo(1.85 / 4);
+    expect(scene.scale.toArray()).toEqual([0.01, 0.02, 0.01]);
+  });
+
   it("waits for the model, retains it across lighting changes, and includes it in snapshot/bake content", async () => {
     const job = deferred(),
       load = vi.fn(() => job.promise);

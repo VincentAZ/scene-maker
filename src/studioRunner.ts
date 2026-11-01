@@ -10,7 +10,9 @@ export type StudioPorts = {
   save: () => Promise<void>;
   load: (scene: Scene) => void;
   read: (id: string) => Promise<Scene>;
-  edit: (commands: Extract<StudioStep, { type: "edit" }>["commands"]) => void;
+  edit: (
+    commands: Extract<StudioStep, { type: "edit" }>["commands"],
+  ) => void | Promise<void>;
   perform: (
     step: Exclude<
       StudioStep,
@@ -104,7 +106,7 @@ export async function runStudioPlan(reply: AssistantReply, ports: StudioPorts) {
               ? newProject(step.name, step.template)
               : copyProject(ports.getScene(), step.name),
           );
-      } else if (step.type === "edit") ports.edit(step.commands);
+      } else if (step.type === "edit") await ports.edit(step.commands);
       else if (step.type === "save") await ports.save();
       else await ports.perform(step);
       completed.push(describeStep(step));

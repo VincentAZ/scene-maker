@@ -1387,6 +1387,13 @@ label > span {
 .settings-card > span {
   flex: 1;
 }
+.settings-card > input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #6b8053;
+}
 .settings-card strong {
   display: block;
   font-size: 12px;

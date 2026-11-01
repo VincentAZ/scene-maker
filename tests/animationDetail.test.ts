@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as T from "three";
 import { characters, starterScene, type Entity } from "../shared/scene";
 import { retargetReport } from "../src/detailedRetarget";
+import type { RigMapping } from "../shared/rigMapping";
 import {
   configureImportedRig,
   nativeRootMotion,
@@ -149,8 +150,8 @@ function fixture(
   const inverses = skeleton.boneInverses.map((matrix) =>
     matrix.elements.slice(),
   );
-  const configure = (clips: T.AnimationClip[] = []) =>
-    configureImportedRig(group, imported, clips);
+  const configure = (clips: T.AnimationClip[] = [], mapping?: RigMapping) =>
+    configureImportedRig(group, imported, clips, imported, mapping);
   const scene = starterScene();
   const actor = scene.entities[0];
   scene.entities = [actor];
@@ -306,6 +307,162 @@ function expectSnapshot(f: Fixture, expected: ReturnType<typeof snapshot>) {
 }
 
 describe("detailed imported animation runtime", () => {
+  it("preserves an additional upper chest without collapsing it into the lower chest", () => {
+    const source = fixture(),
+      native = fixture(),
+      target = fixture();
+    for (const [index, f] of [source, native, target].entries()) {
+      const chest = f.joints.CC_Base_Spine02;
+      const children = [...chest.children];
+      const upper = new T.Bone();
+      upper.name = index === 2 ? "ReceiverThorax" : "SourceThorax";
+      upper.position.y = 0.05;
+      chest.add(upper);
+      f.group.updateWorldMatrix(true, true);
+      for (const child of children) upper.attach(child);
+      f.joints.UpperThorax = upper;
+    }
+    const q = rotation(0.4, -0.2, 0.3);
+    const clip = new T.AnimationClip("Upper thorax", duration, [
+      new T.QuaternionKeyframeTrack(
+        "SourceThorax.quaternion",
+        [0, duration],
+        [0, 0, 0, 1, ...q.toArray()],
+      ),
+    ]);
+    source.configure([clip]);
+    native.configure([clip]);
+    target.configure();
+    schedule(native, native, [clip], false);
+    schedule(target, source, [clip], true);
+    for (const time of [0.4, 1.2, 2.1]) {
+      native.sample(time);
+      target.sample(time);
+      expectPoseEqual(target, native);
+      expect(target.group.userData.retargetReport.unsupported).toEqual([]);
+      expect(
+        target.joints.CC_Base_Spine02.quaternion.angleTo(
+          target.bind.CC_Base_Spine02.quaternion,
+        ),
+      ).toBeLessThan(1e-6);
+      expect(
+        target.joints.UpperThorax.quaternion.angleTo(new T.Quaternion()),
+      ).toBeGreaterThan(0.05);
+    }
+  });
+
+  it("preserves chest and shoulder motion between unrelated names using anatomical hierarchy", () => {
+    const source = fixture(),
+      native = fixture(),
+      target = fixture();
+    const names = [
+      "CC_Base_Spine02",
+      "CC_Base_L_Clavicle",
+      "CC_Base_R_Clavicle",
+    ];
+    for (const [index, name] of names.entries()) {
+      source.joints[name].name = native.joints[name].name =
+        `OpaqueSource${index}`;
+      target.joints[name].name = `UnrelatedReceiver${index}`;
+    }
+    const clip = new T.AnimationClip(
+      "Chest and shrugs",
+      duration,
+      names.map(
+        (name, index) =>
+          new T.QuaternionKeyframeTrack(
+            source.joints[name].name + ".quaternion",
+            [0, duration],
+            [
+              ...source.bind[name].quaternion.toArray(),
+              ...source.bind[name].quaternion
+                .clone()
+                .multiply(rotation(0.25 + index * 0.1, 0.2, -0.15))
+                .toArray(),
+            ],
+          ),
+      ),
+    );
+    source.configure([clip]);
+    native.configure([clip]);
+    target.configure();
+    schedule(native, native, [clip], false);
+    schedule(target, source, [clip], true);
+    for (const time of [0.2, 0.8, 2.1]) {
+      native.sample(time);
+      target.sample(time);
+      expectPoseEqual(target, native);
+      expect(target.group.userData.retargetReport.unsupported).toEqual([]);
+    }
+    expect(
+      retargetReport(source.group, target.group, clip)?.transferred,
+    ).toEqual(clip.tracks.map((t) => t.name));
+  });
+
+  it("respects disabled chest mapping rather than re-enabling it through topology", () => {
+    const source = fixture(),
+      target = fixture();
+    const name = "CC_Base_Spine02";
+    source.joints[name].name = "UnknownThorax";
+    target.joints[name].name = "AnotherThorax";
+    const clip = new T.AnimationClip("Chest", duration, [
+      new T.QuaternionKeyframeTrack(
+        source.joints[name].name + ".quaternion",
+        [0, duration],
+        [
+          ...source.bind[name].quaternion.toArray(),
+          ...source.bind[name].quaternion
+            .clone()
+            .multiply(rotation(0.5, 0.1, 0.2))
+            .toArray(),
+        ],
+      ),
+    ]);
+    source.configure([clip]);
+    target.configure([], { chest: null });
+    schedule(target, source, [clip], true);
+    target.sample(1);
+    expect(
+      retargetReport(source.group, target.group, clip)?.unsupported.map(
+        (c) => c.channel,
+      ),
+    ).toContain("UnknownThorax.quaternion");
+    expect(
+      target.joints[name].quaternion.angleTo(target.bind[name].quaternion),
+    ).toBeLessThan(1e-6);
+  });
+
+  it("leaves an unfamiliar multi-bone shoulder branch ambiguous", () => {
+    const source = fixture(),
+      target = fixture();
+    const shoulder = source.joints.CC_Base_L_Clavicle;
+    shoulder.name = "OpaqueShoulderA";
+    const helper = new T.Bone();
+    helper.name = "OpaqueShoulderB";
+    shoulder.parent!.add(helper);
+    helper.add(shoulder);
+    const clip = new T.AnimationClip("Ambiguous shrug", duration, [
+      new T.QuaternionKeyframeTrack(
+        shoulder.name + ".quaternion",
+        [0, duration],
+        [
+          ...shoulder.quaternion.toArray(),
+          ...shoulder.quaternion
+            .clone()
+            .multiply(rotation(0.3, 0, 0.2))
+            .toArray(),
+        ],
+      ),
+    ]);
+    source.configure([clip]);
+    target.configure();
+    expect(
+      retargetReport(source.group, target.group, clip)?.unsupported.map(
+        (c) => c.channel,
+      ),
+    ).toContain("OpaqueShoulderA.quaternion");
+  });
+
   it("preserves finger, wrist, foot, toe, twist, spine and facial rotations at the original duration", () => {
     const source = fixture(),
       native = fixture(),
@@ -876,3 +1033,96 @@ describe("explicit 1x imported timing in the runtime", () => {
     },
   );
 });
+
+it.each([false, true])(
+  "rebases source-start travel and facing while preserving detailed poses (shared=%s)",
+  (shared) => {
+    const source = fixture(),
+      target = shared ? fixture() : source,
+      reference = fixture();
+    const take = detailClip(source);
+    take.tracks.push(
+      new T.VectorKeyframeTrack(
+        "root.position",
+        [0, duration],
+        [0, 0, 0, 0, 0, duration],
+      ),
+      new T.QuaternionKeyframeTrack(
+        "root.quaternion",
+        [0, duration],
+        [0, 0, 0, 1, ...rotation(0, 0.6 * duration, 0).toArray()],
+      ),
+    );
+    source.configure([take]);
+    reference.configure([take]);
+    if (shared) target.configure();
+    schedule(target, source, [take], shared);
+    schedule(reference, reference, [take], false);
+    target.actor.position = [1, 0, -2];
+    target.actor.rotation = 0.3;
+    target.actor.scale = 1.25;
+    const sourceStart = 0.6,
+      slot = 0.8;
+    const scheduled = {
+      id: "range",
+      motionId: "detail-0",
+      duration: slot,
+      playbackRate: 1,
+      sourceStart,
+      transition: "cut" as const,
+    };
+    target.actor.clips = [scheduled, { ...scheduled, id: "next" }];
+    nativeRootMotion(source.group, take); // Warm full-take cache before the range.
+    const rotationAtStart = rotation(
+      0,
+      target.actor.rotation - 0.6 * sourceStart,
+      0,
+    );
+    for (const time of [0, 0.2, 0.7, 0.1, 0.7]) {
+      reference.sample(sourceStart + time);
+      target.sample(time);
+      const expected = new T.Vector3(0, 1, time)
+        .multiplyScalar(target.actor.scale)
+        .applyQuaternion(rotationAtStart)
+        .add(new T.Vector3(...target.actor.position));
+      expect(
+        point(target.joints.CC_Base_Hip).distanceTo(expected),
+      ).toBeLessThan(3e-6);
+      for (const name of detailedNames) {
+        const expectedRotation = rotationAtStart
+          .clone()
+          .multiply(orientation(reference.joints[name]));
+        expect(
+          orientation(target.joints[name]).angleTo(expectedRotation),
+          name,
+        ).toBeLessThan(3e-6);
+      }
+    }
+    target.sample(slot - 1e-7);
+    const before = point(target.joints.CC_Base_Hip);
+    target.sample(slot);
+    expect(point(target.joints.CC_Base_Hip).distanceTo(before)).toBeLessThan(
+      3e-6,
+    );
+    const secondTime = 0.25;
+    target.sample(slot + secondTime);
+    const expected = new T.Vector3(0, 1, slot)
+      .multiplyScalar(target.actor.scale)
+      .applyQuaternion(rotationAtStart)
+      .add(new T.Vector3(...target.actor.position));
+    expected.add(
+      new T.Vector3(0, 0, secondTime)
+        .multiplyScalar(target.actor.scale)
+        .applyQuaternion(
+          rotation(
+            0,
+            target.actor.rotation + 0.6 * slot - 0.6 * sourceStart,
+            0,
+          ),
+        ),
+    );
+    expect(point(target.joints.CC_Base_Hip).distanceTo(expected)).toBeLessThan(
+      3e-6,
+    );
+  },
+);

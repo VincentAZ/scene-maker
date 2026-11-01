@@ -18,7 +18,14 @@ import { exportSnapshot } from "./exportSnapshot";
 import { cinemaFov, frameGuide } from "./sceneRecorder";
 import { animationSampleBoundaries, bakeAnimation } from "./bakeAnimation";
 import { applyInteractions } from "./interactions";
+import {
+  hasAutomaticRoutes,
+  holdBlockedRoutes,
+  prepareAutomaticRoutesAsync,
+  type PreparedRoutes,
+} from "./automaticRoutes";
 import { configureRigContacts } from "./ik";
+import { movingObstacleIds } from "./routeClearance";
 import { setMotionSources } from "./rig";
 import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
 import { EnvironmentModel, environmentModelKey } from "./environmentModel";
@@ -53,6 +60,7 @@ export type ViewportHandle = {
   /** Called after every rendered frame while set (for recordings). */
   onFrame: (listener: ((time: number) => void) | null) => void;
   exportGLB: () => Promise<ArrayBuffer>;
+  prepareNavigation: () => Scene;
   reset: () => void;
   frame: (
     view: "default" | "front" | "side" | "top" | "conversation",
@@ -69,6 +77,7 @@ export type ViewportHandle = {
     beforeClipId?: string,
     locomotion?: Motion,
     measuredCycle?: { distance: number; duration: number },
+    automatic?: boolean,
   ) => Motion;
 };
 type Props = {
@@ -88,6 +97,10 @@ type Props = {
   onEditStart?: () => void;
   onError: (text: string) => void;
   onInteractionWarning: (text: string) => void;
+  onNavigationResolved?: (expected: Scene, next: Scene) => void;
+  onNavigationPending?: () => void;
+  /** Planning finished (with or without changes/issues) for the current scene. */
+  onNavigationSettled?: () => void;
   move: boolean;
   loopDuration?: number;
   thinkingId?: string;
@@ -140,6 +153,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       content: T.Group;
       transform: TransformControls;
       renderAt: (t: number) => void;
+      prepareNavigation: () => PreparedRoutes;
+      navigationMatches: (scene: Scene) => boolean;
+      navigationPending: () => boolean;
       startCinema: (width: number, height: number) => HTMLCanvasElement | null;
       stopCinema: () => void;
       dragging: ReturnType<typeof sceneDragging>;
@@ -311,24 +327,148 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         lastWarning = "",
         collisionWarning = "",
         lastCollisionCheck = -Infinity;
+      let navigationInput = "",
+        navigationOutput = "",
+        navigation: PreparedRoutes | undefined;
+      let navigationJob: AbortController | undefined;
+      const pendingNavigation = (
+        scene: Scene,
+        message: string,
+      ): PreparedRoutes => {
+        const issues = scene.entities
+          .filter((e) => e.visible)
+          .flatMap((e) =>
+            e.clips
+              .filter((c) => c.navigation)
+              .slice(0, 1)
+              .map((c) => ({
+                actorId: e.id,
+                clipId: c.id,
+                message: `${e.name}: ${message}`,
+              })),
+          );
+        return {
+          scene,
+          playbackScene: holdBlockedRoutes(scene, issues, live.current.time),
+          issues,
+        };
+      };
+      const prepareNavigation = (): PreparedRoutes => {
+        const scene = live.current.scene;
+        if (!hasAutomaticRoutes(scene)) {
+          navigationJob?.abort();
+          navigationJob = undefined;
+          navigation = undefined;
+          return { scene, playbackScene: scene, issues: [] };
+        }
+        const key = stateKey(scene);
+        if (
+          readyKey.current !== modelKey(scene) ||
+          objects.size !== scene.entities.length
+        ) {
+          navigationJob?.abort();
+          navigationJob = undefined;
+          navigation = undefined;
+          return pendingNavigation(
+            scene,
+            "Loading geometry to plan the route.",
+          );
+        }
+        if (
+          navigation &&
+          (key === navigationInput || key === navigationOutput)
+        ) {
+          if (navigationJob && live.current.playing)
+            live.current.onNavigationPending?.();
+          return navigation;
+        }
+        navigationJob?.abort();
+        const job = new AbortController();
+        navigationJob = job;
+        let yields = 0,
+          yieldMs = 0;
+        navigation = pendingNavigation(scene, "Planning a clear route…");
+        navigationInput = key;
+        navigationOutput = "";
+        live.current.onNavigationPending?.();
+        void prepareAutomaticRoutesAsync(
+          scene,
+          objects,
+          context.current?.environment.root,
+          {
+            signal: job.signal,
+            at: live.current.time,
+            onYield: () => {
+              if (!job.signal.aborted) {
+                const t0 = performance.now();
+                context.current?.renderAt(live.current.time);
+                yieldMs += performance.now() - t0;
+                if (++yields % 50 === 0)
+                  console.log(
+                    "NAVDBG yields",
+                    yields,
+                    "renderMs",
+                    +yieldMs.toFixed(0),
+                  );
+              }
+            },
+          },
+        )
+          .then((result) => {
+            if (
+              job.signal.aborted ||
+              navigationJob !== job ||
+              stateKey(live.current.scene) !== key
+            )
+              return;
+            navigationJob = undefined;
+            navigation = result;
+            navigationOutput = stateKey(result.scene);
+            if (result.scene !== scene)
+              live.current.onNavigationResolved?.(scene, result.scene);
+            // A paused viewport renders nothing on its own: show the settled
+            // plan (or an unchanged route) and its status now.
+            context.current?.renderAt(live.current.time);
+            live.current.onNavigationSettled?.();
+          })
+          .catch((error: unknown) => {
+            if (
+              job.signal.aborted ||
+              navigationJob !== job ||
+              stateKey(live.current.scene) !== key
+            )
+              return;
+            navigationJob = undefined;
+            navigation = pendingNavigation(
+              scene,
+              error instanceof Error ? error.message : String(error),
+            );
+            navigationOutput = key;
+            context.current?.renderAt(live.current.time);
+            live.current.onNavigationSettled?.();
+          });
+        return navigation;
+      };
       const renderAt = (time: number) => {
-        if (sessionScene !== live.current.scene) {
-          sessionScene = live.current.scene;
+        const prepared = prepareNavigation(),
+          playbackScene = prepared.playbackScene;
+        if (sessionScene !== playbackScene) {
+          sessionScene = playbackScene;
           sessions = interactionSessions(
             sessionScene,
             allMotions(sessionScene),
           );
         }
-        for (const e of live.current.scene.entities) {
+        for (const e of playbackScene.entities) {
           const obj = objects.get(e.id);
           if (obj) {
-            applyAnimatedEntityPose(obj, e, live.current.scene, time);
+            applyAnimatedEntityPose(obj, e, playbackScene, time);
           }
         }
-        applyConversationPerformance(live.current.scene, time, objects);
+        applyConversationPerformance(playbackScene, time, objects);
         content.updateMatrixWorld(true);
         const interactionMessages = applyInteractions(
-          live.current.scene,
+          playbackScene,
           time,
           objects,
           sessions,
@@ -349,7 +489,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         // Geometry bounds for imported skins can be expensive; throttle diagnostics,
         // never the collision checks for active edit gestures.
         const now = performance.now();
-        if (
+        if (live.current.scene.animationCollisions === false) {
+          collisionWarning = "";
+          lastCollisionCheck = -Infinity;
+        } else if (
           now - lastCollisionCheck > 180 &&
           !transform.dragging &&
           !dragging.active()
@@ -365,6 +508,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           );
         }
         interactionWarning = [
+          ...prepared.issues.map((issue) => issue.message),
           collisionWarning,
           ...interactionMessages,
           ...Array.from(objects.values(), (object) =>
@@ -471,6 +615,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         content,
         transform,
         renderAt,
+        prepareNavigation,
+        navigationMatches: (scene) =>
+          stateKey(scene) === navigationInput &&
+          stateKey(live.current.scene) === navigationOutput,
+        navigationPending: () => !!navigationJob,
         dragging,
         editing,
         environment: new EnvironmentModel(content),
@@ -525,6 +674,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         wasPlaying = false,
         lastSent = 0,
         ended = false;
+      let paintedNavigation: AbortController | undefined,
+        navigationView = "";
       // Times published to React recently. The parent may lag several frames
       // behind, so a prop that matches any of them is an echo, not a seek.
       const published: number[] = [live.current.time];
@@ -583,13 +734,43 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           live.current.onInteractionWarning(interactionWarning);
         }
         if (controls.enabled) controls.update();
-        renderer.render(world, camera);
+        // The paused preview stays identical between planning batches. Avoid
+        // competing GPU draws while computing, but redraw staging, selection,
+        // scrubbing, resizing and camera gestures immediately.
+        const view = navigationJob
+          ? JSON.stringify([
+              elapsed,
+              live.current.selected,
+              live.current.move,
+              live.current.transformMode,
+              camera.position.toArray(),
+              camera.quaternion.toArray(),
+              camera.fov,
+              camera.zoom,
+              camera.aspect,
+              renderer.domElement.width,
+              renderer.domElement.height,
+              transform.axis,
+            ])
+          : "";
+        const draw =
+          !navigationJob ||
+          transform.dragging ||
+          dragging.active() ||
+          navigationJob !== paintedNavigation ||
+          view !== navigationView;
+        if (draw) {
+          renderer.render(world, camera);
+          renderCinema();
+          paintedNavigation = navigationJob;
+          navigationView = view;
+        }
         projectBubbles(elapsed);
-        renderCinema();
         frameListener.current?.(elapsed);
       };
       frame = requestAnimationFrame(loop);
       return () => {
+        navigationJob?.abort();
         cancelAnimationFrame(frame);
         bubbleLayer.remove();
         stopCinema();
@@ -631,7 +812,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       // Original imported files used as shared motion sources live for the
       // viewport's lifetime; a failed load is forgotten so it can be retried.
       const original = (asset: Asset) => {
-        const key = `${asset.id}\u0000${asset.url}`;
+        const key = JSON.stringify([asset.id, asset.url, asset.rigMapping]);
         let pending = ctx.sources.get(key);
         if (!pending) {
           pending = loadImportedAsset(asset);
@@ -806,6 +987,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           beforeClipId,
           locomotion,
           measuredCycle,
+          automatic = false,
         ) {
           const c = context.current;
           if (!c) throw Error("Wait for the scene to finish loading.");
@@ -820,6 +1002,13 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               c.environment.root,
               locomotion,
               measuredCycle,
+              0,
+              automatic
+                ? {
+                    movingIds: movingObstacleIds(live.current.scene),
+                    conflicts: [],
+                  }
+                : undefined,
             );
           } finally {
             c.renderAt(live.current.time);
@@ -856,7 +1045,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           const desired = stateKey(scene),
             models = modelKey(scene),
             start = performance.now();
-          while (performance.now() - start < 30000) {
+          for (;;) {
             if (signal?.aborted)
               throw new DOMException("Rehearsal closed", "AbortError");
             await new Promise<void>((resolve) =>
@@ -870,9 +1059,20 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             if (
               context.current &&
               readyKey.current === models &&
-              stateKey(live.current.scene) === desired
+              (stateKey(live.current.scene) === desired ||
+                context.current.navigationMatches(scene))
+            ) {
+              context.current.prepareNavigation();
+              if (!context.current.navigationPending()) return;
+            }
+            if (
+              performance.now() - start >= 30000 &&
+              !(
+                context.current?.navigationPending() &&
+                stateKey(live.current.scene) === desired
+              )
             )
-              return;
+              break;
           }
           throw Error(
             "The requested scene is not ready to export. Wait for imported assets or retry after finishing your edits.",
@@ -983,14 +1183,19 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             c.objects.size !== live.current.scene.entities.length
           )
             throw Error("Wait for imported assets to finish loading.");
+          const prepared = c.prepareNavigation();
+          if (prepared.issues.length)
+            throw Error(
+              prepared.issues.map((issue) => issue.message).join(" "),
+            );
           const animation = bakeAnimation(
             [
               ...c.objects.values(),
               ...(c.environment.root ? [c.environment.root] : []),
             ],
-            duration(live.current.scene),
+            duration(prepared.scene),
             c.renderAt,
-            animationSampleBoundaries(live.current.scene, c.objects),
+            animationSampleBoundaries(prepared.scene, c.objects),
           );
           c.renderAt(0);
           const snapshot = exportSnapshot(c.content);
@@ -1005,6 +1210,16 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             // Cloned materials still reference the live objects' textures.
             disposeObject(snapshot, { textures: false });
           }
+        },
+        prepareNavigation() {
+          const c = context.current;
+          if (!c) throw Error("Wait for the scene to finish loading.");
+          const prepared = c.prepareNavigation();
+          if (prepared.issues.length)
+            throw Error(
+              prepared.issues.map((issue) => issue.message).join(" "),
+            );
+          return prepared.scene;
         },
       }),
       [],

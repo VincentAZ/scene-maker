@@ -94,6 +94,58 @@ function deferred<T>() {
 }
 
 describe("isolated route gait measurement", () => {
+  it("returns a measured backward entry frame for the selected source window", async () => {
+    const source = gaitRig(1, -4);
+    vi.mocked(loadImportedAsset).mockResolvedValue(source.group);
+    const cycle = await loadRouteGait(
+      sourceAsset,
+      sourceAsset,
+      "Walk",
+      undefined,
+      { start: 0.4, end: 1.4 },
+    );
+    expect(Math.abs(cycle.entryHeading!)).toBeCloseTo(Math.PI, 8);
+    expect(cycle.duration).toBeCloseTo(1, 8);
+    expect(cycle.distance).toBeCloseTo(2, 6);
+  });
+  it.each([0.9, 1.1])(
+    "measures step length %s without changing source duration",
+    async (strideScale) => {
+      const source = gaitRig(),
+        actor = gaitRig(1.4);
+      vi.mocked(loadImportedAsset).mockImplementation(async (asset) =>
+        asset.id === sourceAsset.id ? source.group : actor.group,
+      );
+      const cycle = await loadRouteGait(
+        sourceAsset,
+        actorAsset,
+        "Walk",
+        undefined,
+        { start: 0.4, end: 1.4 },
+        strideScale,
+      );
+      expect(cycle.duration).toBeCloseTo(1, 8);
+      expect(cycle.distance).toBeCloseTo(2 * 1.4 * strideScale, 6);
+      expect(cycle.samples!.at(-1)!.distance).toBeCloseTo(cycle.distance, 8);
+      expect(cycle.samples!.at(-1)!.time).toBeCloseTo(1, 8);
+    },
+  );
+  it.each([0.89, 1.11, NaN, Infinity])(
+    "rejects invalid step length %s before loading assets",
+    async (strideScale) => {
+      await expect(
+        loadRouteGait(
+          sourceAsset,
+          actorAsset,
+          "Walk",
+          undefined,
+          undefined,
+          strideScale,
+        ),
+      ).rejects.toThrow(/step length/);
+      expect(loadImportedAsset).not.toHaveBeenCalled();
+    },
+  );
   it("loads the original source and target actor and measures full native duration with target proportions", async () => {
     const source = gaitRig(),
       actor = gaitRig(2);
@@ -133,6 +185,22 @@ describe("isolated route gait measurement", () => {
     Object.values(resources).forEach((dispose) =>
       expect(dispose).toHaveBeenCalledTimes(1),
     );
+  });
+
+  it("measures natural pace from the selected source window", async () => {
+    const source = gaitRig(2);
+    vi.mocked(loadImportedAsset).mockResolvedValue(source.group);
+    const cycle = await loadRouteGait(
+      sourceAsset,
+      sourceAsset,
+      "Walk",
+      undefined,
+      { start: 0.6, end: 1.1 },
+    );
+    expect(cycle.duration).toBeCloseTo(0.5, 10);
+    expect(cycle.distance).toBeCloseTo(2, 5);
+    expect(cycle.samples![0].time).toBe(0);
+    expect(cycle.samples!.at(-1)!.time).toBeCloseTo(0.5, 10);
   });
 
   it("creates a procedural target locally rather than fetching an absent model", async () => {

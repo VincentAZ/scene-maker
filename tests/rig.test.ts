@@ -6,10 +6,61 @@ import {
   createProp,
   applyAnimatedEntityPose,
 } from "../src/world";
-import { configureImportedRig } from "../src/rig";
+import {
+  configureImportedRig,
+  humanoidWarning,
+  standingHeight,
+  rotateHumanoidJoint,
+  humanoidJointOrientation,
+  applyHumanoidPose,
+  applyTransferredClip,
+  sampleNativeClip,
+} from "../src/rig";
 import { applyInteractions } from "../src/interactions";
 
 const point = (bone: T.Object3D) => bone.getWorldPosition(new T.Vector3());
+it("normalizes sampled rotation rounding before native skinning and retargeting", () => {
+  const group = new T.Group(),
+    parent = new T.Group(),
+    bone = new T.Bone();
+  group.add(parent);
+  parent.add(bone);
+  group.userData.mixer = new T.AnimationMixer(group);
+  const rotation = new T.Quaternion().setFromEuler(new T.Euler(0.4, -0.2, 0.7));
+  const rounded = rotation.toArray().map((value) => value * (1 + 2e-7));
+  const clip = new T.AnimationClip("Rounded source", 1, [
+    new T.QuaternionKeyframeTrack(
+      `${parent.uuid}.quaternion`,
+      [0, 1],
+      [...rounded, ...rounded],
+    ),
+    new T.QuaternionKeyframeTrack(
+      `${bone.uuid}.quaternion`,
+      [0, 1],
+      [...rounded, ...rounded],
+    ),
+  ]);
+  for (const time of [0, 0.4, 1, 0.4]) {
+    sampleNativeClip(group, clip, time);
+    group.updateMatrixWorld(true);
+    expect(parent.quaternion.length()).toBeCloseTo(1, 13);
+    expect(bone.quaternion.length()).toBeCloseTo(1, 13);
+    expect(
+      bone.localToWorld(new T.Vector3(0.3, 0.4, 0.5)).length(),
+    ).toBeCloseTo(Math.sqrt(0.5), 12);
+  }
+});
+it("measures fallback rig proportions from neutral offsets after translated poses", () => {
+  const scene = starterScene();
+  const actor = scene.entities[0];
+  const group = createCharacter(
+    allAssets(scene).find((a) => a.id === actor.assetId)!,
+  );
+  const original = standingHeight(group);
+  group.userData.bones.leftLeg.position.y += 0.03;
+  group.userData.bones.leftShin.position.y -= 0.02;
+  expect(standingHeight(group)).toBe(original);
+});
 function fixture(tPose = false, rolls = false) {
   const scene = starterScene(),
     entity = scene.entities[0];
@@ -60,6 +111,225 @@ function native(scene: Scene, name: string, duration = 2) {
   return { id: crypto.randomUUID(), motionId: name, duration };
 }
 describe("imported humanoid calibration", () => {
+  it("transfers a straight captured stance from splayed, bent bind legs without crossing the receiver's legs", () => {
+    const source = fixture(true),
+      target = fixture(true, true);
+    for (const f of [source, target])
+      for (const side of ["left", "right"]) {
+        const shin = f.bones[side + "Shin"],
+          foot = new T.Bone();
+        foot.name = side + "Foot";
+        // Place the endpoint independently of the receiver's bone rolls.
+        foot.position.copy(
+          shin.worldToLocal(point(shin).add(new T.Vector3(0, -0.35, 0))),
+        );
+        shin.add(foot);
+      }
+    for (const [side, sign] of [
+      ["left", 1],
+      ["right", -1],
+    ] as const) {
+      source.bones[side + "Leg"].rotation.z = sign * 0.35;
+      source.bones[side + "Shin"].rotation.x = -0.18;
+    }
+    const clip = new T.AnimationClip("Standing turn", 1, [
+      new T.QuaternionKeyframeTrack(
+        "hips.quaternion",
+        [0, 1],
+        [
+          0,
+          0,
+          0,
+          1,
+          ...new T.Quaternion()
+            .setFromAxisAngle(new T.Vector3(0, 1, 0), 0.8)
+            .toArray(),
+        ],
+      ),
+      ...["leftLeg", "rightLeg", "leftShin", "rightShin"].map(
+        (name) =>
+          new T.QuaternionKeyframeTrack(
+            name + ".quaternion",
+            [0, 1],
+            [0, 0, 0, 1, 0, 0, 0, 1],
+          ),
+      ),
+    ]);
+    source.group.updateMatrixWorld(true);
+    const bind = Object.values(source.bones).map((bone) =>
+      bone.matrixWorld.clone(),
+    );
+    source.configure([clip]);
+    target.configure();
+    for (const time of [0, 0.5, 1, 0.2]) {
+      target.group.position.set(0, 0, 0);
+      applyHumanoidPose(target.group, {}, true);
+      expect(applyTransferredClip(source.group, target.group, clip, time)).toBe(
+        "",
+      );
+      for (const side of ["left", "right"]) {
+        const direction = point(target.bones[side + "Shin"])
+          .sub(point(target.bones[side + "Leg"]))
+          .normalize();
+        expect(direction.distanceTo(new T.Vector3(0, -1, 0))).toBeLessThan(
+          1e-6,
+        );
+        const lower = point(target.group.userData.bones[side + "Foot"])
+          .sub(point(target.bones[side + "Shin"]))
+          .normalize();
+        expect(lower.distanceTo(new T.Vector3(0, -1, 0))).toBeLessThan(1e-6);
+      }
+    }
+    // Calibration must not rewrite the original bind transforms or source motion.
+    source.group.userData.mixer.stopAllAction();
+    applyHumanoidPose(source.group, {}, true);
+    source.group.updateMatrixWorld(true);
+    Object.values(source.bones).forEach((bone, index) => {
+      bone.matrixWorld.elements.forEach((value, i) =>
+        expect(value).toBeCloseTo(bind[index].elements[i], 10),
+      );
+    });
+    sampleNativeClip(source.group, clip, 0);
+    for (const side of ["left", "right"])
+      expect(point(source.bones[side + "Shin"]).x).toBeCloseTo(
+        point(source.bones[side + "Leg"]).x,
+        10,
+      );
+  });
+  it("carries a detached hand's sampled offset with additive forearm attention", () => {
+    const f = fixture();
+    const hand = new T.Bone();
+    hand.name = "leftHand";
+    hand.add(
+      new T.Mesh(
+        new T.BoxGeometry(0.05, 0.08, 0.03),
+        new T.MeshBasicMaterial(),
+      ),
+    );
+    f.source.add(hand);
+    hand.position.copy(
+      f.source.worldToLocal(
+        f.bones.leftForearm.localToWorld(new T.Vector3(0, -0.3, 0)),
+      ),
+    );
+    f.configure();
+    expect(f.group.userData.bones.leftHand).toBe(hand);
+    f.sample(0);
+    hand.position.x += 0.02;
+    hand.rotation.y += 0.1;
+    const offset = f.bones.leftForearm.worldToLocal(point(hand));
+    const rotation = f.bones.leftForearm
+      .getWorldQuaternion(new T.Quaternion())
+      .invert()
+      .multiply(hand.getWorldQuaternion(new T.Quaternion()));
+    rotateHumanoidJoint(
+      f.group,
+      "leftForearm",
+      new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -0.4),
+    );
+    expect(
+      f.bones.leftForearm.worldToLocal(point(hand)).distanceTo(offset),
+    ).toBeLessThan(1e-10);
+    expect(
+      f.bones.leftForearm
+        .getWorldQuaternion(new T.Quaternion())
+        .invert()
+        .multiply(hand.getWorldQuaternion(new T.Quaternion()))
+        .angleTo(rotation),
+    ).toBeLessThan(1e-7);
+  });
+  it("applies additive attention in anatomical space on rolled provider bones without changing the legs", () => {
+    const plain = fixture(true),
+      rolled = fixture(true, true);
+    for (const f of [plain, rolled]) {
+      f.configure();
+      f.sample(0);
+      const legs = [
+        "hips",
+        "leftLeg",
+        "leftShin",
+        "rightLeg",
+        "rightShin",
+      ].flatMap((n) => [...f.bones[n].matrixWorld.elements]);
+      for (const name of [
+        "spine",
+        "head",
+        "rightArm",
+        "rightForearm",
+      ] as const) {
+        const before = humanoidJointOrientation(f.group, name)!;
+        const delta = new T.Quaternion().setFromEuler(
+          new T.Euler(0.12, -0.2, 0.07),
+        );
+        rotateHumanoidJoint(f.group, name, delta);
+        expect(
+          humanoidJointOrientation(f.group, name)!.angleTo(
+            before.multiply(delta),
+          ),
+        ).toBeLessThan(1e-7);
+      }
+      f.group.updateWorldMatrix(true, true);
+      expect(
+        ["hips", "leftLeg", "leftShin", "rightLeg", "rightShin"].flatMap(
+          (n) => [...f.bones[n].matrixWorld.elements],
+        ),
+      ).toEqual(legs);
+    }
+    for (const name of Object.keys(plain.bones))
+      expect(
+        point(plain.bones[name]).distanceTo(point(rolled.bones[name])),
+      ).toBeLessThan(1e-6);
+  });
+  it.each(["suffix", "prefix", "semantic"])(
+    "maps %s anatomical conventions without capturing helpers",
+    (convention) => {
+      const f = fixture(true, true);
+      const parts: Record<string, string> = {
+        Arm: "upperarm",
+        Forearm: "lowerarm",
+        Leg: "upperleg",
+        Shin: "lowerleg",
+      };
+      for (const [name, bone] of Object.entries(f.bones)) {
+        const match = name.match(/^(left|right)(Arm|Forearm|Leg|Shin)$/);
+        if (!match) continue;
+        const part = parts[match[2]],
+          side = match[1];
+        bone.name =
+          convention === "semantic"
+            ? side + part
+            : convention === "suffix"
+              ? part + "." + side[0].toUpperCase()
+              : side[0] + "_" + part;
+        const helper = new T.Bone();
+        helper.name = bone.name + "_twist";
+        bone.add(helper);
+      }
+      f.configure();
+      for (const [name, bone] of Object.entries(f.bones))
+        expect(f.group.userData.bones[name]).toBe(bone);
+      expect(humanoidWarning(f.group, "Actor", false)).toBe("");
+      f.sample(0);
+      expect(point(f.bones.leftForearm).y).toBeLessThan(
+        point(f.bones.leftArm).y,
+      );
+    },
+  );
+  it("reports ambiguous anatomical joints instead of choosing by traversal order", () => {
+    const f = fixture();
+    const duplicate = new T.Bone();
+    duplicate.name = "OtherRig:LeftUpperArm";
+    f.source.add(duplicate);
+    f.configure();
+    expect(f.group.userData.bones.leftArm).toBeUndefined();
+    expect(humanoidWarning(f.group, "Actor", false)).toContain(
+      "Ambiguous joints: leftArm",
+    );
+    expect(humanoidWarning(f.group, "Actor", false)).toContain(
+      "OtherRig:LeftUpperArm",
+    );
+    expect(humanoidWarning(f.group, "Actor", true)).toBe("");
+  });
   it("leaves an incompatible imported rig at the base instead of attempting a climb", () => {
     const f = fixture();
     f.source.scale.y = 1.1;

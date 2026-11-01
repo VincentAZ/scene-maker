@@ -36,6 +36,7 @@ export function conversationRoute(
         .max(5)
         .parse(req.body.rounds ?? 1);
       const result = await run(getConfig(), scene, rounds, undefined, {
+        singleTurn: z.boolean().optional().parse(req.body.singleTurn),
         signal: controller.signal,
         onEvent: streaming ? emit : undefined,
       });

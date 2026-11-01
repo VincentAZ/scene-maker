@@ -15,6 +15,7 @@ import {
 import { SpeechTransport } from "../src/speechTransport";
 import { applyAnimatedEntityPose, createCharacter } from "../src/world";
 import { applyConversationPerformance } from "../src/conversationPerformance";
+import { configureImportedRig } from "../src/rig";
 
 function fixture() {
   let s = applyCommands(starterScene(), [
@@ -181,12 +182,19 @@ describe("speech-linked motion", () => {
     const sample = (scene: Scene, t: number) => {
       for (const e of scene.entities)
         applyAnimatedEntityPose(objects.get(e.id)!, e, scene, t);
-      const before = objects.get("a")!.position.clone();
-      const heading = objects.get("a")!.rotation.y;
+      const lowerBody = () =>
+        [...objects.values()].flatMap((object) => {
+          object.updateWorldMatrix(true, true);
+          return [
+            object,
+            ...["hips", "leftLeg", "leftShin", "rightLeg", "rightShin"].map(
+              (name) => object.userData.bones[name] as T.Bone,
+            ),
+          ].flatMap((node) => [...node.matrixWorld.elements]);
+        });
+      const before = lowerBody();
       applyConversationPerformance(scene, t, objects);
-      expect(objects.get("a")!.position.distanceTo(before)).toBe(0);
-      if (t < dialogueTiming(scene, scene.transcript[0])!.end)
-        expect(objects.get("a")!.rotation.y).toBe(heading);
+      expect(lowerBody()).toEqual(before);
       return [...objects.values()].flatMap((o) => {
         o.updateMatrixWorld(true);
         return boneNames.flatMap(
@@ -200,6 +208,75 @@ describe("speech-linked motion", () => {
     expect(forward.every(Number.isFinite)).toBe(true);
     expect(sample(s, 3)).not.toEqual(forward);
   });
+
+  it.each([false, true])(
+    "does not overlay an imported performance or its held ending (path=%s)",
+    (path) => {
+      const scene = fixture(),
+        actor = scene.entities[0];
+      const native = new T.AnimationClip("capture", 2, [
+        new T.QuaternionKeyframeTrack(
+          "head.quaternion",
+          [0, 1, 2],
+          [
+            new T.Quaternion(),
+            new T.Quaternion().setFromEuler(new T.Euler(0.2, 0.3, 0.1)),
+            new T.Quaternion().setFromEuler(new T.Euler(-0.1, 0.2, -0.2)),
+          ].flatMap((q) => q.toArray()),
+        ),
+        new T.VectorKeyframeTrack(
+          "hips.position",
+          [0, 1, 2],
+          [0, 0.9, 0, 0, 0.92, 0.5, 0, 0.9, 1],
+        ),
+      ]);
+      scene.customMotions.push({
+        id: "capture",
+        name: "Capture",
+        kind: "imported",
+        duration: 2,
+        distance: 0,
+        poses: [],
+        sourceAssetId: actor.assetId,
+        animationName: "capture",
+        ...(path ? { path: route.path } : {}),
+      });
+      actor.clips = [
+        { id: scene.transcript[0].clipId!, motionId: "capture", duration: 2 },
+      ];
+      actor.ending = "hold";
+      const target = new T.Group();
+      const body = createCharacter(
+        allAssets(scene).find((a) => a.id === actor.assetId)!,
+      );
+      target.add(body);
+      configureImportedRig(target, body, [native]);
+      const other = createCharacter(
+        allAssets(scene).find((a) => a.id === scene.entities[1].assetId)!,
+      );
+      const objects = new Map([
+        [actor.id, target],
+        [scene.entities[1].id, other],
+      ]);
+      const snapshot = () => {
+        target.updateWorldMatrix(true, true);
+        const values: number[] = [];
+        target.traverse((node) => values.push(...node.matrixWorld.elements));
+        return values;
+      };
+      const poses: number[][] = [];
+      for (const time of [1, 1.9999, 2, 3, 5, 1]) {
+        for (const entity of scene.entities)
+          applyAnimatedEntityPose(objects.get(entity.id)!, entity, scene, time);
+        const before = snapshot();
+        applyConversationPerformance(scene, time, objects);
+        expect(snapshot()).toEqual(before);
+        poses.push(before);
+      }
+      expect(poses[0]).toEqual(poses.at(-1));
+      expect(poses[2]).toEqual(poses[3]);
+    },
+  );
 });
 
 it("preserves the actual shipped rigs and matches the baked conversation at sampled frames", async () => {
@@ -270,5 +347,50 @@ it("preserves the actual shipped rigs and matches the baked conversation at samp
             .distanceTo(bone.getWorldPosition(new T.Vector3())),
         ).toBeLessThan(0.00001);
       }
+  }
+});
+
+it("keeps procedural head and torso motion continuous when a speaker starts or finishes a line", () => {
+  const scene = fixture();
+  const first = scene.entities.find((e) => e.id === "a")!;
+  first.clips[0].duration = 19.234965705135224;
+  const second = scene.entities.find((e) => e.id === "b")!;
+  second.clips[0].duration = first.clips[0].duration;
+  const objects = new Map(
+    scene.entities.map((e) => [
+      e.id,
+      createCharacter(allAssets(scene).find((a) => a.id === e.assetId)!),
+    ]),
+  );
+  const capture = (time: number) => {
+    // Keep the base pose identical so this regression measures the additive
+    // performance itself, independently of ordinary clip transition blending.
+    for (const entity of scene.entities)
+      applyAnimatedEntityPose(objects.get(entity.id)!, entity, scene, 0);
+    applyConversationPerformance(scene, time, objects);
+    return [...objects.values()].flatMap((object) => {
+      object.updateWorldMatrix(true, true);
+      return ["head", "spine", "rightForearm"].map((name) =>
+        (object.userData.bones[name] as T.Bone).getWorldQuaternion(
+          new T.Quaternion(),
+        ),
+      );
+    });
+  };
+  const boundaries = scene.transcript.flatMap((line) => {
+    const t = dialogueTiming(scene, line)!;
+    return [t.start, t.end];
+  });
+  for (const boundary of boundaries.filter((t) => t > 0)) {
+    const before = capture(boundary - 1e-7),
+      at = capture(boundary),
+      after = capture(boundary + 1e-7);
+    before.forEach((q, i) => {
+      expect(q.angleTo(at[i]), `at ${boundary}`).toBeLessThan(1e-5);
+      expect(q.angleTo(after[i]), `across ${boundary}`).toBeLessThan(1e-5);
+    });
+    expect(capture(boundary).map((q) => q.toArray())).toEqual(
+      at.map((q) => q.toArray()),
+    );
   }
 });

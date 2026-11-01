@@ -1,4 +1,5 @@
 import * as T from "three";
+import { inferDetailRoles } from "./rigDetailRoles";
 
 const normalized = (name: string) =>
   name
@@ -7,8 +8,8 @@ const normalized = (name: string) =>
     .replace(/^mixamorig[_:]?/i, "")
     .replace(/[_\s-]/g, "")
     .toLowerCase();
-/** Semantic extremities across CC/Mixamo; other joints require exact names.
- * Twist/share/facial joints are never guessed from substring matches. */
+/** Semantic names plus conservative hierarchy matching below. Twist/share/facial
+ * joints are never guessed from substring matches. */
 function jointKey(bone: T.Bone, canonical: Record<string, T.Bone>) {
   const known = Object.entries(canonical).find(
     ([, node]) => node === bone,
@@ -69,7 +70,18 @@ export function captureDetailBind(group: T.Group) {
     if (node instanceof T.Bone)
       joints.push({
         bone: node,
-        key: jointKey(node, canonical),
+        key:
+          (
+            group.userData.rigSemanticKeys as Map<T.Bone, string> | undefined
+          )?.get(node) ??
+          ((group.userData.unmappedRigBones as Set<T.Bone> | undefined)?.has(
+            node,
+          ) ||
+          (group.userData.disabledRigRoles as Set<string> | undefined)?.has(
+            jointKey(node, canonical),
+          )
+            ? `unmapped:${node.uuid}`
+            : jointKey(node, canonical)),
         position: node.position.clone(),
         bindPoint: group.worldToLocal(node.getWorldPosition(new T.Vector3())),
         bindRotation: inverse
@@ -80,6 +92,13 @@ export function captureDetailBind(group: T.Group) {
     if (node instanceof T.Mesh && node.morphTargetInfluences)
       morphs.push({ mesh: node, weights: [...node.morphTargetInfluences] });
   });
+  inferDetailRoles(
+    joints,
+    canonical,
+    group.userData.rigSemanticKeys,
+    group.userData.unmappedRigBones,
+    group.userData.disabledRigRoles,
+  );
   // Ambiguous names must not silently select the first bone.
   const byKey = new Map(
     joints
@@ -108,6 +127,8 @@ type Pair = {
   target: Joint;
   anchor?: Joint;
   attachment?: T.Vector3;
+  targetAnchor?: Joint;
+  targetAttachment?: T.Vector3;
 };
 type MorphPair = {
   source: T.Mesh;
@@ -145,15 +166,50 @@ function planFor(
   const cached = clips.get(clip);
   if (cached) return cached;
   const hips = source.userData.bones.hips as T.Bone;
+  const detachedSource = source.userData.detachedJointAnchors as
+    Map<T.Bone, T.Bone> | undefined;
+  const detachedTarget = target.userData.detachedJointAnchors as
+    Map<T.Bone, T.Bone> | undefined;
   const pairs: Pair[] = b.joints.flatMap((t) => {
     const s = a.byKey.get(t.key);
     return s &&
       b.byKey.has(t.key) &&
-      (s.bone === hips || ancestor(s.bone, hips))
+      (s.bone === hips ||
+        ancestor(s.bone, hips) ||
+        [...(detachedSource?.keys() || [])].some(
+          (root) => root === s.bone || ancestor(s.bone, root),
+        ))
       ? [{ source: s, target: t }]
       : [];
   });
   for (const pair of pairs) {
+    if (
+      detachedSource?.has(pair.source.bone) ||
+      detachedTarget?.has(pair.target.bone)
+    ) {
+      const parentKeys: Record<string, string> = {
+        leftfoot: "leftshin",
+        rightfoot: "rightshin",
+        lefthand: "leftforearm",
+        righthand: "rightforearm",
+      };
+      const anchor = pairs.find(
+        (p) => p.source.key === parentKeys[pair.source.key],
+      );
+      if (anchor && !ancestor(anchor.target.bone, pair.target.bone)) {
+        pair.anchor = anchor.source;
+        pair.attachment = pair.source.bindPoint
+          .clone()
+          .sub(anchor.source.bindPoint)
+          .applyQuaternion(anchor.source.bindRotation.clone().invert());
+        pair.targetAnchor = anchor.target;
+        pair.targetAttachment = pair.target.bindPoint
+          .clone()
+          .sub(anchor.target.bindPoint)
+          .applyQuaternion(anchor.target.bindRotation.clone().invert());
+        continue;
+      }
+    }
     for (let parent = pair.source.bone.parent; parent; parent = parent.parent) {
       const anchor = pairs.find(
         (p) =>
@@ -168,6 +224,26 @@ function planFor(
       break;
     }
   }
+  // Detached skin joints may precede the hips in the imported tree. Their
+  // anatomical anchors, and every real target parent, must be solved first.
+  const ordered: Pair[] = [],
+    visited = new Set<Pair>();
+  const byTarget = new Map(pairs.map((pair) => [pair.target.bone, pair]));
+  const visit = (pair: Pair) => {
+    if (visited.has(pair)) return;
+    visited.add(pair);
+    for (let parent = pair.target.bone.parent; parent; parent = parent.parent) {
+      const dependency = byTarget.get(parent as T.Bone);
+      if (dependency) {
+        visit(dependency);
+        break;
+      }
+    }
+    const anchor = pair.targetAnchor && byTarget.get(pair.targetAnchor.bone);
+    if (anchor) visit(anchor);
+    ordered.push(pair);
+  };
+  pairs.forEach(visit);
   const morphs: MorphPair[] = [];
   const report: RetargetReport = {
     matchedJoints: pairs.length,
@@ -280,7 +356,7 @@ function planFor(
         });
     }
   }
-  const result = { pairs, morphs, report };
+  const result = { pairs: ordered, morphs, report };
   clips.set(clip, result);
   return result;
 }
@@ -319,7 +395,14 @@ export function applyDetailedTransfer(
   const inverse = source.getWorldQuaternion(new T.Quaternion()).invert();
   const heading = target.getWorldQuaternion(new T.Quaternion());
   const targetScale = target.getWorldScale(new T.Vector3()).x;
-  for (const { source: a, target: b, anchor, attachment } of plan.pairs) {
+  for (const {
+    source: a,
+    target: b,
+    anchor,
+    attachment,
+    targetAnchor,
+    targetAttachment,
+  } of plan.pairs) {
     const desired = heading
       .clone()
       .multiply(initialTurn)
@@ -354,14 +437,26 @@ export function applyDetailedTransfer(
         .applyQuaternion(initialTurn)
         .multiplyScalar(heightRatio * targetScale)
         .applyQuaternion(heading);
-      const parentOrigin = b.bone.parent!.getWorldPosition(new T.Vector3());
-      b.bone.position
-        .copy(b.position)
-        .add(
-          b.bone
-            .parent!.worldToLocal(parentOrigin.clone().add(worldDelta))
-            .sub(b.bone.parent!.worldToLocal(parentOrigin)),
-        );
+      if (targetAnchor && targetAttachment) {
+        const point = targetAttachment
+          .clone()
+          .multiplyScalar(targetScale)
+          .applyQuaternion(
+            targetAnchor.bone.getWorldQuaternion(new T.Quaternion()),
+          )
+          .add(targetAnchor.bone.getWorldPosition(new T.Vector3()))
+          .add(worldDelta);
+        b.bone.position.copy(b.bone.parent!.worldToLocal(point));
+      } else {
+        const parentOrigin = b.bone.parent!.getWorldPosition(new T.Vector3());
+        b.bone.position
+          .copy(b.position)
+          .add(
+            b.bone
+              .parent!.worldToLocal(parentOrigin.clone().add(worldDelta))
+              .sub(b.bone.parent!.worldToLocal(parentOrigin)),
+          );
+      }
     }
     b.bone.quaternion
       .copy(

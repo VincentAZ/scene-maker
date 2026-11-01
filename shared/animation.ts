@@ -1,3 +1,4 @@
+import { routeActiveDuration, routeStopTime } from "./clipTiming";
 import {
   type Entity,
   type Motion,
@@ -22,7 +23,7 @@ import {
   type SeatPlan,
   type SeatBody,
 } from "./seating";
-import { samplePath } from "./path";
+import { gaitAmplitude, samplePath } from "./path";
 export type Pose = {
   root: [number, number, number];
   rotations: Record<string, [number, number, number]>;
@@ -39,7 +40,9 @@ export function motionPose(m: Motion, t: number): Pose {
   const r = p.rotations,
     u = Math.max(0, Math.min(1, t)),
     s = Math.sin(u * Math.PI),
-    cycle = Math.sin(u * Math.PI * 8);
+    cycle =
+      Math.sin(u * Math.PI * 8) *
+      (m.distance < 0 && (m.kind === "walk" || m.kind === "run") ? -1 : 1);
   p.root[2] = m.distance * u;
   if (m.kind === "custom" && m.poses.length) {
     const frames = [...m.poses].sort((a, b) => a.at - b.at);
@@ -134,8 +137,23 @@ export function entityPose(
     canClimb?: boolean;
     seatBody?: SeatBody;
     canSit?: boolean;
+    /** Actual completed body facing can differ from an imported route's travel
+     * frame. Loaded preview/export supplies the evaluated relative heading. */
+    routeEndHeading?: (
+      motion: Motion,
+      clip: Entity["clips"][number],
+      baseHeading: number,
+    ) => number | undefined;
+    /** World offset between the standing body and its route root at the
+     * end of a completed route; later actions start from the body. */
+    routeEndOffset?: (
+      motion: Motion,
+      clip: Entity["clips"][number],
+      baseHeading: number,
+    ) => Point | undefined;
   } = {},
 ): Pose {
+  time = routeStopTime(e.clips, time);
   const p: Pose = {
     root: [...e.position],
     heading: e.rotation,
@@ -155,20 +173,41 @@ export function entityPose(
     const m = library.find((m) => m.id === clip.motionId);
     if (!m) continue;
     const end = start + clip.duration;
+    // Frozen wait chunks reuse an earlier stopped pose while active (above),
+    // and contribute no additional travel or heading after they finish.
+    if (clip.routeWait) {
+      start = end;
+      continue;
+    }
     if (m.path) {
       p.climb = undefined;
-      const u = Math.max(0, Math.min(1, (time - start) / clip.duration));
+      // A route stopped before an obstacle contributes only the travel it
+      // completed before the stop, in this clip and to every later one.
+      const local =
+        clip.routeStop !== undefined
+          ? Math.min(time - start, clip.routeStop - 1e-7)
+          : time - start;
+      const u = Math.max(0, Math.min(1, local / routeActiveDuration(clip)));
       const path = samplePath(m.path, u);
       addRoot(path.point);
-      p.heading! += path.heading;
+      if (time >= end) {
+        const offset = options.routeEndOffset?.(m, clip, p.heading!);
+        if (offset) p.root = p.root.map((n, i) => n + offset[i]) as Point;
+      }
+      p.heading! +=
+        time >= end
+          ? (options.routeEndHeading?.(m, clip, p.heading!) ?? path.heading)
+          : path.heading;
       p.rotations = Object.fromEntries(boneNames.map((n) => [n, [0, 0, 0]]));
       if (time < end) {
         const stride = m.kind === "run" ? 1.8 : 1.25;
         const gait = motionPose(
           { ...m, distance: 0 },
-          ((path.travelled / stride) % 1) / 4,
+          (m.path.backward
+            ? 1 - ((path.travelled / stride) % 1)
+            : (path.travelled / stride) % 1) / 4,
         );
-        const fade = Math.min(1, u / 0.06, (1 - u) / 0.06);
+        const fade = gaitAmplitude(m.path, path.travelled, path.length);
         for (const name of boneNames)
           p.rotations[name] = gait.rotations[name].map(
             (n) => n * fade,
@@ -248,8 +287,17 @@ export function entityPose(
       continue;
     }
     p.climb = undefined;
+    // An authored performance stopped part-way contributes only the travel
+    // it completed before its stop.
     const native =
-      m.kind === "imported" ? options.nativeRoot?.(m, clip) : undefined;
+      m.kind === "imported"
+        ? options.nativeRoot?.(
+            m,
+            clip.routeStop !== undefined
+              ? { ...clip, duration: Math.min(clip.duration, clip.routeStop) }
+              : clip,
+          )
+        : undefined;
     if (time >= end) {
       const last = motionPose(m, 1);
       if (!seated) addRoot(native?.delta || last.root);
@@ -268,4 +316,10 @@ export function entityPose(
     return p;
   }
   return p;
+}
+
+/** The glTF loader names an untitled animation by its index. The import
+ * service reports the same name so a saved motion finds its take later. */
+export function untitledAnimationName(index: number) {
+  return `animation_${index}`;
 }

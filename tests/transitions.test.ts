@@ -9,6 +9,7 @@ import {
   type Scene,
 } from "../shared/scene";
 import { transitionAt } from "../shared/transitions";
+import { sampleWithTransitions } from "../src/transitions";
 import { offlineCommands } from "../server/ai";
 import {
   createCharacter,
@@ -126,6 +127,106 @@ function nativeFixture() {
   };
 }
 describe("action transitions and endings", () => {
+  it("keeps detached rig roots continuous when imported parent travel changes frames", () => {
+    const f = nativeFixture(),
+      root = new T.Bone();
+    root.name = "unweighted-provider-origin";
+    f.body.add(root);
+    f.actor.clips[0].duration = 2.017;
+    const boundary = f.actor.clips[0].duration;
+    f.sample(boundary - 1e-7);
+    const before = point(root);
+    f.sample(boundary);
+    expect(point(root).distanceTo(before)).toBeLessThan(1e-5);
+    const world = new T.Group();
+    world.add(f.group);
+    const animation = bakeAnimation([f.group], 5, f.sample, [
+      boundary,
+      boundary + 2,
+    ]);
+    f.sample(0);
+    const snapshot = exportSnapshot(world),
+      mixer = new T.AnimationMixer(snapshot);
+    const action = mixer.clipAction(animation).play();
+    const exported = snapshot.getObjectByProperty("uuid", root.uuid)!;
+    for (const offset of [-0.01, -0.00001, 0, 0.00001, 0.1, 0.25, 0.001]) {
+      f.sample(boundary + offset);
+      action.reset().play();
+      mixer.setTime(boundary + offset);
+      snapshot.updateMatrixWorld(true);
+      // The adaptive bake's world-position contract is 0.25 mm.
+      expect(
+        point(exported).distanceTo(point(root)),
+        `at ${offset}`,
+      ).toBeLessThan(0.00025);
+    }
+  });
+
+  it("holds the complete imported hierarchy through an animated parent and detached deformer", () => {
+    const f = nativeFixture(),
+      detached = new T.Bone(),
+      attachment = new T.Group();
+    detached.name = "unrelated-provider-deformer";
+    f.body.add(detached, attachment);
+    f.actor.clips = f.actor.clips.slice(0, 1);
+    const native = f.group.userData.animations[0] as T.AnimationClip;
+    native.tracks.push(
+      new T.VectorKeyframeTrack(
+        detached.uuid + ".position",
+        [0, 2],
+        [0, 0, 0, 1, 0.2, 0],
+      ),
+      new T.VectorKeyframeTrack(
+        attachment.uuid + ".position",
+        [0, 2],
+        [0, 0, 0, 0, 0.4, 1],
+      ),
+    );
+    f.sample(2 - 1e-7);
+    const nodes = [
+      f.body,
+      detached,
+      attachment,
+      f.bones.hips,
+      f.bones.rightForearm,
+    ];
+    const poses = nodes.map((node) => node.matrixWorld.clone());
+    for (const time of [2, 8, 0.2, 3, 2]) {
+      f.sample(time);
+      if (time < 2) continue;
+      nodes.forEach((node, index) => {
+        node.matrixWorld.elements.forEach((value, element) =>
+          expect(value).toBeCloseTo(poses[index].elements[element], 8),
+        );
+      });
+    }
+  });
+
+  it("blends facial expressions and holds them through deterministic seeks", () => {
+    const f = fixture();
+    const face = new T.Mesh();
+    face.morphTargetInfluences = [0, 0];
+    face.morphTargetDictionary = { smile: 0, blink: 1 };
+    f.group.add(face);
+    const sample = (time: number, actor = f.actor) =>
+      sampleWithTransitions(f.group, actor, f.scene, time, (t) => {
+        // Model the complete evaluated face, including a reset after the take.
+        face.morphTargetInfluences =
+          t < 1 ? [0.8, 0.2] : t < 3 ? [0.2, 0.6] : [0, 0];
+      });
+    sample(1);
+    expect(face.morphTargetInfluences[0]).toBeCloseTo(0.8);
+    sample(1.125);
+    expect(face.morphTargetInfluences[0]).toBeCloseTo(0.5);
+    expect(face.morphTargetInfluences[1]).toBeCloseTo(0.4);
+    sample(8);
+    expect(face.morphTargetInfluences).toEqual([0.2, 0.6]);
+    sample(0.2);
+    sample(1.125);
+    expect(face.morphTargetInfluences[0]).toBeCloseTo(0.5);
+    sample(8, { ...f.actor, ending: "rest" });
+    expect(face.morphTargetInfluences).toEqual([0, 0]);
+  });
   it("defaults new actions to smooth and new characters to hold while preserving older scene choices", () => {
     const f = fixture();
     expect(f.actor.ending).toBe("hold");

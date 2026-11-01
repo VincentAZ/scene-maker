@@ -11,7 +11,8 @@ import { loadImportedAsset } from "../src/importedAsset";
 import { locomotionProfile, locomotionScale } from "../src/locomotion";
 
 vi.mock("../src/importedAsset", () => ({ loadImportedAsset: vi.fn() }));
-vi.mock("../src/locomotion", () => ({
+vi.mock("../src/locomotion", async (original) => ({
+  ...(await original<typeof import("../src/locomotion")>()),
   locomotionProfile: vi.fn(),
   locomotionScale: vi.fn(),
 }));
@@ -132,6 +133,31 @@ async function click(label: string) {
 function savedActions() {
   return onSave.mock.lastCall![1] as PointAction[] | undefined;
 }
+
+it("reopens and edits backward routes without losing direction, and lets the user change it", async () => {
+  const motion = route();
+  motion.path!.backward = true;
+  const onPlan = vi.fn<
+    (targetId: string, movement: "walk" | "run", locomotion?: Motion) => Motion
+  >(() => motion);
+  await render({ motion, onPlan });
+  const control = [...container.querySelectorAll("label")]
+    .find((label) => label.textContent?.includes("Move backward"))!
+    .querySelector("input")!;
+  expect(control.checked).toBe(true);
+  const destination = query<HTMLSelectElement>(
+    'select[aria-label="Route destination"]',
+  );
+  await changeSelect("Route destination", destination.options[1].value);
+  await click("Plan a clear route");
+  expect(onPlan.mock.calls[0]?.[2]).toMatchObject({ path: { backward: true } });
+  await changeInput("Point 1 across", "3");
+  await click("Save path");
+  expect(onSave.mock.lastCall![0].path.backward).toBe(true);
+  await act(async () => control.click());
+  await click("Save path");
+  expect(onSave.mock.lastCall![0].path.backward).toBeUndefined();
+});
 
 describe("PathEditor waypoint actions", () => {
   it("provides a distinct action and duration for all four points, including the final point", async () => {
@@ -354,6 +380,57 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+it("preserves a selected source interval through edits and saves exact imported natural pace", async () => {
+  const original = libraryMotions.find((m) => m.id === "authored-walk")!;
+  const motion: Motion = {
+    ...original,
+    id: "window-route",
+    duration: 8,
+    path: {
+      points: [
+        [0, 0, 0],
+        [0, 0, 2.34],
+      ],
+      smooth: false,
+      sourceRange: { start: 0.2, end: 0.9 },
+      strideScale: 1.05,
+      sourceProgress: [0, 1],
+    },
+  };
+  await render({
+    motion,
+    locomotionCycle: () => ({ distance: 1.5, duration: 1 }),
+  });
+  expect(
+    query<HTMLSelectElement>('select[aria-label="Route locomotion"]').value,
+  ).toBe("window-route");
+  expect(container.textContent).toContain(
+    "Selected source interval: 0.2–0.9s.",
+  );
+  expect(container.textContent).toContain(
+    "Average step length: 105% of the captured gait.",
+  );
+  await click("Use natural pace");
+  await click("Save path");
+  expect(onSave.mock.lastCall![0].path.strideScale).toBe(1.05);
+  expect(onSave.mock.lastCall![0].path.sourceProgress).toEqual([0, 1]);
+  expect(onSave.mock.lastCall![0].duration).toBeCloseTo(1.56, 12);
+  expect(container.textContent).toContain("Source playback: 1×.");
+  expect(onSave.mock.lastCall![0].path.sourceRange).toEqual({
+    start: 0.2,
+    end: 0.9,
+  });
+  await changeInput("Route duration", "3.12");
+  expect(container.textContent).toContain("Source playback: 0.5×.");
+  await changeInput("Point 1 across", "0.2");
+  await click("Save path");
+  expect(onSave.mock.lastCall![0].path.sourceProgress).toBeUndefined();
+  await changeSelect("Route locomotion", "authored-walk");
+  await click("Save path");
+  expect(onSave.mock.lastCall![0].path.sourceRange).toBeUndefined();
+  expect(onSave.mock.lastCall![0].path.strideScale).toBeUndefined();
+});
 function measuredSource(animationName = "Walk") {
   const source = new T.Group();
   source.userData.animations = [new T.AnimationClip(animationName, 2, [])];
@@ -393,6 +470,7 @@ describe("PathEditor production gait measurement", () => {
     expect(locomotionProfile).toHaveBeenCalledWith(
       source,
       source.userData.animations[0],
+      undefined,
     );
     expect(loadImportedAsset).toHaveBeenCalledTimes(1);
     await click("Add to sequence");
@@ -462,6 +540,7 @@ describe("PathEditor production gait measurement", () => {
     expect(locomotionProfile).toHaveBeenCalledWith(
       nextSource,
       nextSource.userData.animations[0],
+      undefined,
     );
     expect(
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,

@@ -1,3 +1,4 @@
+import { routeActiveDuration } from "../shared/clipTiming";
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
 import { ChatExportMenu } from "./ChatExportMenu";
@@ -74,10 +75,7 @@ import {
   reviseDialogue,
 } from "../shared/conversation";
 import { DialogueComposer } from "./DialogueComposer";
-import {
-  readConversationStream,
-  mergeConversationTurn,
-} from "./conversationStream";
+import { runResolvedConversation } from "./resolvedConversation";
 import {
   CastProgress,
   DialogueTranscript,
@@ -85,7 +83,11 @@ import {
 } from "./Dialogue";
 import { type AssistantReply, type StudioStep } from "../shared/studio";
 import { runStudioPlan, StudioPlanError } from "./studioRunner";
+import { withAutomaticMovement } from "../shared/aiMovement";
+import { hasAutomaticRoutes } from "./automaticRoutes";
 import { ProjectSaveQueue } from "./projectSave";
+import { defaultRouteLocomotion } from "./routeLocomotion";
+import { loadRouteGait } from "./useRouteGait";
 import {
   emptyStudioLibrary,
   studioLibrarySchema,
@@ -103,6 +105,7 @@ import {
   starterScene,
   allAssets,
   allMotions,
+  resolveMotionSource,
   applyCommands,
   duration,
   validateScene,
@@ -135,6 +138,8 @@ import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
 import { GenerateAsset, type ImportedModel } from "./GenerateAsset";
 import { Connections } from "./Connections";
+import { RigMappingEditor } from "./RigMappingEditor";
+import { createPlaybackTransport } from "./playbackTransport";
 import { CharacterModelPicker } from "./CharacterModelPicker";
 import { UpdateCheck } from "./UpdateCheck";
 import { RestartStudio } from "./RestartStudio";
@@ -193,7 +198,7 @@ export default function App() {
     [tab, setTab] = useState<Tab>("characters"),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("All"),
-    [playing, setPlaying] = useState(false),
+    [playing, setPlayingState] = useState(false),
     [time, setTime] = useState(0),
     [move, setMove] = useState(false),
     [transformMode, setTransformMode] = useState<
@@ -287,6 +292,16 @@ export default function App() {
       window.removeEventListener("focus", refresh);
     };
   }, [refreshStudioLibrary]);
+  const transport = useRef<ReturnType<typeof createPlaybackTransport> | null>(
+    null,
+  );
+  if (!transport.current)
+    transport.current = createPlaybackTransport(setPlayingState);
+  const setPlaying = useCallback(
+    (value: boolean | ((current: boolean) => boolean)) =>
+      transport.current!.setPlaying(value),
+    [],
+  );
   const setPanel = useCallback((open: boolean) => {
     setPanelState(open);
     if (open) setConversationOpen(false);
@@ -329,6 +344,16 @@ export default function App() {
     setError,
   );
   const conversationController = useRef<AbortController | null>(null);
+  // Planning pauses playback so no stale route plays; a running playback
+  // (manual or cast conversation) resumes by itself once planning settles.
+  const pauseForNavigation = useCallback(
+    () => transport.current!.pauseForPlanning(),
+    [],
+  );
+  const resumeAfterNavigation = useCallback(
+    () => transport.current!.planningSettled(!!conversationController.current),
+    [],
+  );
   useEffect(() => {
     if (
       playing &&
@@ -659,6 +684,15 @@ export default function App() {
       return false;
     }
   };
+  async function applyAssistantScene(next: Scene) {
+    const staged = withAutomaticMovement(sceneRef.current, next);
+    change(staged);
+    if (hasAutomaticRoutes(staged)) {
+      // Later commands/dialogue must start from the resolved endpoint and clock.
+      await viewport.current!.waitForScene(staged);
+      viewport.current!.prepareNavigation();
+    }
+  }
   const undo = () => {
     const old = history.current.past.pop();
     if (!old) return;
@@ -752,6 +786,10 @@ export default function App() {
         "The scene changed while loading. Open the route editor again.",
       );
     const clip = clipId ? actor.clips.find((c) => c.id === clipId) : undefined;
+    if (clip?.routeWait)
+      throw Error(
+        "This action holds a stopped pose. Edit the preceding route to change its path.",
+      );
     const motion =
       clip && allMotions(snapshot).find((m) => m.id === clip.motionId);
     if (clipId && !motion?.path && !dialogueClip)
@@ -765,7 +803,7 @@ export default function App() {
       footprints: navigation.footprints,
       dialogueClip,
       motion: motion?.path
-        ? { ...motion, duration: clip!.duration }
+        ? { ...motion, duration: routeActiveDuration(clip!) }
         : undefined,
       content: sameContent(snapshot),
     });
@@ -872,7 +910,8 @@ export default function App() {
         save: saveOrThrow,
         load: loadScene,
         read: (id) => api<Scene>("/api/projects/" + id),
-        edit: (commands) => change(applyCommands(sceneRef.current, commands)),
+        edit: (commands) =>
+          applyAssistantScene(applyCommands(sceneRef.current, commands)),
         perform: performStudioStep,
       });
       setMessages((m) => [
@@ -966,7 +1005,9 @@ export default function App() {
     >,
   ) {
     if (step.type === "dialogue") {
-      change(appendSpeech(sceneRef.current, step.characterId, step));
+      await applyAssistantScene(
+        appendSpeech(sceneRef.current, step.characterId, step),
+      );
       return;
     }
     if (step.type === "reviseDialogue" || step.type === "removeDialogue") {
@@ -982,8 +1023,25 @@ export default function App() {
     if (step.type === "walkTo") {
       setPlaying(false);
       cancelConversationForEdit();
-      const snapshot = sceneRef.current;
+      let snapshot = sceneRef.current;
       await viewport.current!.waitForScene(snapshot);
+      snapshot = viewport.current!.prepareNavigation();
+      const actor = snapshot.entities.find(
+        (entity) => entity.id === step.actorId,
+      );
+      if (!actor) throw Error("The route character is no longer in the scene.");
+      const locomotion = defaultRouteLocomotion(snapshot, actor, step.movement);
+      const cycle =
+        locomotion.kind === "imported"
+          ? await loadRouteGait(
+              resolveMotionSource(snapshot, locomotion.sourceAssetId),
+              allAssets(snapshot).find((asset) => asset.id === actor.assetId),
+              locomotion.animationName,
+              undefined,
+              locomotion.path?.sourceRange,
+              locomotion.path?.strideScale,
+            )
+          : undefined;
       if (sameContent(sceneRef.current) !== sameContent(snapshot))
         throw Error(
           "The scene changed while planning. Ask for the route again.",
@@ -992,13 +1050,22 @@ export default function App() {
         step.actorId,
         step.targetId,
         step.movement,
+        undefined,
+        locomotion,
+        cycle,
+        true,
       );
-      change(
-        applyCommands(
-          snapshot,
-          savePathCommands(snapshot, step.actorId, motion),
-        ),
+      const planned = applyCommands(
+        snapshot,
+        savePathCommands(snapshot, step.actorId, motion),
       );
+      planned.entities
+        .find((entity) => entity.id === step.actorId)!
+        .clips.at(-1)!.navigation = {
+        targetId: step.targetId,
+        movement: step.movement,
+      };
+      change(planned);
       setSelected(step.actorId);
       setRightTab("details");
       setPanel(true);
@@ -1135,57 +1202,65 @@ export default function App() {
       total: cast.filter((e) => e.visible).length * roundCount,
     });
     try {
-      await saveOrThrow();
-      controller.signal.throwIfAborted();
-      let expected = structuredClone(sceneRef.current);
-      const response = await fetch("/api/conversation", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/x-ndjson",
-          "X-Scene-Maker": "1",
+      const total = cast.filter((e) => e.visible).length * roundCount;
+      await runResolvedConversation(
+        total,
+        {
+          getScene: () => sceneRef.current,
+          request: (expected, signal) =>
+            fetch("/api/conversation", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/x-ndjson",
+                "X-Scene-Maker": "1",
+              },
+              body: JSON.stringify({
+                scene: expected,
+                rounds: 1,
+                singleTurn: true,
+              }),
+              signal,
+            }),
+          accept: (next, count) => {
+            change(next, true);
+            completed = count;
+            setCastProgress({
+              name: "",
+              characterId: "",
+              completed,
+              total,
+              stopping: controller.signal.aborted,
+            });
+          },
+          prepare: async (next, signal) => {
+            if (hasAutomaticRoutes(next)) pauseForNavigation();
+            await viewport.current!.waitForScene(next, signal);
+            viewport.current!.prepareNavigation();
+          },
+          save: saveOrThrow,
+          thinking: (event, count) =>
+            setCastProgress({
+              name: event.name,
+              characterId: event.characterId,
+              completed: count,
+              total,
+              stopping: controller.signal.aborted,
+            }),
+          ready: (resolved, count) => {
+            if (count === 1) {
+              const start =
+                dialogueTiming(resolved, resolved.transcript.at(-1)!)?.start ||
+                0;
+              setTime(start);
+              setPlaying(true);
+              setSelected(null);
+              viewport.current?.frame("conversation", undefined, start);
+            } else if (transport.current!.resumePending) setPlaying(true);
+          },
         },
-        body: JSON.stringify({ scene: expected, rounds: roundCount }),
-        signal: controller.signal,
-      });
-      await readConversationStream(response, async (event) => {
-        if (event.type === "thinking")
-          setCastProgress({
-            name: event.name,
-            characterId: event.characterId,
-            completed,
-            total: event.total,
-            stopping: controller.signal.aborted,
-          });
-        if (event.type === "turn") {
-          const next = mergeConversationTurn(
-            sceneRef.current,
-            expected,
-            event.scene,
-          );
-          const firstTurn = completed === 0;
-          change(next, true);
-          expected = structuredClone(next);
-          completed = event.completed;
-          setCastProgress({
-            name: "",
-            characterId: "",
-            completed,
-            total: event.total,
-            stopping: controller.signal.aborted,
-          });
-          await saveOrThrow();
-          if (firstTurn && !controller.signal.aborted) {
-            await viewport.current?.waitForScene(next, controller.signal);
-            const start =
-              dialogueTiming(next, next.transcript.at(-1)!)?.start || 0;
-            setTime(start);
-            setPlaying(true);
-            setSelected(null);
-            viewport.current?.frame("conversation", undefined, start);
-          }
-        }
-      });
+        controller.signal,
+      );
       toast(`Your cast added ${completed} turns to the scene`);
     } catch (e) {
       const stopped = controller.signal.aborted;
@@ -1201,6 +1276,7 @@ export default function App() {
       else report(message);
     } finally {
       conversationController.current = null;
+      transport.current!.cancelResume();
       setCastProgress(null);
       if (!propagate) setBusy(false);
     }
@@ -1226,6 +1302,7 @@ export default function App() {
   }
   function loadScene(next: Scene) {
     cancelConversationForEdit();
+    // A plan still settling for the previous project must not restart playback.
     setPlaying(false);
     setTime(0);
     setSelected(next.entities[0]?.id || null);
@@ -1392,7 +1469,7 @@ export default function App() {
     kind: "project" | "package" | "blender" | "unreal",
     propagate = false,
   ) {
-    const snapshot = structuredClone(sceneRef.current);
+    let snapshot = structuredClone(sceneRef.current);
     setExporting(true);
     setPlaying(false);
     try {
@@ -1400,6 +1477,7 @@ export default function App() {
         download(JSON.stringify(snapshot, null, 2), "scene-maker.json");
       } else {
         await viewport.current!.waitForScene(snapshot);
+        snapshot = structuredClone(viewport.current!.prepareNavigation());
         const glb = await viewport.current!.exportGLB();
         if (kind === "blender") {
           const form = new FormData();
@@ -1921,6 +1999,20 @@ export default function App() {
               time={time}
               playing={playing}
               onTime={setTime}
+              onNavigationResolved={(expected, next) => {
+                if (sameContent(sceneRef.current) !== sameContent(expected))
+                  return;
+                // This is the consequence of the preceding edit, so retain its
+                // undo entry instead of adding an automatic undo/redo loop.
+                const resolved = {
+                  ...next,
+                  revision: sceneRef.current.revision,
+                };
+                sceneRef.current = resolved;
+                setScene(resolved);
+              }}
+              onNavigationPending={pauseForNavigation}
+              onNavigationSettled={resumeAfterNavigation}
               thinkingId={castProgress?.characterId}
               advanceTime={voice.advance}
               onPlaybackState={voice.playbackState}
@@ -2197,17 +2289,17 @@ export default function App() {
                             setRightTab("details");
                             setPanel(true);
                           }}
-                          title={`${allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${Number(c.duration.toFixed(1))}s${c.playbackRate !== undefined ? ` · ${Number(c.playbackRate.toFixed(4))}×${c.legacyFit ? " (legacy fit)" : ""}` : ""}`}
+                          title={`${c.routeWait ? "Wait for clear route" : allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${Number(c.duration.toFixed(1))}s${!c.routeWait && c.playbackRate !== undefined ? ` · ${Number(c.playbackRate.toFixed(4))}×${c.legacyFit ? " (legacy fit)" : ""}` : ""}`}
                         >
                           {dialogueClips.has(`${e.id}:${c.id}`) ? (
                             <MessageCircle size={12} />
                           ) : (
                             <Footprints size={12} />
                           )}
-                          {
-                            allMotions(scene).find((m) => m.id === c.motionId)
-                              ?.name
-                          }
+                          {c.routeWait
+                            ? "Wait for clear route"
+                            : allMotions(scene).find((m) => m.id === c.motionId)
+                                ?.name}
                         </button>
                       ))}
                       <button
@@ -2818,6 +2910,26 @@ export default function App() {
                   </label>
                   {isCharacter && (
                     <>
+                      {selectedAsset?.url &&
+                        scene.customAssets.some(
+                          (asset) => asset.id === selectedAsset.id,
+                        ) && (
+                          <RigMappingEditor
+                            asset={selectedAsset}
+                            onSave={(rigMapping) => {
+                              const current = sceneRef.current;
+                              change({
+                                ...current,
+                                customAssets: current.customAssets.map(
+                                  (asset) =>
+                                    asset.id === selectedAsset.id
+                                      ? { ...asset, rigMapping }
+                                      : asset,
+                                ),
+                              });
+                            }}
+                          />
+                        )}
                       <h3>Their mind</h3>
                       <p className="muted small">
                         Which AI speaks for {entity.name} in conversations. Any
@@ -2872,11 +2984,9 @@ export default function App() {
                                   {String(i + 1).padStart(2, "0")}
                                 </span>
                                 <strong>
-                                  {
-                                    allMotions(scene).find(
-                                      (m) => m.id === c.motionId,
-                                    )?.name
-                                  }
+                                  {c.routeWait
+                                    ? "Wait for clear route"
+                                    : motion?.name}
                                 </strong>
                                 <button
                                   aria-label={`Remove action ${i + 1}`}
@@ -2930,23 +3040,34 @@ export default function App() {
                                 <input
                                   aria-label={`Action ${i + 1} duration`}
                                   type="number"
-                                  min=".2"
+                                  min={Math.max(0.2, c.routeStop ?? 0)}
                                   max="60"
                                   step=".2"
                                   value={c.duration}
                                   onChange={(e) => {
+                                    const seconds = Number(e.target.value);
+                                    const active = routeActiveDuration(c);
                                     if (
-                                      Number(e.target.value) >= 0.2 &&
-                                      Number(e.target.value) <= 60
+                                      seconds >=
+                                        Math.max(0.2, c.routeStop ?? 0) &&
+                                      seconds <= 60
                                     )
                                       update(entity.id, {
                                         clips: entity.clips.map((x) =>
                                           x.id === c.id
                                             ? {
                                                 ...x,
-                                                duration: Number(
-                                                  e.target.value,
-                                                ),
+                                                duration: seconds,
+                                                ...(x.routeStop !== undefined &&
+                                                motion?.path
+                                                  ? {
+                                                      routeActive: active,
+                                                      routeHold:
+                                                        seconds > active
+                                                          ? seconds - active
+                                                          : undefined,
+                                                    }
+                                                  : {}),
                                               }
                                             : x,
                                         ),
@@ -2955,7 +3076,7 @@ export default function App() {
                                 />
                                 <span>sec</span>
                               </div>
-                              {motion?.kind === "imported" && (
+                              {motion?.kind === "imported" && !c.routeWait && (
                                 <ImportedClipTiming
                                   clip={c}
                                   motion={motion}
@@ -2972,6 +3093,7 @@ export default function App() {
                                 />
                               )}
                               {i > 0 &&
+                                !c.routeWait &&
                                 !contactAction(scene, c) &&
                                 !contactAction(scene, entity.clips[i - 1]) && (
                                   <label className="clip-transition">
@@ -2998,20 +3120,22 @@ export default function App() {
                                     </select>
                                   </label>
                                 )}
-                              {allMotions(scene).find(
-                                (m) => m.id === c.motionId,
-                              )?.path && (
-                                <button
-                                  className="text-button"
-                                  onClick={() =>
-                                    void openPathEditor(entity.id, c.id).catch(
-                                      (e) => report(e.message),
-                                    )
-                                  }
-                                >
-                                  <Footprints size={13} /> Edit path
-                                </button>
-                              )}
+                              {!c.routeWait &&
+                                allMotions(scene).find(
+                                  (m) => m.id === c.motionId,
+                                )?.path && (
+                                  <button
+                                    className="text-button"
+                                    onClick={() =>
+                                      void openPathEditor(
+                                        entity.id,
+                                        c.id,
+                                      ).catch((e) => report(e.message))
+                                    }
+                                  >
+                                    <Footprints size={13} /> Edit path
+                                  </button>
+                                )}
                               {[
                                 "sip",
                                 "pick",
@@ -3207,8 +3331,12 @@ export default function App() {
           }}
           speechDuration={
             pathEdit.dialogueClip
-              ? pathEdit.actor.clips.find((c) => c.id === pathEdit.clipId)
-                  ?.duration
+              ? (() => {
+                  const clip = pathEdit.actor.clips.find(
+                    (c) => c.id === pathEdit.clipId,
+                  );
+                  return clip ? routeActiveDuration(clip) : undefined;
+                })()
               : undefined
           }
           motion={pathEdit.motion}
@@ -3270,6 +3398,29 @@ export default function App() {
               moving is just a few clicks away.
             </p>
             <UpdateCheck />
+            <label className="settings-card">
+              <input
+                type="checkbox"
+                checked={scene.animationCollisions !== false}
+                onChange={(event) =>
+                  change(
+                    applyCommands(sceneRef.current, [
+                      {
+                        type: "scene",
+                        changes: { animationCollisions: event.target.checked },
+                      },
+                    ]),
+                  )
+                }
+              />
+              <span>
+                <strong>Animation collision detection</strong>
+                <small>
+                  Check characters, props, and the set for overlaps during
+                  playback.
+                </small>
+              </span>
+            </label>
             <button
               className="settings-card"
               onClick={() => setModal("connections")}

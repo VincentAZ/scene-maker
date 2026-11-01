@@ -1,31 +1,53 @@
+import { routeActiveDuration, routeStopTime } from "../shared/clipTiming";
 import * as T from "three";
-import { samplePath } from "../shared/path";
+import { applyRouteFootPlanting } from "./routeFootPlanting";
+import { closeRouteLoopPose } from "./routeLoopPose";
+import { capturedRouteHeading } from "./routeTrajectoryHeading";
+import { capturedRouteContactOffset } from "./routeContactWarp";
+import { supportRouteFootContacts } from "./routeContacts";
+import {
+  sampleFootSurfaces,
+  supportRouteGround,
+  transferFootClearance,
+} from "./footSurface";
+import { samplePath, sourcePathProgress } from "../shared/path";
 import {
   locomotionProfile,
-  sampleLocomotion,
+  routeLocomotionProfile,
+  sampleRouteLocomotion,
+  routeSourceDuration,
+  routeEntryHeading,
   locomotionScale,
   type LocomotionProfile,
 } from "./locomotion";
-import { sourceSecondsAt, clipSourceEnd } from "../shared/clipTiming";
+import {
+  sourceSecondsAt,
+  clipSourceStart,
+  clipSourceEnd,
+} from "../shared/clipTiming";
 import {
   applyHumanoidPose,
+  standingHeight,
   nativeRootMotion,
   motionSource,
   transferredRootMotion,
   applyTransferredClip,
   sampleNativeClip,
   humanoidWarning,
+  rigHeading,
+  importedClip,
 } from "./rig";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import {
   type Asset,
   type Scene,
+  type Motion,
   type Entity,
   boneNames,
   allMotions,
 } from "../shared/scene";
 import { entityPose, type Pose } from "../shared/animation";
-import { defaultLadder } from "../shared/ladder";
+import { defaultLadder, type Point } from "../shared/ladder";
 import { measureSeatBody, applySeatSupport } from "./seating";
 import { sampleWithTransitions } from "./transitions";
 const material = (color: string) =>
@@ -452,16 +474,184 @@ export function applyAnimatedEntityPose(
   );
   applySeatSupport(group, entity);
 }
+const routeEndHeadings = new WeakMap<
+  T.Group,
+  {
+    scene: Scene;
+    entity: Entity;
+    entries: Map<
+      string,
+      {
+        path: Motion["path"];
+        end: number;
+        base: number;
+        heading: number;
+        offset: Point;
+      }
+    >;
+  }[]
+>();
+
+const resolvingRouteEnds = new Set<string>();
+/** Resolve the actual outgoing body frame once per saved scene/actor/route.
+ * Sampling just inside the route includes captured sideways/backward facing
+ * and accepted loop closure. Earlier routes reuse this same cache recursively;
+ * the current route is still active, so it never depends on its own result. */
+function completedRouteHeading(
+  group: T.Group,
+  entity: Entity,
+  scene: Scene,
+  motion: Motion,
+  clip: Entity["clips"][number],
+  base: number,
+) {
+  if (motion.kind !== "imported" || !motion.path) return;
+  const recent = routeEndHeadings.get(group) ?? [];
+  let cache = recent.find(
+    (entry) => entry.scene === scene && entry.entity === entity,
+  );
+  if (!cache) {
+    cache = { scene, entity, entries: new Map() };
+    // Renders and planning sweeps alternate scene objects for one body.
+    routeEndHeadings.set(group, [cache, ...recent].slice(0, 4));
+  }
+  const index = entity.clips.indexOf(clip),
+    end = entity.clips
+      .slice(0, index + 1)
+      .reduce((sum, item) => sum + item.duration, 0);
+  const known = cache.entries.get(clip.id);
+  if (
+    known &&
+    known.path === motion.path &&
+    known.end === end &&
+    known.base === base
+  )
+    return known;
+  // Foot planting looks a little past the sampled end pose while this frame
+  // is being resolved. Those lookahead samples must not ask for the frame
+  // they are part of resolving.
+  const resolving = `${group.uuid}:${clip.id}`;
+  if (resolvingRouteEnds.has(resolving)) return;
+  resolvingRouteEnds.add(resolving);
+  const saved: {
+    node: T.Object3D;
+    position: T.Vector3;
+    rotation: T.Quaternion;
+    scale: T.Vector3;
+    weights?: number[];
+  }[] = [];
+  group.traverse((node) =>
+    saved.push({
+      node,
+      position: node.position.clone(),
+      rotation: node.quaternion.clone(),
+      scale: node.scale.clone(),
+      weights:
+        node instanceof T.Mesh
+          ? node.morphTargetInfluences?.slice()
+          : undefined,
+    }),
+  );
+  const keys = [
+    "motionNotice",
+    "motionWarning",
+    "retargetReport",
+    "routeFootCorrection",
+    "routeContactSupport",
+    "footClearance",
+    "routeGroundSupport",
+  ];
+  const metadata = keys.map((key) => group.userData[key]);
+  const mixer = group.userData.mixer as T.AnimationMixer | undefined,
+    previousTime = mixer?.time;
+  try {
+    const evaluated = applyUnblendedEntityPose(
+      group,
+      entity,
+      scene,
+      end - 1e-7,
+    );
+    if (group.userData.motionWarning) return;
+    const actual = rigHeading(group);
+    if (actual === undefined) return;
+    // Where the body actually stands relative to its route root: a route
+    // stopped mid-stride keeps the hip offset of that phase, and whatever
+    // follows must start from the standing body, not from the route guide.
+    const offset: Point = evaluated
+      ? group.position.clone().sub(evaluated.root).toArray()
+      : [0, 0, 0];
+    const expected =
+      base +
+      samplePath(
+        motion.path,
+        clip.routeStop === undefined
+          ? 1
+          : Math.min(1, clip.routeStop / routeActiveDuration(clip)),
+      ).heading;
+    const heading =
+      actual +
+      Math.round((expected - actual) / (2 * Math.PI)) * 2 * Math.PI -
+      base;
+    const entry = { path: motion.path, end, base, heading, offset };
+    cache.entries.set(clip.id, entry);
+    return entry;
+  } finally {
+    resolvingRouteEnds.delete(resolving);
+    mixer?.stopAllAction();
+    if (mixer && previousTime !== undefined) mixer.time = previousTime;
+    for (const { node, position, rotation, scale, weights } of saved) {
+      node.position.copy(position);
+      node.quaternion.copy(rotation);
+      node.scale.copy(scale);
+      if (weights && node instanceof T.Mesh)
+        node.morphTargetInfluences!.splice(0, weights.length, ...weights);
+    }
+    keys.forEach((key, i) => {
+      group.userData[key] = metadata[i];
+    });
+    group.updateMatrixWorld(true);
+  }
+}
+
 function applyUnblendedEntityPose(
   group: T.Group,
   entity: Entity,
   scene: Scene,
   time: number,
-) {
+  plantFeet = true,
+  closeLoop = true,
+):
+  | {
+      root: T.Vector3;
+      heading: number;
+      routeTime: number;
+      routeCenter: T.Vector3;
+      clearance: ReturnType<typeof sampleFootSurfaces>;
+    }
+  | undefined {
+  // Freeze the same evaluated route endpoint through an authored hold. Clamp
+  // before contacts/loop closure too, so their clocks cannot continue moving.
+  time = routeStopTime(entity.clips, time);
+  let holdStart = 0;
+  for (const scheduled of entity.clips) {
+    if (time < holdStart + scheduled.duration) {
+      if (
+        scheduled.routeHold &&
+        time >= holdStart + routeActiveDuration(scheduled)
+      )
+        time = holdStart + routeActiveDuration(scheduled) - 1e-7;
+      break;
+    }
+    holdStart += scheduled.duration;
+  }
   const mixer = group.userData.mixer as T.AnimationMixer | undefined;
   mixer?.stopAllAction();
   group.userData.motionNotice = "";
   group.userData.retargetReport = undefined;
+  group.userData.routeFootCorrection = undefined;
+  group.userData.routeContactSupport = undefined;
+  group.userData.footClearance = undefined;
+  group.userData.routeGroundSupport = undefined;
   const bones = group.userData.bones as Record<string, T.Bone> | undefined;
   if (
     !group.userData.seatBody &&
@@ -479,6 +669,13 @@ function applyUnblendedEntityPose(
     group.userData.seatBody = measureSeatBody(group);
   }
   const pose = entityPose(entity, scene, time, {
+    routeEndHeading: (motion, clip, base) =>
+      completedRouteHeading(group, entity, scene, motion, clip, base)?.heading,
+    routeEndOffset: (motion, clip, base) =>
+      clip.routeStop === undefined
+        ? undefined
+        : completedRouteHeading(group, entity, scene, motion, clip, base)
+            ?.offset,
     seatBody: group.userData.seatBody,
     canSit:
       !!group.userData.seatBody && !humanoidWarning(group, entity.name, false),
@@ -500,21 +697,19 @@ function applyUnblendedEntityPose(
         const source = motionSource(group, motion.sourceAssetId!);
         const clip =
           source &&
-          T.AnimationClip.findByName(
-            source.userData.animations,
-            motion.animationName!,
-          );
+          importedClip(source.userData.animations, motion.animationName!);
         return source && clip
           ? transferredRootMotion(
               source,
               group,
               clip,
               clipSourceEnd(scheduled, clip.duration),
+              clipSourceStart(scheduled, clip.duration),
             )
           : undefined;
       }
       if (!mixer) return;
-      const native = T.AnimationClip.findByName(
+      const native = importedClip(
         group.userData.animations,
         motion.animationName || "",
       );
@@ -524,6 +719,7 @@ function applyUnblendedEntityPose(
           group,
           native,
           clipSourceEnd(scheduled, native.duration),
+          clipSourceStart(scheduled, native.duration),
         );
       return root
         ? {
@@ -546,10 +742,14 @@ function applyUnblendedEntityPose(
     | {
         clip: T.AnimationClip;
         time: number;
+        sourceStart: number;
         source?: T.Group;
         route?: {
           profile: LocomotionProfile;
-          sample: ReturnType<typeof sampleLocomotion>;
+          start: number;
+          duration: number;
+          sourceDuration: number;
+          sample: ReturnType<typeof sampleRouteLocomotion>;
           ratio: number;
           heading: number;
         };
@@ -563,7 +763,7 @@ function applyUnblendedEntityPose(
         motion.sourceAssetId === entity.assetId
           ? group
           : motionSource(group, motion.sourceAssetId!);
-      const native = T.AnimationClip.findByName(
+      const native = importedClip(
         source?.userData.animations || [],
         motion.animationName || "",
       );
@@ -572,25 +772,86 @@ function applyUnblendedEntityPose(
           current = {
             clip: native,
             time: sourceSecondsAt(clip, time - start, native.duration),
+            sourceStart: clipSourceStart(clip, native.duration),
             source: source === group ? undefined : source,
           };
           if (motion.path && source) {
-            const profile = locomotionProfile(source, native);
+            const measured = locomotionProfile(
+              source,
+              native,
+              motion.path.sourceRange,
+            );
             const ratio = source === group ? 1 : locomotionScale(source, group);
+            const travelRatio = ratio * (motion.path.strideScale ?? 1);
+            const profile =
+              measured && ratio > 0
+                ? routeLocomotionProfile(
+                    measured,
+                    samplePath(motion.path, 1).length / travelRatio,
+                  )
+                : measured;
             if (
               profile &&
               profile.distance >= 0.15 &&
               profile.distance / profile.duration >= 0.05 &&
               ratio > 0
             ) {
+              const linearPath = samplePath(
+                motion.path,
+                (time - start) / routeActiveDuration(clip),
+              );
+              const sample = sampleRouteLocomotion(
+                profile,
+                linearPath.length / travelRatio,
+                (time - start) / routeActiveDuration(clip),
+              );
               const path = samplePath(
                 motion.path,
-                (time - start) / clip.duration,
+                linearPath.length > 0
+                  ? sourcePathProgress(
+                      motion.path,
+                      (sample.travelled * travelRatio) / linearPath.length,
+                    )
+                  : 0,
+                routeEntryHeading(profile),
               );
-              const sample = sampleLocomotion(profile, path.travelled / ratio);
-              current.time = sample.time;
+              path.heading =
+                capturedRouteHeading(
+                  motion.path,
+                  profile,
+                  sample.time,
+                  ratio,
+                  standingHeight(source),
+                  sample.heading,
+                ) ?? path.heading;
+              const baseHeading =
+                (pose.heading ?? entity.rotation) - linearPath.heading;
+              const contactOffset = capturedRouteContactOffset(
+                motion.path,
+                profile,
+                sample.time,
+                ratio,
+                standingHeight(source),
+              );
+              const displacement = new T.Vector3(...path.point)
+                .add(contactOffset ?? new T.Vector3())
+                .sub(new T.Vector3(...linearPath.point))
+                .multiplyScalar(entity.scale)
+                .applyAxisAngle(new T.Vector3(0, 1, 0), baseHeading);
+              pose.root = new T.Vector3(...pose.root)
+                .add(displacement)
+                .toArray();
+              pose.heading = baseHeading + path.heading;
+              current.time = sample.sourceTime;
+              current.sourceStart = profile.sourceStart ?? 0;
               current.route = {
                 profile,
+                start,
+                duration: routeActiveDuration(clip),
+                sourceDuration: routeSourceDuration(
+                  profile,
+                  linearPath.length / travelRatio,
+                ),
                 sample,
                 ratio,
                 heading: pose.heading ?? entity.rotation,
@@ -624,6 +885,7 @@ function applyUnblendedEntityPose(
       group,
       current.clip,
       current.time,
+      current.sourceStart,
     );
   else if (current) sampleNativeClip(group, current.clip, current.time);
   if (current?.route && !group.userData.motionWarning) {
@@ -650,8 +912,119 @@ function applyUnblendedEntityPose(
         .filter(Boolean)
         .join(" ");
   }
+  const loopClearance =
+    closeLoop && current?.route && !group.userData.motionWarning
+      ? closeRouteLoopPose(
+          group,
+          entity,
+          scene,
+          time,
+          current.route,
+          { root: new T.Vector3(...pose.root), heading: current.route.heading },
+          (sampleTime) =>
+            applyUnblendedEntityPose(
+              group,
+              entity,
+              scene,
+              sampleTime,
+              false,
+              false,
+            ),
+        )
+      : undefined;
+  let routeClearance =
+    current?.route && !group.userData.motionWarning
+      ? sampleFootSurfaces(current.source || group)
+      : undefined;
+  if (current?.source && loopClearance && routeClearance) {
+    const left = routeClearance.left + loopClearance.left,
+      right = routeClearance.right + loopClearance.right;
+    routeClearance = {
+      ...routeClearance,
+      left,
+      right,
+      lowest: Math.min(left, right),
+    };
+  } else if (current?.route && !current.source && routeClearance) {
+    // Native loop closure can move the studio root vertically while retaining
+    // the body's world pose. Surface samples are group-local: include that
+    // offset so ground support does not undo the closure at the next cycle.
+    const offset = group.position
+      .clone()
+      .sub(new T.Vector3(...pose.root))
+      .applyQuaternion(group.quaternion.clone().invert())
+      .divide(group.scale).y;
+    routeClearance = {
+      ...routeClearance,
+      left: routeClearance.left + offset,
+      right: routeClearance.right + offset,
+      lowest: routeClearance.lowest + offset,
+    };
+  }
+  if (plantFeet && current?.route && !group.userData.motionWarning)
+    applyRouteFootPlanting(
+      group,
+      entity,
+      scene,
+      time,
+      {
+        ...current.route,
+        root: new T.Vector3(...pose.root),
+      },
+      !!current.source,
+      (sampleTime) =>
+        applyUnblendedEntityPose(group, entity, scene, sampleTime, false),
+    );
+  // Terminal-shin rigs have no independently orientable ankle. Contact IK can
+  // change their sole height, so restore source clearance after that correction.
+  if (
+    plantFeet &&
+    current?.route &&
+    current.source &&
+    !group.userData.motionWarning
+  )
+    transferFootClearance(
+      current.source,
+      group,
+      new T.Vector3(...pose.root),
+      current.route.ratio,
+      routeClearance,
+    );
+  if (plantFeet && current?.route && !group.userData.motionWarning) {
+    supportRouteGround(
+      group,
+      new T.Vector3(...pose.root),
+      routeClearance
+        ? Math.max(
+            0,
+            routeClearance.lowest -
+              routeClearance.bindFloor +
+              current.route.sample.groundLift,
+          ) * current.route.ratio
+        : 0,
+    );
+    if (routeClearance) {
+      supportRouteFootContacts(
+        group,
+        new T.Vector3(...pose.root),
+        routeClearance,
+        current.route.ratio,
+        standingHeight(current.source || group),
+      );
+      supportRouteGround(group, new T.Vector3(...pose.root));
+    }
+  }
   if (missing)
     group.userData.motionWarning = `The original file or a measurable foot stride for ${entity.name}'s action is unavailable. Choose an imported walking/running cycle or reimport the source.`;
+  return current?.route
+    ? {
+        root: new T.Vector3(...pose.root),
+        heading: current.route.heading,
+        routeTime: current.route.sample.time,
+        routeCenter: current.route.sample.center,
+        clearance: routeClearance,
+      }
+    : undefined;
 }
 // Frees GPU resources of every mesh under root. Material.dispose() does not
 // release the textures a material references, so they are released here too;

@@ -1,6 +1,7 @@
 import * as T from "three";
+import { skinColliderRegions } from "./skinCollider";
 
-/** World-space AABBs, one per visible mesh (or instance), not one solid asset box. */
+/** World AABBs per mesh, instance or complete-triangle skin region. */
 export type Collider = { boxes: T.Box3[]; bounds: T.Box3 };
 export type CollisionObstacle = {
   id: string;
@@ -11,9 +12,112 @@ export type CollisionObstacle = {
 /** Contacts and tiny numerical penetrations, in scene/world units, are allowed. */
 export const COLLISION_EPSILON = 1e-5;
 
+/** First overlap while both mesh bounds interpolate between two snapshots.
+ * Relative motion matters: two fast objects travelling together must not
+ * collide merely because their swept world-space boxes overlap. This is exact
+ * for translated AABBs, and a sampled approximation for rotating/deforming
+ * meshes; callers must sample those changes rather than claim exact physics. */
+export function firstInterpolatedOverlap(
+  a0: Collider,
+  a1: Collider,
+  b0: Collider,
+  b1: Collider,
+): number | null {
+  if (
+    !a0.bounds
+      .clone()
+      .union(a1.bounds)
+      .intersectsBox(b0.bounds.clone().union(b1.bounds))
+  )
+    return null;
+  const preceding = (from: Collider, to: Collider) => {
+    const old = parts.get(from),
+      next = parts.get(to);
+    const indices = old && new Map(old.map((part, index) => [part.id, index]));
+    return to.boxes.map((box, index) => {
+      const previous = indices && next ? indices.get(next[index].id) : index;
+      return previous === undefined ? box : from.boxes[previous] || box;
+    });
+  };
+  const aBefore = preceding(a0, a1),
+    bBefore = preceding(b0, b1);
+  // Region skins contain many parts. Cache each obstacle's swept bounds once
+  // rather than recomputing six extrema for every region pair.
+  const sweptB = new Float64Array(b1.boxes.length * 6);
+  for (let j = 0; j < b1.boxes.length; j++) {
+    const old = bBefore[j],
+      box = b1.boxes[j],
+      offset = j * 6;
+    sweptB[offset] = Math.min(old.min.x, box.min.x);
+    sweptB[offset + 1] = Math.min(old.min.y, box.min.y);
+    sweptB[offset + 2] = Math.min(old.min.z, box.min.z);
+    sweptB[offset + 3] = Math.max(old.max.x, box.max.x);
+    sweptB[offset + 4] = Math.max(old.max.y, box.max.y);
+    sweptB[offset + 5] = Math.max(old.max.z, box.max.z);
+  }
+  let first = Infinity;
+  for (let i = 0; i < a1.boxes.length; i++) {
+    const a = a1.boxes[i],
+      beforeA = aBefore[i],
+      minX = Math.min(beforeA.min.x, a.min.x),
+      minY = Math.min(beforeA.min.y, a.min.y),
+      minZ = Math.min(beforeA.min.z, a.min.z),
+      maxX = Math.max(beforeA.max.x, a.max.x),
+      maxY = Math.max(beforeA.max.y, a.max.y),
+      maxZ = Math.max(beforeA.max.z, a.max.z);
+    for (let j = 0; j < b1.boxes.length; j++) {
+      const offset = j * 6;
+      if (
+        maxX <= sweptB[offset] ||
+        minX >= sweptB[offset + 3] ||
+        maxY <= sweptB[offset + 1] ||
+        minY >= sweptB[offset + 4] ||
+        maxZ <= sweptB[offset + 2] ||
+        minZ >= sweptB[offset + 5]
+      )
+        continue;
+      const b = b1.boxes[j],
+        beforeB = bBefore[j];
+      let enter = 0,
+        leave = 1;
+      for (const axis of axes) {
+        for (const [start, end] of [
+          [beforeA.max[axis] - beforeB.min[axis], a.max[axis] - b.min[axis]],
+          [beforeB.max[axis] - beforeA.min[axis], b.max[axis] - a.min[axis]],
+        ]) {
+          const value = start - COLLISION_EPSILON,
+            slope = end - start;
+          if (Math.abs(slope) < 1e-12) {
+            if (value <= 0) leave = -1;
+          } else if (slope > 0) enter = Math.max(enter, -value / slope);
+          else leave = Math.min(leave, -value / slope);
+        }
+      }
+      if (enter < leave) first = Math.min(first, Math.max(0, enter));
+    }
+  }
+  return Number.isFinite(first) ? first : null;
+}
+
 type Part = { id: string; matrix: T.Matrix4 };
 const parts = new WeakMap<Collider, Part[]>();
 const axes = ["x", "y", "z"] as const;
+
+/** A carried prop belongs to the moving body's clearance, while intentional
+ * hand/prop contact must not count as the actor colliding with itself. */
+export function combineColliders(colliders: Collider[]): Collider {
+  const combined: Collider = {
+    boxes: colliders.flatMap((c) => c.boxes),
+    bounds: new T.Box3(),
+  };
+  for (const collider of colliders) combined.bounds.union(collider.bounds);
+  if (colliders.every((c) => parts.has(c)))
+    parts.set(
+      combined,
+      colliders.flatMap((c) => parts.get(c)!),
+    );
+  return combined;
+}
 
 /**
  * Detached snapshot of rendered mesh bounds, including ancestors' visibility and
@@ -22,8 +126,9 @@ const axes = ["x", "y", "z"] as const;
  * are refreshed on every snapshot, and instances retain separate boxes.
  *
  * These are conservative geometric AABBs, not triangle/physics colliders: empty
- * space inside a single mesh's box can still block, but separate environment
- * meshes never fill the room between them. Material groups, shader displacement,
+ * space inside a region's box can still block. Skins use complete-triangle
+ * regions so one body mesh does not fill the space between limbs. Separate
+ * environment meshes never fill the room between them. Material groups, shader displacement,
  * clipping, camera layers and alpha holes are not resolved.
  */
 export function snapshotCollider(root: T.Object3D): Collider {
@@ -63,6 +168,25 @@ export function snapshotCollider(root: T.Object3D): Collider {
       for (const bone of object.skeleton.bones)
         bone.updateWorldMatrix(true, false);
       object.updateMatrixWorld(true);
+      const regions = skinColliderRegions(object);
+      if (regions) {
+        for (const { box, bone } of regions) {
+          if (
+            box.isEmpty() ||
+            ![...box.min.toArray(), ...box.max.toArray()].every(Number.isFinite)
+          )
+            continue;
+          collider.boxes.push(box);
+          collider.bounds.union(box);
+          entries.push({
+            id: `${object.uuid}:skin:${bone}`,
+            matrix: (
+              object.skeleton.bones[bone]?.matrixWorld ?? object.matrixWorld
+            ).clone(),
+          });
+        }
+        return;
+      }
       object.computeBoundingBox();
       local = object.boundingBox!;
     } else if (object.morphTargetInfluences?.some((weight) => weight !== 0)) {

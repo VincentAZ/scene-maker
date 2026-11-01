@@ -16,6 +16,7 @@ import {
   pointActionMotions,
   type PointAction,
   type PathFrame,
+  type MotionPath,
 } from "../shared/path";
 import type { Point } from "../shared/ladder";
 import type { Footprint } from "../shared/navigation";
@@ -117,6 +118,7 @@ export function PathEditor({
     [id] = useState(motion?.id || uid);
   const [destination, setDestination] = useState("");
   const [endHeading, setEndHeading] = useState(motion?.path?.endHeading);
+  const [backward, setBackward] = useState(motion?.path?.backward ?? false);
   const svg = useRef<SVGSVGElement>(null),
     dragging = useRef<number | null>(null),
     suppressClick = useRef(false);
@@ -183,35 +185,70 @@ export function PathEditor({
       return [entity.id, offset];
     }),
   );
-  const path = useMemo(
-    () => ({
+  const path = useMemo(() => {
+    const path: MotionPath = {
       points: points.map((p) => {
         const local = worldToPath(p, frame);
         local[1] = 0;
         return local;
       }),
       smooth,
+      ...(backward && locomotion.kind !== "imported" ? { backward: true } : {}),
+      ...(locomotion.kind === "imported" && locomotion.path?.sourceRange
+        ? { sourceRange: { ...locomotion.path.sourceRange } }
+        : {}),
+      ...(locomotion.kind === "imported" &&
+      locomotion.path?.strideScale !== undefined
+        ? { strideScale: locomotion.path.strideScale }
+        : {}),
       ...(endHeading === undefined ? {} : { endHeading }),
-    }),
-    [points, frame, smooth, endHeading],
-  );
+    };
+    const reference = motion?.path;
+    // Correspondence belongs to the original repaired geometry. Keep it on
+    // unchanged saves; a new drawn/planned path must not inherit stale anchors.
+    if (
+      reference?.sourceProgress &&
+      reference.smooth === smooth &&
+      reference.points.length === path.points.length &&
+      locomotion.sourceAssetId === motion?.sourceAssetId &&
+      locomotion.animationName === motion?.animationName &&
+      JSON.stringify(path.sourceRange) ===
+        JSON.stringify(reference.sourceRange) &&
+      path.strideScale === reference.strideScale &&
+      path.points.every((p, i) =>
+        p.every((n, axis) => Math.abs(n - reference.points[i][axis]) < 1e-8),
+      )
+    )
+      path.sourceProgress = [...reference.sourceProgress];
+    return path;
+  }, [
+    points,
+    frame,
+    smooth,
+    endHeading,
+    backward,
+    motion,
+    locomotion.sourceAssetId,
+    locomotion.animationName,
+    locomotion.kind,
+    locomotion.path?.sourceRange,
+    locomotion.path?.strideScale,
+  ]);
   const compiled = useMemo(
     () => (points.length > 1 ? compilePath(path) : null),
     [path, points.length],
   );
   const length = (compiled?.length || 0) * frame.scale;
+  const naturalDuration =
+    gait.status === "ready"
+      ? length / routePace(locomotion, frame.scale, measuredCycle, length)
+      : undefined;
   const pace =
-    gait.status !== "ready"
+    naturalDuration === undefined
       ? undefined
-      : Math.max(
-          0.5,
-          Math.min(
-            60,
-            Math.round(
-              (length / routePace(locomotion, frame.scale, measuredCycle)) * 10,
-            ) / 10,
-          ),
-        );
+      : locomotion.kind === "imported"
+        ? naturalDuration
+        : Math.max(0.5, Math.min(60, Math.round(naturalDuration * 10) / 10));
   const duration = speechDuration ?? (manualTime ? seconds : pace);
   const drawn =
     compiled?.samples
@@ -337,7 +374,7 @@ export function PathEditor({
                   const planned = onPlan(
                     destination,
                     kind,
-                    locomotion,
+                    path.backward ? { ...locomotion, path } : locomotion,
                     measuredCycle,
                   );
                   const route = planned.path!.points.map((p) =>
@@ -371,6 +408,7 @@ export function PathEditor({
                   );
                   setBounds(fitMap(route));
                   setSmooth(planned.path!.smooth);
+                  setBackward(planned.path!.backward ?? false);
                   setEndHeading(planned.path!.endHeading);
                   setName(planned.name);
                   setManualTime(false);
@@ -571,6 +609,9 @@ export function PathEditor({
                   .map((candidate) => (
                     <option key={candidate.id} value={candidate.id}>
                       {candidate.name}
+                      {candidate.path?.sourceRange
+                        ? ` · source ${candidate.path.sourceRange.start}–${candidate.path.sourceRange.end}s`
+                        : ""}
                       {candidate.sourceAssetId === actor.assetId
                         ? " · original character"
                         : candidate.sourceAssetId === motionSource.id
@@ -617,8 +658,12 @@ export function PathEditor({
         {locomotion.kind === "imported" && (
           <p className="path-note" role="note">
             Keeps the original animation and repeats it by distance along the
-            route, rather than replacing its gait. Choose a looping forward walk
-            or run; other imported clips may not loop cleanly.
+            route. The captured facing relative to travel is retained, including
+            backward and sideways steps. Clips may not loop cleanly.
+            {locomotion.path?.strideScale !== undefined &&
+              ` ${path.sourceProgress ? "Average step length" : "Step length"}: ${Math.round(locomotion.path.strideScale * 100)}% of the captured gait.`}
+            {locomotion.path?.sourceRange &&
+              ` Selected source interval: ${locomotion.path.sourceRange.start}–${locomotion.path.sourceRange.end}s.`}
           </p>
         )}
         {gait.status === "loading" && (
@@ -640,11 +685,36 @@ export function PathEditor({
         {gait.status === "ready" && measuredCycle && (
           <p className="path-note" role="status">
             Measured natural pace:{" "}
-            {routePace(locomotion, frame.scale, measuredCycle).toFixed(2)} m/s
+            {routePace(locomotion, frame.scale, measuredCycle, length).toFixed(
+              2,
+            )}{" "}
+            m/s
             {measuredCycle.warning ? ` · ${measuredCycle.warning}` : ""}
           </p>
         )}
+        {locomotion.kind === "imported" &&
+          naturalDuration !== undefined &&
+          duration !== undefined &&
+          duration > 0 && (
+            <p className="path-note" role="status">
+              Source playback: {Number((naturalDuration / duration).toFixed(4))}
+              ×. Changing route duration changes this speed.
+            </p>
+          )}
         <div className="path-map-actions">
+          {locomotion.kind !== "imported" && (
+            <label className="path-smooth">
+              <input
+                type="checkbox"
+                checked={backward}
+                onChange={(event) => {
+                  setBackward(event.target.checked);
+                  setEndHeading(undefined);
+                }}
+              />{" "}
+              Move backward
+            </label>
+          )}
           <label className="path-smooth">
             <input
               type="checkbox"
@@ -799,9 +869,10 @@ export function PathEditor({
         </details>
         <p className="path-note">
           Planned routes leave room around the objects and backdrop geometry
-          shown here, and face the destination on arrival. Replan after moving
-          furniture. Check moving objects and hand-drawn edits before playback;
-          collision warnings do not automatically reroute an animation.
+          shown here, and face the destination on arrival. Saving here keeps
+          your chosen waypoints, including when editing an automatic AI route.
+          Replan this saved path after moving furniture, and check moving
+          objects before playback.
         </p>
         <div className="path-footer">
           <button className="secondary" onClick={onClose}>

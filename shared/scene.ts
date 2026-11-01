@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { rigMappingSchema } from "./rigMapping";
 import { interactionSessions } from "./interactions";
 import { seatProfile, validateSeating } from "./seating";
 import { ladderProfile } from "./ladder";
@@ -73,12 +74,90 @@ export const motionSchema = z
       .object({
         points: z.array(vec3).min(2).max(32),
         smooth: z.boolean().default(true),
+        // Procedural backpedalling. Imported gaits retain their captured
+        // body-to-travel orientation instead of reversing source animation.
+        backward: z.boolean().optional(),
+        // Small spatial stride adaptation retains the full source clock when
+        // detouring a one-off performance. Body proportions remain unchanged.
+        strideScale: z.number().finite().min(0.9).max(1.1).optional(),
+        // Captured travel fraction at each retained trajectory waypoint.
+        // This belongs to the repaired geometry, not to the reusable gait.
+        sourceProgress: z
+          .array(z.number().finite().min(0).max(1))
+          .min(2)
+          .max(32)
+          .optional(),
+        // Selected original take interval, independent of route duration.
+        sourceRange: z
+          .object({
+            start: z.number().finite().min(0),
+            end: z.number().finite().positive(),
+          })
+          .refine(
+            (range) => range.end > range.start,
+            "Source range must end after it starts.",
+          )
+          .optional(),
         endHeading: z.number().finite().min(-100).max(100).optional(),
+        // A route replanned while it was being played keeps the facing it
+        // had already shown: its entry turn fades over the original length
+        // (path units), and the arrival turn it had begun continues from
+        // where the replan happened. Absent, both windows are shares of the
+        // route's own length.
+        entryWindow: z.number().finite().min(0).max(100).optional(),
+        arrival: z
+          .array(
+            z.object({
+              // Path distance where this turn begins and the distance it
+              // eases over; the turn itself and the facing offset it starts
+              // from. The last segment turns to the route's end heading.
+              start: z.number().finite().min(0).max(100),
+              window: z.number().finite().positive().max(100),
+              turn: z.number().finite().min(-100).max(100).optional(),
+              base: z.number().finite().min(-100).max(100).optional(),
+            }),
+          )
+          .max(32)
+          .optional(),
       })
       .optional(),
   })
   .superRefine((motion, context) => {
     if (motion.path) {
+      const progress = motion.path.sourceProgress;
+      if (
+        progress &&
+        (motion.kind !== "imported" ||
+          motion.path.strideScale === undefined ||
+          progress.length !== motion.path.points.length ||
+          progress[0] !== 0 ||
+          progress.at(-1) !== 1 ||
+          progress.some((p, i) => i > 0 && p <= progress[i - 1]))
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["path", "sourceProgress"],
+          message:
+            "Captured trajectory progress needs an adapted imported gait and increasing fractions from zero to one for every waypoint.",
+        });
+      if (motion.path.sourceRange && motion.kind !== "imported")
+        context.addIssue({
+          code: "custom",
+          message: "Source ranges require an imported gait.",
+          path: ["path", "sourceRange"],
+        });
+      if (motion.path.strideScale !== undefined && motion.kind !== "imported")
+        context.addIssue({
+          code: "custom",
+          message: "Captured step length requires an imported gait.",
+          path: ["path", "strideScale"],
+        });
+      if (motion.path.backward && motion.kind === "imported")
+        context.addIssue({
+          code: "custom",
+          message: "Choose a captured backward gait for an imported route.",
+          path: ["path", "backward"],
+        });
       const points = motion.path.points;
       if (
         !["walk", "run", "imported"].includes(motion.kind) ||
@@ -163,6 +242,7 @@ export const assetSchema = z
       )
       .optional(),
     description: z.string().max(1000).default(""),
+    rigMapping: rigMappingSchema.optional(),
     thumbnail: z
       .string()
       .regex(/^\/uploads\/[a-zA-Z0-9_-]+\.png$/)
@@ -221,10 +301,67 @@ export const clipSchema = z.object({
   // Scheduled seconds, independent of imported source playback speed.
   duration: z.number().min(0.2).max(60),
   playbackRate: playbackRateSchema.optional(),
+  sourceStart: z.number().finite().min(0).optional(),
+  // A routed imported take may retain an explicitly scheduled terminal hold.
+  routeHold: z.number().finite().positive().max(60).optional(),
+  // A route blocked while it was being played holds the pose it had this many
+  // seconds into the clip. Planning records it when the block happens and
+  // continues the destination on a following clip once a passage opens.
+  routeStop: z.number().finite().positive().optional(),
+  // A further frozen wait holds an earlier stopped route's evaluated pose.
+  // Its duration advances the schedule without repeating that route's travel.
+  routeWait: z.string().min(1).optional(),
+  // The travelling time a stopped route was scheduled with before it was cut
+  // at its stop; its distance-time mapping keeps using this, so the played
+  // motion before the stop stays exactly as it was.
+  routeActive: z.number().finite().positive().max(60).optional(),
   // Persist the visible migration notice until the user explicitly picks a rate.
   legacyFit: z.boolean().optional(),
   targetId: z.string().optional(),
   transition: z.enum(["smooth", "cut"]).optional(),
+  // AI destination intent survives route regeneration and project reloads.
+  navigation: z
+    .object({
+      targetId: z.string().min(1).optional(),
+      // Preserve the authored standalone take. Geometry and travel are measured
+      // only after its source and receiving character are loaded.
+      native: z
+        .object({
+          motionId: z.string().min(1),
+          duration: z.number().min(0.2).max(60),
+          sourceStart: z.number().finite().min(0).optional(),
+          playbackRate: playbackRateSchema,
+          legacyFit: z.boolean().optional(),
+        })
+        .optional(),
+      // Actor-local destination relative to this clip's starting frame.
+      point: vec3
+        .refine(
+          (p) => Math.abs(p[1]) < 1e-6 && p.every((n) => Math.abs(n) <= 50),
+          "Navigation destinations must stay level and within 50 meters.",
+        )
+        .optional(),
+      endHeading: z.number().finite().min(-100).max(100).optional(),
+      movement: z.enum(["walk", "run"]),
+      // Measured body envelope in actor-local units, retained for stable replans.
+      clearance: z.number().finite().min(0).max(100).optional(),
+      // The original full route remains the source of destination/pace when a
+      // captured arrival replaces its last segment with a separate source take.
+      arrival: z
+        .object({
+          clipId: z.string().min(1),
+          motionId: z.string().min(1),
+          duration: z.number().min(0.2).max(60),
+        })
+        .optional(),
+    })
+    .refine(
+      (intent) =>
+        [intent.targetId, intent.point, intent.native].filter(Boolean)
+          .length === 1 && !(intent.native && intent.arrival),
+      "Choose exactly one object, point, or original imported performance.",
+    )
+    .optional(),
 });
 export const entitySchema = z.object({
   id: z.string().min(1),
@@ -271,6 +408,7 @@ export const sceneSchema = z.object({
   ]),
   // Absent in legacy scenes; imported environments use the studio lighting/base.
   environmentAssetId: z.string().min(1).nullable().optional(),
+  animationCollisions: z.boolean().default(true),
   lighting: z.enum(["golden", "daylight", "moonlight"]),
   mission: z.string().max(4000),
   entities: z.array(entitySchema).max(100),
@@ -299,6 +437,7 @@ export const commandSchema = z.discriminatedUnion("type", [
     motionId: z.string(),
     duration: z.number().min(0.2).max(60).optional(),
     playbackRate: playbackRateSchema.optional(),
+    sourceStart: z.number().finite().min(0).optional(),
     targetId: z.string().optional(),
     transition: z.enum(["smooth", "cut"]).optional(),
   }),
@@ -320,6 +459,7 @@ export const commandSchema = z.discriminatedUnion("type", [
         name: true,
         environment: true,
         environmentAssetId: true,
+        animationCollisions: true,
         lighting: true,
         mission: true,
       })
@@ -564,11 +704,14 @@ export function applyCommands(
             // the resulting procedural action.
             delete clip.playbackRate;
             delete clip.legacyFit;
+            delete clip.sourceStart;
             return clip;
           }
           const previous = entity.clips.find(
             (old) => old.id === clip.id && old.motionId === clip.motionId,
           );
+          if (motion.path) delete clip.sourceStart;
+          else clip.sourceStart ??= previous?.sourceStart;
           // Old callers may send only id/motionId/duration. Preserve a rate
           // already materialized on the matching imported clip, never refit it.
           return clip.playbackRate === undefined
@@ -605,28 +748,44 @@ export function applyCommands(
             ? { playbackRate: cmd.playbackRate }
             : {}),
         targetId: cmd.targetId,
+        sourceStart: cmd.sourceStart,
         transition: cmd.transition || "smooth",
       });
     }
     if (cmd.type === "removeClip") {
       const e = find(cmd.id);
-      e.clips = e.clips.filter((c) => c.id !== cmd.clipId);
+      e.clips = e.clips.filter(
+        (c) => c.id !== cmd.clipId && c.routeWait !== cmd.clipId,
+      );
     }
     if (cmd.type === "reorderClip") {
       const e = find(cmd.id),
-        i = e.clips.findIndex((c) => c.id === cmd.clipId),
-        j = i + (cmd.direction === "earlier" ? -1 : 1);
+        i = e.clips.findIndex((c) => c.id === cmd.clipId);
+      const step = cmd.direction === "earlier" ? -1 : 1;
+      let j = i + step;
+      const anchor = (clip: (typeof e.clips)[number]) =>
+        clip.routeWait ?? clip.id;
+      // A route and the clips holding its stopped pose move together. Moving
+      // a wait ahead of its source would otherwise leave a dangling reference.
+      while (
+        i >= 0 &&
+        j >= 0 &&
+        j < e.clips.length &&
+        anchor(e.clips[i]) === anchor(e.clips[j])
+      )
+        j += step;
       if (i >= 0 && j >= 0 && j < e.clips.length) {
         // Clips of one dialogue line stay contiguous so its caption span
         // cannot overlap another line: within a line the two clips swap,
         // across a boundary the whole line moves past the neighbouring block.
         const group = (clip: (typeof e.clips)[number]) => {
+          const id = anchor(clip);
           const line = s.transcript.findIndex(
             (l) =>
               l.characterId === e.id &&
-              (l.clipIds ?? (l.clipId ? [l.clipId] : [])).includes(clip.id),
+              (l.clipIds ?? (l.clipId ? [l.clipId] : [])).includes(id),
           );
-          return line >= 0 ? `line:${line}` : `clip:${clip.id}`;
+          return line >= 0 ? `line:${line}` : `clip:${id}`;
         };
         const groups = e.clips.map(group);
         if (groups[i] === groups[j])
@@ -689,7 +848,12 @@ export function applyCommands(
             if (clip.motionId === cmd.motion.id) {
               delete clip.playbackRate;
               delete clip.legacyFit;
+              delete clip.sourceStart;
             }
+      if (cmd.motion.path)
+        for (const entity of s.entities)
+          for (const clip of entity.clips)
+            if (clip.motionId === cmd.motion.id) delete clip.sourceStart;
       s.customMotions[index] = cmd.motion;
     }
     if (cmd.type === "clear") {
@@ -714,6 +878,60 @@ export function applyCommands(
     } else if (line.clipId && !actor?.clips.some((c) => c.id === line.clipId))
       delete line.clipId;
   }
+  // Explicit edits release an automatic approach/stop pair. Preserve ordinary
+  // scene edits and appended actions, but never regenerate over changed clips.
+  for (const actor of s.entities) {
+    const before = scene.entities.find((e) => e.id === actor.id);
+    for (const clip of actor.clips) {
+      const old = before?.clips.find((c) => c.id === clip.id);
+      if (old?.navigation?.native && clip.navigation?.native) {
+        const selected = allMotions(s).find((m) => m.id === clip.motionId);
+        if (selected?.kind === "imported" && !selected.path) {
+          clip.navigation.native = {
+            motionId: clip.motionId,
+            duration: clip.duration,
+            playbackRate:
+              clip.playbackRate ??
+              (clip.sourceStart === undefined
+                ? selected.duration / clip.duration
+                : 1),
+            ...(clip.sourceStart !== undefined
+              ? { sourceStart: clip.sourceStart }
+              : {}),
+            ...(clip.legacyFit ? { legacyFit: true } : {}),
+          };
+        } else {
+          const { navigation: _oldIntent, ...oldPerformance } = old;
+          const { navigation: _intent, ...performance } = clip;
+          if (
+            JSON.stringify(oldPerformance) !== JSON.stringify(performance) ||
+            JSON.stringify(
+              allMotions(scene).find((m) => m.id === old.motionId),
+            ) !== JSON.stringify(selected)
+          )
+            delete clip.navigation;
+        }
+      }
+      const arrival = old?.navigation?.arrival;
+      if (!arrival || !clip.navigation?.arrival) continue;
+      const oldStop = before!.clips.find((c) => c.id === arrival.clipId);
+      const stop = actor.clips[actor.clips.indexOf(clip) + 1];
+      const performance = (c: Entity["clips"][number]) => {
+        const { navigation: _navigation, ...pose } = c;
+        return pose;
+      };
+      const changed =
+        JSON.stringify(performance(old!)) !==
+          JSON.stringify(performance(clip)) ||
+        JSON.stringify(oldStop) !== JSON.stringify(stop) ||
+        [old!.motionId, oldStop?.motionId, arrival.motionId].some(
+          (id) =>
+            JSON.stringify(allMotions(scene).find((m) => m.id === id)) !==
+            JSON.stringify(allMotions(s).find((m) => m.id === id)),
+        );
+      if (changed) delete clip.navigation;
+    }
+  }
   return validateScene(s, options);
 }
 /** Preserve old fitted takes as a fixed, visible speed, never a dynamic stretch. */
@@ -731,8 +949,12 @@ function materializeImportedClipTiming(scene: Scene) {
         clip.playbackRate ??= 1;
         delete clip.legacyFit;
       } else if (clip.playbackRate === undefined) {
-        clip.playbackRate = motion.duration / clip.duration;
-        clip.legacyFit = true;
+        // Source ranges did not exist in legacy fitted scenes. A newly defined
+        // range without a rate uses native speed, never an implicit range fit.
+        clip.playbackRate =
+          clip.sourceStart !== undefined ? 1 : motion.duration / clip.duration;
+        if (clip.sourceStart === undefined) clip.legacyFit = true;
+        else delete clip.legacyFit;
       }
     }
 }
@@ -773,6 +995,97 @@ export function validateScene(
       if (!allMotions(s).some((m) => m.id === c.motionId))
         throw Error("Unknown action in scene.");
       const motion = allMotions(s).find((m) => m.id === c.motionId)!;
+      if (c.routeWait !== undefined) {
+        const index = e.clips.indexOf(c);
+        const stopped = e.clips
+          .slice(0, index)
+          .find((p) => p.id === c.routeWait);
+        if (
+          !stopped ||
+          stopped.routeStop === undefined ||
+          stopped.motionId !== c.motionId ||
+          c.navigation ||
+          c.routeStop !== undefined
+        )
+          throw Error(
+            "A frozen wait must reference an earlier stopped clip of the same action.",
+          );
+      }
+      // Imported routes schedule holds explicitly; a studio route only holds
+      // after stopping before an obstacle, which planning schedules itself.
+      if (
+        c.routeHold !== undefined &&
+        (!motion.path ||
+          (motion.kind !== "imported" && c.routeStop === undefined) ||
+          c.routeHold >= c.duration)
+      )
+        throw Error(
+          "A route hold requires an imported route and positive travelling time.",
+        );
+      // An authored imported performance can stop part-way too (and a wait
+      // holds a frame that way); its travelling time is its own source clock,
+      // so only a route records one.
+      if (
+        (c.routeStop !== undefined || c.routeActive !== undefined) &&
+        ((!motion.path && motion.kind !== "imported") ||
+          c.routeStop === undefined ||
+          c.routeStop > c.duration + 1e-9 ||
+          (c.routeActive !== undefined &&
+            (!motion.path || c.routeActive < c.routeStop - 1e-9)))
+      )
+        throw Error(
+          "A stopped route needs a stop within its duration and its original travelling time.",
+        );
+      if (c.navigation?.native) {
+        const original = allMotions(s).find(
+          (m) => m.id === c.navigation!.native!.motionId,
+        );
+        if (
+          motion.kind !== "imported" ||
+          original?.kind !== "imported" ||
+          original.path ||
+          original.sourceAssetId !== motion.sourceAssetId ||
+          original.animationName !== motion.animationName
+        )
+          throw Error(
+            "Native navigation must retain the original imported source performance.",
+          );
+      }
+      if (c.navigation?.arrival) {
+        const pair = c.navigation.arrival;
+        const stop = e.clips[e.clips.indexOf(c) + 1];
+        const full = allMotions(s).find((m) => m.id === pair.motionId);
+        const tail = allMotions(s).find((m) => m.id === stop?.motionId);
+        if (
+          motion.kind !== "imported" ||
+          !motion.path ||
+          full?.kind !== "imported" ||
+          !full.path ||
+          pair.motionId === c.motionId ||
+          stop?.id !== pair.clipId ||
+          stop.navigation ||
+          stop.sourceStart === undefined ||
+          tail?.kind !== "imported" ||
+          tail.path ||
+          ![full, tail].every(
+            (m) =>
+              m.sourceAssetId === motion.sourceAssetId &&
+              m.animationName === motion.animationName,
+          )
+        )
+          throw Error(
+            "A captured arrival needs its original route and adjacent stopping take.",
+          );
+      }
+      if (
+        c.sourceStart !== undefined &&
+        (motion.kind !== "imported" ||
+          !!motion.path ||
+          c.sourceStart >= motion.duration)
+      )
+        throw Error(
+          "Choose a source start before the end of an imported action. For a distance-paced route, select its source range on the path.",
+        );
       if (
         motion.kind !== "imported" &&
         (c.playbackRate !== undefined || c.legacyFit)
@@ -878,6 +1191,7 @@ export function starterScene(): Scene {
     revision: 0,
     name: "A chance encounter",
     environment: "cafe",
+    animationCollisions: true,
     lighting: "golden",
     mission:
       "Two strangers meet at a neighborhood café. One has a story to tell; the other has a train to catch. Find a reason for them to stay.",

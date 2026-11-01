@@ -30,7 +30,10 @@ export function solveLimb(
   if (a < 1e-6 || b < 1e-6 || distance < 1e-6)
     return { error: hand.distanceTo(target), hand };
   const direction = difference.normalize(),
-    d = Math.max(Math.abs(a - b) + 1e-6, Math.min(a + b - 1e-6, distance));
+    // Full extension is valid: the triangle's bend height becomes zero.
+    // Subtracting a fixed epsilon forces a knee/elbow bend even as contact
+    // influence tends to zero, producing a visible pose jump at IK entry.
+    d = Math.max(Math.abs(a - b) + 1e-6, Math.min(a + b, distance));
   let bend = pole.clone().addScaledVector(direction, -pole.dot(direction));
   if (bend.lengthSq() < 1e-8) {
     bend = new T.Vector3(0, 1, 0).cross(direction);

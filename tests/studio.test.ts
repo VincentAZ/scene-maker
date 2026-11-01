@@ -56,6 +56,73 @@ function reply(
   return { ...checked.plan, reads: checked.reads, mode: "live" };
 }
 describe("ordered assistant workflows", () => {
+  it("waits for asynchronous navigation edits before saving or executing the next step", async () => {
+    const s = studio(),
+      ready = deferred<void>(),
+      edit = s.ports.edit;
+    s.ports.edit = async (commands) => {
+      s.events.push("preparing navigation");
+      await ready.promise;
+      await edit(commands);
+    };
+    const initial = s.ports.getScene();
+    const plan = reply(
+      {
+        response: "Ready",
+        steps: [
+          {
+            type: "edit",
+            commands: [
+              { type: "chain", id: initial.entities[0].id, motionId: "walk" },
+            ],
+          },
+          { type: "save" },
+          { type: "export", format: "package" },
+        ],
+      },
+      initial,
+    );
+    const running = runStudioPlan(plan, s.ports);
+    await Promise.resolve();
+    expect(s.events).toEqual(["preparing navigation"]);
+    ready.resolve();
+    await running;
+    expect(s.events).toEqual([
+      "preparing navigation",
+      "edited",
+      `saved:${initial.name}`,
+      `export:${initial.name}`,
+    ]);
+  });
+
+  it("does not execute later actions when asynchronous navigation cannot resolve the destination", async () => {
+    const s = studio(),
+      initial = s.ports.getScene();
+    s.ports.edit = async () => {
+      throw Error("The destination is blocked.");
+    };
+    const plan = reply(
+      {
+        response: "Ready",
+        steps: [
+          {
+            type: "edit",
+            commands: [
+              { type: "chain", id: initial.entities[0].id, motionId: "walk" },
+            ],
+          },
+          { type: "save" },
+          { type: "export", format: "package" },
+        ],
+      },
+      initial,
+    );
+    await expect(runStudioPlan(plan, s.ports)).rejects.toThrow(
+      "destination is blocked",
+    );
+    expect(s.events).toEqual([]);
+  });
+
   it("saves the previous project, creates and directs a character, then exports the new scene", async () => {
     const s = studio();
     const initial = s.ports.getScene();

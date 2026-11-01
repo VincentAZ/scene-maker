@@ -12,8 +12,51 @@ export type RouteMovement = "walk" | "run";
 export type RouteGaitCycle = {
   distance: number;
   duration: number;
+  /** Captured travel direction relative to the body's normalized entry facing. */
+  entryHeading?: number;
+  samples?: { time: number; distance: number }[];
   warning?: string;
 };
+
+/** Native seconds for a partial route, retaining pauses before the endpoint. */
+export function gaitTravelTime(
+  cycle: RouteGaitCycle,
+  distance: number,
+): number {
+  if (!(distance > 0 && cycle.distance > 0)) return 0;
+  const whole = Math.round(distance / cycle.distance);
+  if (
+    whole > 0 &&
+    Math.abs(distance - whole * cycle.distance) <=
+      16 * Number.EPSILON * Math.max(distance, whole * cycle.distance)
+  )
+    // Compiling/scaling a path can move an exact cycle a few ulps across its
+    // boundary. Do not turn that rounding into an extra entry pause or a lost
+    // terminal pause. The tolerance scales with geometry, not scene units.
+    return whole * cycle.duration;
+  const repeats = Math.floor(distance / cycle.distance);
+  const phase = distance - repeats * cycle.distance;
+  const samples = cycle.samples;
+  if (!samples?.length) return (distance / cycle.distance) * cycle.duration;
+  if (phase === 0) return repeats * cycle.duration;
+  let low = 0,
+    high = samples.length - 1;
+  while (low + 1 < high) {
+    const mid = (low + high) >> 1;
+    if (samples[mid].distance < phase) low = mid;
+    else high = mid;
+  }
+  const a = samples[low],
+    b = samples[high];
+  return (
+    repeats * cycle.duration +
+    a.time +
+    (b.time - a.time) *
+      (b.distance > a.distance
+        ? (phase - a.distance) / (b.distance - a.distance)
+        : 0)
+  );
+}
 
 /** Names suggest useful defaults, never prove that an uploaded clip loops. */
 export function namedRouteMovement(motion: Motion): RouteMovement | undefined {
@@ -33,7 +76,12 @@ export function routeMovement(motion: Motion): RouteMovement {
 
 const sourceKey = (motion: Motion) =>
   motion.kind === "imported"
-    ? JSON.stringify([motion.sourceAssetId, motion.animationName])
+    ? JSON.stringify([
+        motion.sourceAssetId,
+        motion.animationName,
+        motion.path?.sourceRange,
+        motion.path?.strideScale,
+      ])
     : motion.kind;
 
 /** Keep the two legacy studio gaits, bundled locomotion, and original uploaded
@@ -153,12 +201,13 @@ export function routeCycleTime(
   return (fraction / cycleDistance) * nativeDuration;
 }
 
-/** Imported natural pace must come from the full original clip and target rig.
+/** Imported natural pace must come from the selected source interval and target rig.
  * Only the explicit studio procedural gaits have a fixed authored pace. */
 export function routePace(
   motion: Motion,
   actorScale = 1,
   measuredCycle?: RouteGaitCycle,
+  routeDistance?: number,
 ): number {
   if (motion.kind === "imported" && !measuredCycle)
     throw Error("Measure this imported gait before using natural pace.");
@@ -184,5 +233,9 @@ export function routePace(
     actorScale <= 0
   )
     throw Error("A route gait needs a positive pace and character scale.");
+  if (measuredCycle?.samples && routeDistance && routeDistance > 0)
+    return (
+      routeDistance / gaitTravelTime(measuredCycle, routeDistance / actorScale)
+    );
   return speed * actorScale;
 }

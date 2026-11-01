@@ -23,9 +23,12 @@ type Sample = { point: Point; distance: number; heading: number };
 type CompiledPath = { samples: Sample[]; length: number };
 const cache = new WeakMap<MotionPath, CompiledPath>();
 const distance = (a: Point, b: Point) =>
-  Math.hypot(...a.map((n, i) => n - b[i]));
-const mix = (a: Point, b: Point, t: number): Point =>
-  a.map((n, i) => n + (b[i] - n) * t) as Point;
+  Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const mix = (a: Point, b: Point, t: number): Point => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+  a[2] + (b[2] - a[2]) * t,
+];
 
 // Interpolating Catmull-Rom curve with an arc-length table. This remains pure
 // scene data/math so authoring, AI plans, preview and export share one route.
@@ -82,7 +85,11 @@ export function compilePath(path: MotionPath): CompiledPath {
   return compiled;
 }
 
-export function samplePath(path: MotionPath, progress: number) {
+export function samplePath(
+  path: MotionPath,
+  progress: number,
+  entryHeading = 0,
+) {
   const compiled = compilePath(path),
     samples = compiled.samples;
   const u = Math.max(0, Math.min(1, progress)),
@@ -100,38 +107,310 @@ export function samplePath(path: MotionPath, progress: number) {
     b.distance === a.distance
       ? 0
       : (travelled - a.distance) / (b.distance - a.distance);
-  // Begin at the preceding action's facing and turn into the route. Heading is
-  // unwrapped before interpolation, preserving a full circle without a spin.
-  const initialHeading = samples[0].heading;
-  const tangent = a.heading + (b.heading - a.heading) * t;
+  // Begin in the preceding action's frame and turn into the route. Imported
+  // locomotion supplies its entry travel angle relative to body facing. Using
+  // zero for a sidestep/backstep would rotate the captured starting pose.
+  // Keep the entry angle on the tangent's nearest branch to avoid a 2π spin.
+  const offset = path.backward ? -Math.PI : 0;
+  const initialHeading = path.backward
+    ? Math.atan2(
+        Math.sin(samples[0].heading + offset),
+        Math.cos(samples[0].heading + offset),
+      )
+    : samples[0].heading;
+  const facingShift = initialHeading - samples[0].heading;
+  const entryTurn = Math.atan2(
+    Math.sin(entryHeading - initialHeading),
+    Math.cos(entryHeading - initialHeading),
+  );
+  const tangent = a.heading + (b.heading - a.heading) * t + facingShift;
   const arrivalTurn =
     path.endHeading === undefined
       ? 0
       : Math.atan2(
-          Math.sin(path.endHeading - samples.at(-1)!.heading),
-          Math.cos(path.endHeading - samples.at(-1)!.heading),
+          Math.sin(path.endHeading - samples.at(-1)!.heading - facingShift),
+          Math.cos(path.endHeading - samples.at(-1)!.heading - facingShift),
         );
   return {
     point: mix(a.point, b.point, t),
     heading:
       tangent +
-      arrivalTurn * ease((u - 0.85) / 0.15) -
-      initialHeading * (1 - ease(u / 0.08)),
+      arrivalOffset(path, compiled.length, travelled, arrivalTurn) +
+      entryOffset(path, compiled.length, travelled, entryTurn),
     travelled,
     length: compiled.length,
   };
 }
+
+/** The entry turn fades over the first stretch of the route: by default
+ * 8% of its length, or the stretch a replanned route kept from its original
+ * length so the facing already played stays as it was. */
+function entryOffset(
+  path: MotionPath,
+  length: number,
+  travelled: number,
+  entryTurn: number,
+) {
+  const window = path.entryWindow ?? 0.08 * length;
+  if (!(window > 0)) return 0;
+  return entryTurn * (1 - ease(travelled / window));
+}
+
+/** The arrival turn eases in over the last stretch of the route: by default
+ * its last 15%. A route replanned while it was being played keeps the turn
+ * segments it had shown and continues from the facing it had reached; the
+ * last segment always ends at the route's end heading. */
+function arrivalOffset(
+  path: MotionPath,
+  length: number,
+  travelled: number,
+  arrivalTurn: number,
+) {
+  const segments = path.arrival?.length
+    ? path.arrival
+    : [{ start: 0.85 * length, window: 0.15 * length }];
+  let offset = 0;
+  for (const [index, segment] of segments.entries()) {
+    if (travelled < segment.start) break;
+    const base = segment.base ?? 0;
+    const turn =
+      index === segments.length - 1 || segment.turn === undefined
+        ? arrivalTurn - base
+        : segment.turn;
+    offset = base + turn * ease((travelled - segment.start) / segment.window);
+  }
+  return offset;
+}
+
+/** How much of its stride the studio gait shows along a route: it fades in
+ * over the first 6% and out over the last 6%, expressed through the same
+ * windows as the facing so a replanned route keeps the stride it had shown
+ * (the entry fade is three quarters of the entry window, each arrival fade
+ * the last two fifths of its segment) and builds the stride back up from
+ * wherever a replan interrupted its arrival. */
+export function gaitAmplitude(
+  path: MotionPath,
+  travelled: number,
+  length: number,
+) {
+  const entry = 0.75 * (path.entryWindow ?? 0.08 * length);
+  let amplitude = entry > 0 ? Math.min(1, travelled / entry) : 1;
+  const segments = path.arrival?.length
+    ? path.arrival
+    : [{ start: 0.85 * length, window: 0.15 * length }];
+  const fadeOut = (
+    segment: { start: number; window: number },
+    distance: number,
+  ) =>
+    Math.max(
+      0,
+      Math.min(
+        1,
+        (segment.start + segment.window - distance) / (0.4 * segment.window),
+      ),
+    );
+  let reached = 1;
+  for (const [index, segment] of segments.entries()) {
+    if (travelled < segment.start) break;
+    const last = index === segments.length - 1;
+    const previous = index > 0 ? segments[index - 1] : undefined;
+    if (previous) reached = Math.min(reached, fadeOut(previous, segment.start));
+    const ramp = last
+      ? Math.min(
+          1,
+          reached + (travelled - segment.start) / (0.4 * segment.window),
+        )
+      : 1;
+    // A segment interrupted by the next one fades no further than its end.
+    const until = last
+      ? travelled
+      : Math.min(travelled, segments[index + 1].start);
+    amplitude = Math.min(amplitude, ramp, fadeOut(segment, until));
+  }
+  return amplitude;
+}
+
+/** The heading windows a replanned route keeps from the route it continues,
+ * so that every facing already shown up to the replan stays as it was: the
+ * original entry fade, any arrival turn already begun (as far as it had got),
+ * and a fresh arrival turn from there to the new end heading. */
+export function retainedHeadingWindows(
+  previous: MotionPath,
+  travelled: number,
+  length: number,
+): Pick<MotionPath, "entryWindow" | "arrival"> {
+  const compiled = compilePath(previous);
+  const entryWindow = previous.entryWindow ?? 0.08 * compiled.length;
+  const samples = compiled.samples;
+  const facingShift = previous.backward
+    ? Math.atan2(
+        Math.sin(samples[0].heading - Math.PI),
+        Math.cos(samples[0].heading - Math.PI),
+      ) - samples[0].heading
+    : 0;
+  const previousTurn =
+    previous.endHeading === undefined
+      ? 0
+      : Math.atan2(
+          Math.sin(previous.endHeading - samples.at(-1)!.heading - facingShift),
+          Math.cos(previous.endHeading - samples.at(-1)!.heading - facingShift),
+        );
+  const reached = arrivalOffset(
+    previous,
+    compiled.length,
+    travelled,
+    previousTurn,
+  );
+  const begun = (
+    previous.arrival?.length
+      ? previous.arrival
+      : [{ start: 0.85 * compiled.length, window: 0.15 * compiled.length }]
+  ).filter((segment) => segment.start < travelled);
+  const kept = begun.map((segment, index) => ({
+    start: segment.start,
+    window: segment.window,
+    ...(segment.base === undefined ? {} : { base: segment.base }),
+    turn:
+      index === begun.length - 1 && segment.turn === undefined
+        ? previousTurn - (segment.base ?? 0)
+        : segment.turn!,
+  }));
+  // A turn already begun hands over at the replan itself, frozen where it
+  // had got; otherwise the new arrival turn waits for its own last stretch.
+  const start = kept.length ? travelled : Math.max(travelled, 0.85 * length);
+  return {
+    entryWindow,
+    arrival: [
+      ...kept,
+      {
+        start,
+        window: Math.max(1e-6, length - start),
+        ...(kept.length ? { base: reached } : {}),
+      },
+    ],
+  };
+}
+const sourceMapping = new WeakMap<
+  MotionPath,
+  { source: number; route: number; tangent: number }[]
+>();
+
+/** Map captured travel to the repaired route without distributing a local
+ * detour over the whole performance. Monotone interpolation retains waypoint
+ * correspondence, contact pauses and endpoints without backward travel. */
+export function sourcePathProgress(path: MotionPath, progress: number) {
+  const source = path.sourceProgress;
+  if (!source) return progress;
+  let frames = sourceMapping.get(path);
+  if (!frames) {
+    const compiled = compilePath(path);
+    if (!(compiled.length > 0)) return progress;
+    frames = source.map((p, i) => ({
+      source: p,
+      route: compiled.samples[i * 40].distance / compiled.length,
+      tangent: 0,
+    }));
+    const slopes = frames
+      .slice(1)
+      .map(
+        (f, i) => (f.route - frames![i].route) / (f.source - frames![i].source),
+      );
+    frames[0].tangent = slopes[0];
+    frames.at(-1)!.tangent = slopes.at(-1)!;
+    for (let i = 1; i < frames.length - 1; i++) {
+      const a = slopes[i - 1],
+        b = slopes[i];
+      const da = frames[i].source - frames[i - 1].source,
+        db = frames[i + 1].source - frames[i].source;
+      const wa = 2 * db + da,
+        wb = db + 2 * da;
+      frames[i].tangent = a * b > 0 ? (wa + wb) / (wa / a + wb / b) : 0;
+    }
+    sourceMapping.set(path, frames);
+  }
+  const u = Math.max(0, Math.min(1, progress));
+  let low = 0,
+    high = frames.length - 1;
+  while (low + 1 < high) {
+    const middle = (low + high) >> 1;
+    if (frames[middle].source < u) low = middle;
+    else high = middle;
+  }
+  const a = frames[low],
+    b = frames[high],
+    width = b.source - a.source;
+  const t = (u - a.source) / width,
+    t2 = t * t,
+    t3 = t2 * t;
+  return (
+    (2 * t3 - 3 * t2 + 1) * a.route +
+    (t3 - 2 * t2 + t) * width * a.tangent +
+    (-2 * t3 + 3 * t2) * b.route +
+    (t3 - t2) * width * b.tangent
+  );
+}
+/** The guide points a replan must keep so the curve already travelled stays
+ * exactly as played. A Catmull-Rom span depends on its two neighbours, so the
+ * two points after the current span are retained too; the new remainder
+ * continues from the last retained point along its tangent. */
+export type RetainedPrefix = {
+  points: Point[];
+  origin: Point;
+  heading: number;
+  travelled: number;
+  retained: number;
+  /** The route being continued, for the facing it had already shown. */
+  path: MotionPath;
+};
+export function retainedPathPrefix(
+  path: MotionPath,
+  progress: number,
+): RetainedPrefix {
+  const compiled = compilePath(path),
+    samples = compiled.samples;
+  const u = Math.max(0, Math.min(1, progress)),
+    travelled = u * compiled.length;
+  let low = 0,
+    high = samples.length - 1;
+  while (high - low > 1) {
+    const middle = Math.floor((low + high) / 2);
+    if (samples[middle].distance < travelled) low = middle;
+    else high = middle;
+  }
+  const segment = low === 0 ? 0 : Math.floor((low - 1) / 40);
+  const keep = Math.min(path.points.length, segment + 3);
+  const points = path.points.slice(0, keep).map((p) => [...p] as Point);
+  const at = samples[(keep - 1) * 40];
+  return {
+    points,
+    origin: [...points.at(-1)!] as Point,
+    heading: at.heading,
+    travelled,
+    retained: at.distance,
+    path,
+  };
+}
 export function pathToWorld(point: Point, frame: PathFrame): Point {
-  return turnPoint(
-    point.map((n) => n * frame.scale) as Point,
-    frame.heading,
-  ).map((n, i) => n + frame.position[i]) as Point;
+  const x = point[0] * frame.scale,
+    z = point[2] * frame.scale,
+    cosine = Math.cos(frame.heading),
+    sine = Math.sin(frame.heading);
+  return [
+    x * cosine + z * sine + frame.position[0],
+    point[1] * frame.scale + frame.position[1],
+    -x * sine + z * cosine + frame.position[2],
+  ];
 }
 export function worldToPath(point: Point, frame: PathFrame): Point {
-  return turnPoint(
-    point.map((n, i) => (n - frame.position[i]) / frame.scale) as Point,
-    -frame.heading,
-  );
+  const x = (point[0] - frame.position[0]) / frame.scale,
+    z = (point[2] - frame.position[2]) / frame.scale,
+    cosine = Math.cos(-frame.heading),
+    sine = Math.sin(-frame.heading);
+  return [
+    x * cosine + z * sine,
+    (point[1] - frame.position[1]) / frame.scale,
+    -x * sine + z * cosine,
+  ];
 }
 
 /** Materialize stops as ordinary clips: preview, GLB bake and engine export all
@@ -237,6 +516,11 @@ export function pathActionClips(motion: Motion, actions: PointAction[]) {
       path: {
         points: local,
         smooth: false,
+        ...(path.backward ? { backward: true } : {}),
+        ...(path.sourceRange ? { sourceRange: { ...path.sourceRange } } : {}),
+        ...(path.strideScale !== undefined
+          ? { strideScale: path.strideScale }
+          : {}),
         endHeading: pending.at(-1)!.heading - heading,
       },
     };
@@ -326,7 +610,13 @@ export function savePathCommands(
 ): Command[] {
   const actor = scene.entities.find((e) => e.id === actorId);
   if (!actor) throw Error("This character is no longer in the scene.");
+  if (clipId && actor.clips.find((c) => c.id === clipId)?.routeWait)
+    throw Error("Edit the stopped route, not the action holding its pose.");
   if (pointActions?.length) {
+    if (clipId && actor.clips.some((c) => c.routeWait === clipId))
+      throw Error(
+        "Remove the recorded waits before splitting this stopped route into point actions.",
+      );
     const clipIndex = clipId
       ? actor.clips.findIndex((c) => c.id === clipId)
       : actor.clips.length;
@@ -372,7 +662,12 @@ export function savePathCommands(
     const clips = parts.map((part, index) => ({
       id: index === 0 && previous ? previous.id : crypto.randomUUID(),
       motionId: part.motion.id,
-      duration: part.motion.duration,
+      duration:
+        part.motion.duration +
+        (part === moving.at(-1) ? (previous?.routeHold ?? 0) : 0),
+      ...(part === moving.at(-1) && previous?.routeHold
+        ? { routeHold: previous.routeHold }
+        : {}),
       // Each new route fragment keeps the imported gait's explicit timing,
       // never a legacy fit derived from its share of the travel duration.
       ...(part.motion.kind === "imported"
@@ -405,7 +700,7 @@ export function savePathCommands(
     );
   const references = scene.entities
     .flatMap((e) => e.clips)
-    .filter((c) => c.motionId === motion.id).length;
+    .filter((c) => c.motionId === motion.id && !c.routeWait).length;
   const next = references > 1 ? { ...motion, id: crypto.randomUUID() } : motion;
   return [
     { type: references > 1 ? "createMotion" : "updateMotion", motion: next },
@@ -415,8 +710,35 @@ export function savePathCommands(
       changes: {
         clips: actor.clips.map((c) =>
           c.id === clipId
-            ? { ...c, motionId: next.id, duration: next.duration }
-            : c,
+            ? {
+                ...c,
+                motionId: next.id,
+                duration:
+                  c.routeStop !== undefined
+                    ? c.duration
+                    : next.duration +
+                      (next.kind === "imported" ? (c.routeHold ?? 0) : 0),
+                routeStop:
+                  c.routeStop === undefined
+                    ? undefined
+                    : Math.min(c.routeStop, next.duration),
+                routeActive:
+                  c.routeStop === undefined ? undefined : next.duration,
+                routeHold:
+                  c.routeStop !== undefined
+                    ? c.duration > next.duration
+                      ? c.duration - next.duration
+                      : undefined
+                    : next.kind === "imported"
+                      ? c.routeHold
+                      : undefined,
+                // Saving explicit waypoints transfers route control to the
+                // user; destination replanning must not overwrite that edit.
+                navigation: undefined,
+              }
+            : c.routeWait === clipId
+              ? { ...c, motionId: next.id }
+              : c,
         ),
       },
     },

@@ -10,7 +10,7 @@ import {
   validateScene,
   type Scene,
 } from "../shared/scene";
-import { seatProfile, validateSeating } from "../shared/seating";
+import { planSeat, seatProfile, validateSeating } from "../shared/seating";
 import {
   createCharacter,
   createProp,
@@ -77,6 +77,22 @@ it("keeps seated hip height and planted feet through gestures, then stands befor
       0,
       -1 + Math.cos(0.7) * 0.65 * 1.2,
     ];
+    const seatAsset = allAssets(scene).find(
+      (asset) => asset.id === seat.assetId,
+    )!;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const plan = planSeat(
+        actor.position,
+        actor.rotation,
+        actor,
+        seat,
+        seatAsset,
+        true,
+        body,
+      );
+      if (!plan.warning?.includes("feet can reach")) break;
+      seat.scale *= 0.9;
+    }
     let hip: T.Vector3 | undefined, feet: T.Vector3[] | undefined;
     for (const t of [3, 4, 6.7, 7.5, 5, 3, 8, 9, 14, 6.7]) {
       applyAnimatedEntityPose(rig, actor, scene, t);

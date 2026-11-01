@@ -206,3 +206,75 @@ describe("persisted imported timing", () => {
     expect(procedural.entities[0].clips[0].playbackRate).toBeUndefined();
   });
 });
+
+it("plays a source tail at the explicit rate and holds only after the remaining frames", () => {
+  const clip = { duration: 5, playbackRate: 2, sourceStart: 3 };
+  expect(sourceSecondsAt(clip, 0, 8)).toBe(3);
+  expect(sourceSecondsAt(clip, 0.5, 8)).toBe(4);
+  expect(sourceSecondsAt(clip, 4, 8)).toBe(8);
+  expect(clipEffectiveEnd(clip, 8)).toBe(2.5);
+  expect(clipTimingDescription(clip, 8)).toContain("Starts at 3s");
+  expect(clipTimingDescription(clip, 8)).toContain(
+    "hold the final pose for 2.5s",
+  );
+  expect(clipEffectiveEnd({ duration: 1, sourceStart: 8 }, 8)).toBe(0);
+});
+
+it("persists source starts across save/reload and duration-only edits while rejecting unavailable ranges", () => {
+  const { scene, actor, motion } = fixture();
+  const sourceStart = motion.duration / 2;
+  const chained = applyCommands(scene, [
+    {
+      type: "chain",
+      id: actor.id,
+      motionId: motion.id,
+      sourceStart,
+      duration: 1,
+    },
+  ]);
+  const clip = chained.entities[0].clips[0];
+  expect(clip.playbackRate).toBe(1);
+  expect(
+    validateScene(JSON.parse(JSON.stringify(chained))).entities[0].clips[0]
+      .sourceStart,
+  ).toBe(sourceStart);
+  const updated = applyCommands(chained, [
+    {
+      type: "update",
+      id: actor.id,
+      changes: {
+        clips: [{ id: clip.id, motionId: clip.motionId, duration: 2 }],
+      },
+    },
+  ]);
+  expect(updated.entities[0].clips[0].sourceStart).toBe(sourceStart);
+  expect(updated.entities[0].clips[0].playbackRate).toBe(1);
+  for (const invalid of [-1, motion.duration, Infinity])
+    expect(() =>
+      applyCommands(scene, [
+        {
+          type: "chain",
+          id: actor.id,
+          motionId: motion.id,
+          sourceStart: invalid,
+        },
+      ]),
+    ).toThrow();
+  expect(() =>
+    applyCommands(scene, [
+      { type: "chain", id: actor.id, motionId: "walk", sourceStart: 1 },
+    ]),
+  ).toThrow("source start");
+});
+
+it("treats a source-start range without a rate as new native timing, never a legacy fit", () => {
+  const { scene, actor, motion } = fixture();
+  const sourceStart = motion.duration / 2;
+  actor.clips = [
+    { id: "range", motionId: motion.id, duration: 8, sourceStart },
+  ];
+  const result = validateScene(scene).entities[0].clips[0];
+  expect(result.playbackRate).toBe(1);
+  expect(result.legacyFit).toBeUndefined();
+  expect(clipPlaybackRate({ duration: 8, sourceStart: 3 }, 10)).toBe(1);
+});

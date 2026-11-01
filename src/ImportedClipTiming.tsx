@@ -19,22 +19,57 @@ export function ImportedClipTiming({
   clip: Clip;
   motion: Motion;
   index: number;
-  onChange: (changes: Pick<Clip, "playbackRate" | "legacyFit">) => void;
+  onChange: (
+    changes: Pick<Clip, "playbackRate" | "legacyFit" | "sourceStart">,
+  ) => void;
 }) {
   const rate = clipPlaybackRate(clip, motion.duration);
   const [draftRate, setDraftRate] = useState(String(rate));
+  const sourceStart = clip.sourceStart ?? 0;
+  const [draftStart, setDraftStart] = useState(String(sourceStart));
   useEffect(() => setDraftRate(String(rate)), [rate, clip.id]);
+  useEffect(() => setDraftStart(String(sourceStart)), [sourceStart, clip.id]);
   if (motion.path)
     return (
       <p className="muted small">
         Distance-paced imported gait. Route duration sets travel speed and gait
         cadence together; it does not fit the whole source take into the slot. A
         seamless walking/running cycle minimizes foot sliding.
+        {clip.routeHold
+          ? ` The final pose then holds for ${Number(clip.routeHold.toFixed(2))}s.`
+          : ""}
       </p>
     );
-  const legacy = clip.legacyFit || clip.playbackRate === undefined;
+  const legacy =
+    clip.legacyFit ||
+    (clip.playbackRate === undefined && clip.sourceStart === undefined);
   return (
     <>
+      <label className="clip-transition">
+        Start in source
+        <input
+          aria-label={`Action ${index + 1} source start`}
+          title="Begin at this timestamp in the original take, keeping the selected playback speed."
+          type="number"
+          min={0}
+          max={motion.duration}
+          step="any"
+          value={draftStart}
+          onBlur={() => setDraftStart(String(sourceStart))}
+          onChange={(event) => {
+            setDraftStart(event.target.value);
+            const sourceStart = Number(event.target.value);
+            if (
+              event.target.value !== "" &&
+              Number.isFinite(sourceStart) &&
+              sourceStart >= 0 &&
+              sourceStart < motion.duration
+            )
+              onChange({ sourceStart, playbackRate: rate });
+          }}
+        />
+        <span>s</span>
+      </label>
       <label className="clip-transition">
         Playback speed
         <input

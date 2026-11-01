@@ -30,7 +30,7 @@ describe("opaque imported BLEND materials", () => {
       scene: root,
       animations: [],
     });
-    expect(prepared.children[0]).toBe(root);
+    expect(prepared.getObjectById(root.id)).toBe(root);
     expect(mat.transparent).toBe(false);
     expect(mat.depthWrite).toBe(true);
     expect(mat.map).toBe(originalMap);

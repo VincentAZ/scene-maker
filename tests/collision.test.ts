@@ -3,6 +3,7 @@ import * as T from "three";
 import {
   COLLISION_EPSILON,
   collisionBetween,
+  firstInterpolatedOverlap,
   snapshotCollider,
   type CollisionObstacle,
 } from "../src/collision";
@@ -37,6 +38,38 @@ function motion(
 function expectVector(actual: T.Vector3, expected: XYZ) {
   expected.forEach((n, i) => expect(actual.getComponent(i)).toBeCloseTo(n, 6));
 }
+
+it("detects opposing translations crossing between clear endpoint samples", () => {
+  const a = mesh([1, 1, 1], [-5, 0, 0]),
+    b = mesh([1, 1, 1], [5, 0, 0]);
+  const a0 = snapshotCollider(a),
+    b0 = snapshotCollider(b);
+  a.position.x = 5;
+  b.position.x = -5;
+  const a1 = snapshotCollider(a),
+    b1 = snapshotCollider(b);
+  expect(a0.bounds.intersectsBox(b0.bounds)).toBe(false);
+  expect(a1.bounds.intersectsBox(b1.bounds)).toBe(false);
+  expect(firstInterpolatedOverlap(a0, a1, b0, b1)).toBeCloseTo(0.45, 5);
+});
+
+it("uses relative motion rather than overlapping whole-travel envelopes", () => {
+  const a = mesh([1, 1, 1], [0, 0, 0]),
+    b = mesh([1, 1, 1], [2, 0, 0]);
+  const a0 = snapshotCollider(a),
+    b0 = snapshotCollider(b);
+  a.position.x = 20;
+  b.position.x = 22;
+  expect(
+    firstInterpolatedOverlap(a0, snapshotCollider(a), b0, snapshotCollider(b)),
+  ).toBeNull();
+  a.position.set(0, 0, 1);
+  const grazing = snapshotCollider(a);
+  a.position.x = 4;
+  expect(
+    firstInterpolatedOverlap(grazing, snapshotCollider(a), b0, b0),
+  ).toBeNull();
+});
 
 describe("visible asset collider snapshots", () => {
   it("keeps detached world AABBs for every mesh, including parent rotation and scale", () => {

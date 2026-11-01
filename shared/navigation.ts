@@ -45,18 +45,23 @@ export function findRoute(
   start: Point,
   goals: Point[],
   boxes: Footprint[],
+  /** The start lies within clearance of furniture without touching it (a
+   * body that stopped beside an obstacle): let the first leg step out of
+   * those expanded footprints. The caller verifies the body sweep. */
+  exitOccupied = false,
 ): Point[] {
-  const occupied = boxes.find((box) => inside(start, box));
-  if (occupied)
+  const occupying = boxes.filter((box) => inside(start, box));
+  if (occupying.length && !exitOccupied)
     throw Error(
-      `Move the character clear of ${occupied.name} before planning a route.`,
+      `Move the character clear of ${occupying[0].name} before planning a route.`,
     );
+  const leaving = boxes.filter((box) => !occupying.includes(box));
   const freeGoals = goals.filter(
     (point) => !boxes.some((box) => inside(point, box)),
   );
   if (!freeGoals.length)
     throw Error(
-      "There is no clear stopping place beside that object. Move nearby furniture or choose another destination.",
+      "There is no clear stopping place at this destination. Move nearby furniture or choose another destination.",
     );
   const corners = boxes
     .flatMap(
@@ -91,13 +96,16 @@ export function findRoute(
       const cost =
         distances[next] +
         Math.hypot(nodes[next][0] - nodes[i][0], nodes[next][2] - nodes[i][2]);
-      if (cost >= distances[i] || !clearSegment(nodes[next], nodes[i], boxes))
+      if (
+        cost >= distances[i] ||
+        !clearSegment(nodes[next], nodes[i], next === 0 ? leaving : boxes)
+      )
         continue;
       distances[i] = cost;
       previous[i] = next;
     }
   }
   throw Error(
-    "No clear route reaches that object. Open a gap in the furniture and try again.",
+    "No clear route reaches this destination. Open a gap in the furniture and try again.",
   );
 }

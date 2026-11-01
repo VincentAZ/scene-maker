@@ -162,7 +162,7 @@ Open scene.glb, or run:
 blender --background --python blender_import.py -- scene.glb scene.blend
 
 Keep editing in Scene Maker
-Open this ZIP from your projects to restore the editable scene and original assets. Imported source files are included under assets/. scene.glb contains the baked production animation at 24 frames per second.
+Open this ZIP from your projects to restore the editable scene and original assets. Imported source files are included under assets/. scene.glb contains the baked production animation; scene.json retains the editable timeline.
 `,
   );
   // A production export contains both the baked scene and its editable source

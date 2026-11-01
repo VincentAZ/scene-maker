@@ -299,18 +299,73 @@ afterAll(async () => {
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
-const request = (scene: Scene, signal?: AbortSignal) =>
+const request = (scene: Scene, signal?: AbortSignal, singleTurn?: boolean) =>
   fetch(base, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/x-ndjson",
     },
-    body: JSON.stringify({ scene, rounds: 1 }),
+    body: JSON.stringify({ scene, rounds: 1, singleTurn }),
     signal,
   });
 
 describe("HTTP conversation stream", () => {
+  it("generates exactly one turn and accepts resolved timing for the next speaker", async () => {
+    const model = fake();
+    resolveModel = () => model;
+    let latest = starterScene();
+    const events: ConversationEvent[] = [];
+    await readConversationStream(
+      await request(latest, undefined, true),
+      (event) => {
+        events.push(event);
+        if (event.type === "turn") latest = event.scene;
+      },
+    );
+    expect(model.doGenerateCalls).toHaveLength(1);
+    expect(events.map((e) => e.type)).toEqual(["thinking", "turn", "complete"]);
+    expect(events.filter((e) => "total" in e).every((e) => e.total === 1)).toBe(
+      true,
+    );
+    const first = latest.transcript[0],
+      actor = latest.entities.find((e) => e.id === first.characterId)!;
+    actor.clips.find((c) => c.id === first.clipId)!.duration = 6.5;
+    const arrived = dialogueTiming(latest, first)!.end;
+    await readConversationStream(
+      await request(latest, undefined, true),
+      (event) => {
+        if (event.type === "turn") latest = event.scene;
+      },
+    );
+    expect(model.doGenerateCalls).toHaveLength(2);
+    expect(latest.transcript.map((line) => line.name)).toEqual(["Mila", "Leo"]);
+    expect(
+      dialogueTiming(latest, latest.transcript[1])!.start,
+    ).toBeGreaterThanOrEqual(arrived);
+    const prompt = model.doGenerateCalls[1].prompt.find(
+      (m) => m.role === "user",
+    )!;
+    const text = prompt.content.find((p) => p.type === "text")!.text;
+    const context = JSON.parse(text);
+    expect(
+      context.cast.find((e: { id: string }) => e.id === actor.id).clips.at(-1)
+        .duration,
+    ).toBe(6.5);
+  });
+
+  it("rejects an invalid single-turn flag before invoking a model", async () => {
+    const model = fake();
+    resolveModel = () => model;
+    const response = await fetch(base, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scene: starterScene(), singleTurn: "yes" }),
+    });
+    expect(response.status).toBe(400);
+    expect(model.doGenerateCalls).toHaveLength(0);
+  });
+
   it("streams complete performance links for captions and sequential speakers", async () => {
     const scene = starterScene();
     const output = generated("Hello, and welcome to our story.");

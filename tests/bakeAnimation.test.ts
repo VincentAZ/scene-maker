@@ -65,6 +65,60 @@ function playback(snapshot: T.Group, animation: T.AnimationClip) {
 }
 
 describe("export sample boundaries", () => {
+  it("records an off-grid route stop exactly and does not replay source keys during frozen waits", () => {
+    const f = timingFixture(true);
+    const stop = 0.217143;
+    f.actor.clips[1] = { ...f.clip, routeStop: stop };
+    f.actor.clips.splice(2, 0, {
+      id: "frozen",
+      motionId: f.clip.motionId,
+      duration: 60,
+      routeWait: f.clip.id,
+      transition: "cut",
+    });
+    const boundaries = animationSampleBoundaries(f.scene, f.objects);
+    expect(boundaries).toContain(0.231 + stop);
+    expect(
+      boundaries.filter((t) => t > 0.231 + 1.4 && t < 0.231 + 1.4 + 60),
+    ).toEqual([]);
+  });
+
+  it("preserves world poses across compensating parent changes on a receiving rig with no native takes", () => {
+    const actor = new T.Group(),
+      armature = new T.Group(),
+      bone = new T.Bone();
+    actor.add(armature);
+    armature.add(bone);
+    actor.userData.animations = [];
+    actor.userData.mixer = new T.AnimationMixer(armature);
+    const boundary = 0.517143;
+    const render = (time: number) => {
+      // The world trajectory is smooth, but ownership changes instantly.
+      const turn = time >= boundary ? 1.2 : 0;
+      actor.position.set(time >= boundary ? 0.3 : 0, 0, 0);
+      actor.rotation.y = turn;
+      actor.updateMatrixWorld(true);
+      armature.position.copy(actor.worldToLocal(new T.Vector3(time, 0, 0)));
+      armature.quaternion.copy(actor.quaternion).invert();
+      bone.position.set(0, 0.8, 0.1);
+      actor.updateMatrixWorld(true);
+    };
+    const animation = bakeAnimation([actor], 1, render, [boundary]);
+    render(0);
+    const snapshot = exportSnapshot(actor),
+      replay = playback(snapshot, animation);
+    const exported = snapshot.getObjectByProperty("uuid", bone.uuid)!;
+    for (const dt of [-0.01, -0.00001, 0, 0.00001, 0.001, 0.01]) {
+      render(boundary + dt);
+      replay(boundary + dt);
+      expect(
+        exported
+          .getWorldPosition(new T.Vector3())
+          .distanceTo(bone.getWorldPosition(new T.Vector3())),
+      ).toBeLessThan(0.00001);
+    }
+  });
+
   it.each([false, true])(
     "uses the selected loaded %s-native source duration for hold boundaries",
     (native) => {
@@ -177,6 +231,67 @@ describe("export sample boundaries", () => {
 });
 
 describe("baked animation fidelity", () => {
+  it("preserves motion that crosses the linear pose at frame midpoints", () => {
+    const actor = new T.Group();
+    const render = (time: number) => {
+      actor.position.y = 0.01 * Math.sin(time * 120 * Math.PI);
+      actor.updateMatrixWorld(true);
+    };
+    const animation = bakeAnimation([actor], 0.05, render);
+    render(0);
+    const snapshot = exportSnapshot(actor),
+      replay = playback(snapshot, animation);
+    for (let i = 0; i < 71; i++) {
+      const time = (0.05 * (i + 0.37)) / 71;
+      render(time);
+      replay(time);
+      expect(snapshot.position.distanceTo(actor.position)).toBeLessThan(0.0003);
+    }
+  });
+
+  it.each([1, 100])(
+    "refines nonlinear evaluated poses in world units (import scale %s)",
+    (units) => {
+      const actor = new T.Group(),
+        imported = new T.Group(),
+        upper = new T.Bone(),
+        tip = new T.Bone();
+      actor.add(imported);
+      imported.add(upper);
+      upper.add(tip);
+      imported.scale.setScalar(1 / units);
+      upper.position.y = 0.8 * units;
+      tip.position.y = -0.5 * units;
+      const render = (time: number) => {
+        actor.position.set(0.2 * Math.sin(11 * time), 0, time);
+        actor.rotation.y = time * 0.4;
+        upper.rotation.x = 0.4 * Math.sin(27 * time);
+        actor.updateMatrixWorld(true);
+      };
+      const animation = bakeAnimation([actor], 0.4, render);
+      expect(animation.tracks[0].times.length).toBeGreaterThan(25);
+      render(0);
+      const snapshot = exportSnapshot(actor),
+        replay = playback(snapshot, animation);
+      const exported = snapshot.getObjectByProperty("uuid", tip.uuid)!;
+      for (let i = 0; i < 73; i++) {
+        const time = ((i + 0.37) / 73) * 0.4;
+        render(time);
+        replay(time);
+        expect(
+          exported
+            .getWorldPosition(new T.Vector3())
+            .distanceTo(tip.getWorldPosition(new T.Vector3())),
+        ).toBeLessThan(0.0006);
+        expect(
+          exported
+            .getWorldQuaternion(new T.Quaternion())
+            .angleTo(tip.getWorldQuaternion(new T.Quaternion())),
+        ).toBeLessThan(0.0012);
+      }
+    },
+  );
+
   it.each([false, true])(
     "preserves fast quaternion gestures and nonlinear motion from a %s-native source",
     (native) => {
@@ -381,3 +496,43 @@ describe("baked animation fidelity", () => {
     expect(exportedBone.position.x).toBeCloseTo(0, 5);
   });
 });
+
+it.each([false, true])(
+  "rebases source keys and hold boundaries after a source-start trim (native=%s)",
+  (native) => {
+    const f = timingFixture(native);
+    f.take.duration = 1;
+    f.take.tracks = [
+      new T.VectorKeyframeTrack(
+        f.source.uuid + ".position",
+        [0, 0.15, 0.51, 0.63, 1],
+        [0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0],
+      ),
+    ];
+    const clip = { ...f.clip, sourceStart: 0.4, duration: 1, playbackRate: 2 };
+    f.actor.clips = [clip];
+    const boundaries = animationSampleBoundaries(f.scene, f.objects);
+    expect(boundaries).toContain((f.take.tracks[0].times[2] - 0.4) / 2);
+    expect(boundaries).toContain((f.take.tracks[0].times[3] - 0.4) / 2);
+    expect(boundaries.at(-2)).toBeCloseTo(0.3, 10);
+    expect(boundaries.at(-1)).toBe(1);
+    expect(boundaries.every((t) => t >= 0 && (t <= 0.3 || t === 1))).toBe(true);
+    const render = (time: number) =>
+      sampleNativeClip(
+        f.source,
+        f.take,
+        sourceSecondsAt(clip, time, f.take.duration),
+      );
+    const animation = bakeAnimation([f.source], 1, render, boundaries);
+    render(0);
+    const snapshot = exportSnapshot(f.source),
+      replay = playback(snapshot, animation);
+    for (const time of [0, 0.02, 0.055, 0.115, 0.29, 0.3, 0.301, 0.8, 0.03]) {
+      render(time);
+      replay(time);
+      expect(snapshot.position.distanceTo(f.source.position)).toBeLessThan(
+        1e-5,
+      );
+    }
+  },
+);

@@ -229,6 +229,41 @@ describe("local service boundaries", () => {
         fs.rmSync(path.join(projects, id + ".json"), { force: true });
     }
   });
+  it("persists explicit rig maps through project save, load and history", async () => {
+    const scene = starterScene();
+    const rigMapping = {
+      hips: [0, 1],
+      leftArm: null,
+      leftForearmTwist: [0, 2, 3],
+    };
+    scene.customAssets.push(
+      assetSchema.parse({
+        id: "custom-rig-map",
+        name: "Opaque rig",
+        category: "characters",
+        style: "imported",
+        color: "#888888",
+        url: "/uploads/rig.glb",
+        rigMapping,
+      }),
+    );
+    const saved = await req("/api/projects/" + scene.id, scene, "PUT");
+    expect(saved.status).toBe(200);
+    const loaded = await (
+      await fetch(base + "/api/projects/" + scene.id)
+    ).json();
+    expect(loaded.customAssets[0].rigMapping).toEqual(rigMapping);
+    const revised = await req(
+      "/api/projects/" + scene.id,
+      { ...loaded, name: "Mapped actor" },
+      "PUT",
+    );
+    expect(revised.status).toBe(200);
+    const history = await (
+      await fetch(base + `/api/projects/${scene.id}/history/1`)
+    ).json();
+    expect(history.customAssets[0].rigMapping).toEqual(rigMapping);
+  });
   it("persists project revisions and rejects conflicting writes", async () => {
     const s = starterScene();
     let res = await req("/api/projects/" + s.id, s, "PUT");

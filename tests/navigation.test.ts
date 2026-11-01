@@ -16,7 +16,11 @@ import {
   type Scene,
 } from "../shared/scene";
 import { compilePath, pathToWorld, samplePath } from "../shared/path";
-import { planObjectRoute, routeContext } from "../src/routePlanner";
+import {
+  assertObjectArrivalAvailable,
+  planObjectRoute,
+  routeContext,
+} from "../src/routePlanner";
 import {
   applyAnimatedEntityPose,
   createCharacter,
@@ -25,6 +29,7 @@ import {
 } from "../src/world";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { applyInteractions } from "../src/interactions";
+import { prepareAutomaticRoutes } from "../src/automaticRoutes";
 import { offlinePlan } from "../server/ai";
 import { validatePlan } from "../shared/studio";
 import { runStudioPlan, StudioPlanError } from "../src/studioRunner";
@@ -74,6 +79,88 @@ function fixture(assetId = "mila") {
     { type: "chain", id: "actor", motionId: "walk", duration: 2 },
   ]);
 }
+it("allows only the arriving actor's acquisition boundary, not existing ownership or another actor's pickup", () => {
+  const scene = applyCommands(fixture(), [
+    { type: "chain", id: "actor", motionId: "pick", targetId: "destination" },
+    { type: "chain", id: "actor", motionId: "place", targetId: "destination" },
+  ]);
+  expect(() =>
+    assertObjectArrivalAvailable(scene, "destination", 2, "actor"),
+  ).not.toThrow();
+  for (const [time, actorId] of [
+    [2, "other"],
+    [2, undefined],
+    [2.00001, "actor"],
+  ] as const)
+    expect(() =>
+      assertObjectArrivalAvailable(scene, "destination", time, actorId),
+    ).toThrow("before this character arrives");
+  const released = scene.entities[0].clips.reduce(
+    (sum, clip) => sum + clip.duration,
+    0,
+  );
+  expect(() =>
+    assertObjectArrivalAvailable(scene, "destination", released, "other"),
+  ).not.toThrow();
+});
+
+it("replans an approach followed by pickup using the proposed arrival schedule without changing the saved scene", async () => {
+  let scene = fixture();
+  const objects = await objectsFor(scene);
+  try {
+    const route = planObjectRoute(
+      scene,
+      objects,
+      "actor",
+      "destination",
+      "walk",
+    );
+    scene = applyCommands(scene, [
+      { type: "createMotion", motion: route },
+      { type: "chain", id: "actor", motionId: route.id },
+      { type: "chain", id: "actor", motionId: "pick", targetId: "destination" },
+    ]);
+    const clip = scene.entities[0].clips[1],
+      before = structuredClone(scene);
+    for (const durationScale of [1, 2, 0.5]) {
+      const planned = planObjectRoute(
+        scene,
+        objects,
+        "actor",
+        "destination",
+        "walk",
+        clip.id,
+        undefined,
+        route,
+        undefined,
+        0,
+        {
+          movingIds: new Set(),
+          conflicts: [],
+          durationScale,
+          existingPath: route.path,
+        },
+      );
+      expect(planned.duration).toBeGreaterThan(0);
+      if (durationScale === 2)
+        expect(planned.duration).toBeGreaterThan(clip.duration);
+      if (durationScale === 0.5)
+        expect(planned.duration).toBeLessThan(clip.duration);
+      expect(scene).toEqual(before);
+    }
+    clip.navigation = { targetId: "destination", movement: "walk" };
+    const prepared = prepareAutomaticRoutes(scene, objects);
+    // The cup sits outside the actual body regions. A whole-skin bounding box
+    // used to fill the space between limbs and incorrectly reject this route.
+    expect(prepared.issues).toEqual([]);
+    expect(prepared.scene.entities[0].clips.at(-1)?.motionId).toBe("pick");
+    expect(
+      prepared.playbackScene.entities[0].clips.map((c) => c.motionId),
+    ).toEqual(["walk", prepared.scene.entities[0].clips[1].motionId, "pick"]);
+  } finally {
+    for (const object of objects.values()) disposeObject(object);
+  }
+});
 async function objectsFor(scene: Scene) {
   const objects = new Map<string, T.Group>();
   for (const e of scene.entities) {
@@ -375,6 +462,27 @@ it("routes offline requests to the named destination and stops workflows after a
   for (const object of objects.values()) disposeObject(object);
 });
 
+it("includes low loaded props and backdrop obstacles while excluding the level floor", async () => {
+  const scene = applyCommands(fixture(), [
+    { type: "add", assetId: "crate", id: "low", position: [0, 0, 0] },
+    { type: "update", id: "low", changes: { scale: 0.1 } },
+  ]);
+  const objects = await objectsFor(scene);
+  const environment = new T.Group();
+  const floor = new T.Mesh(new T.BoxGeometry(30, 0.1, 30));
+  floor.position.y = -0.05;
+  const curb = new T.Mesh(new T.BoxGeometry(0.2, 0.03, 1));
+  curb.position.set(1, 0.015, 1);
+  environment.add(floor, curb);
+  const context = routeContext(scene, objects, "actor", undefined, environment);
+  expect(context.footprints.some((p) => p.id === "low")).toBe(true);
+  expect(
+    context.footprints.filter((p) => p.name === "the backdrop"),
+  ).toHaveLength(1);
+  for (const object of objects.values()) disposeObject(object);
+  disposeObject(environment);
+});
+
 it("plans around backdrop walls while excluding floor meshes from route footprints", async () => {
   const scene = fixture();
   const objects = await objectsFor(scene);
@@ -439,10 +547,8 @@ it("can plan geometry with an explicitly selected imported gait without losing i
     { distance: 1.5, duration: 1 },
   );
   expect(motion.duration).toBeCloseTo(
-    Math.max(
-      0.5,
-      Math.round((compilePath(motion.path!).length / 1.5) * 10) / 10,
-    ),
+    compilePath(motion.path!).length / 1.5,
+    12,
   );
   expect(motion).toMatchObject({
     kind: "imported",
@@ -460,4 +566,29 @@ it("can plan geometry with an explicitly selected imported gait without losing i
     ]),
   ).not.toThrow();
   for (const object of objects.values()) disposeObject(object);
+});
+
+it("lets a start within clearance of furniture step out of it when asked, never through anything else", () => {
+  const clearance = [rect(-1, 1, -1, 1)];
+  expect(() => findRoute([0.8, 0, 0], [[3, 0, 0]], clearance)).toThrow(
+    "clear of Crate",
+  );
+  const route = findRoute([0.8, 0, 0], [[3, 0, 0]], clearance, true);
+  expect(route[0]).toEqual([0.8, 0, 0]);
+  expect(route.at(-1)).toEqual([3, 0, 0]);
+  // Only the leg leaving the occupied footprint may cross it.
+  route
+    .slice(2)
+    .forEach((p, i) =>
+      expect(clearSegment(route[i + 1], p, clearance)).toBe(true),
+    );
+  // Another footprint between start and goal is still respected.
+  const blocked = [rect(-1, 1, -1, 1), rect(1.5, 2.5, -1, 1)];
+  const around = findRoute([0.8, 0, 0], [[3, 0, 0]], blocked, true);
+  around
+    .slice(1)
+    .forEach((p, i) =>
+      expect(clearSegment(around[i], p, [blocked[1]])).toBe(true),
+    );
+  expect(around.length).toBeGreaterThan(2);
 });

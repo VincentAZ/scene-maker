@@ -285,7 +285,9 @@ export function setDialoguePath(
       id: characterId,
       changes: {
         clips: actor.clips.map((c) =>
-          c.id === routed ? { ...c, motionId: route.id } : c,
+          c.id === routed
+            ? { ...c, motionId: route.id, navigation: undefined }
+            : c,
         ),
       },
     },

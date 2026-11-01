@@ -339,6 +339,67 @@ class EngineGeneratedTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("no mesh", result.stderr)
 
+    def test_import_routes_preserve_long_provider_neutral_take(self):
+        # Arbitrary provider namespace; 12 s exceeds Blender's factory playback
+        # range (250 frames). Check both generic upload and animation bundling.
+        fixture = (MIXAMO_FBX_FIXTURE
+                   .replace("mixamorig:", "VendorRig:")
+                   .replace("0, 30\n", "0, 360\n")
+                   .replace("(15, 35.0), (30, 0.0)", "(180, 35.0), (360, 25.0)")
+                   .replace("frame / 30)", "frame / 360)"))
+        script = self.write_script("long_provider_fixture.py", fixture)
+        source = self.directory / "Long provider take.fbx"
+        self.blender(script, source, "mesh", "LeftArm", 8.0)
+        for route in ("convert", "mixamo_bundle"):
+            with self.subTest(route=route):
+                output = self.directory / (route + "-long.glb")
+                args = [source, output] if route == "convert" else [output, source]
+                self.blender(ROOT / ("engine/" + route + ".py"), *args)
+                document, binary = read_glb(output)
+                self.assertEqual(len(document["animations"]), 1)
+                animation = document["animations"][0]
+                duration = max(document["accessors"][s["input"]]["max"][0]
+                               for s in animation["samplers"])
+                self.assertGreaterEqual(duration, 12.0)
+                self.assertLessEqual(duration, 12.04)
+                hips = next(i for i, n in enumerate(document["nodes"])
+                            if n.get("name") == "VendorRig:Hips")
+                channel = next(c for c in animation["channels"]
+                               if c["target"] == {"node": hips, "path": "translation"})
+                samples = accessor_vectors(document, binary,
+                                           animation["samplers"][channel["sampler"]]["output"])
+                travel = sum((samples[-1][axis] - samples[0][axis]) ** 2
+                             for axis in range(3)) ** 0.5
+                # FBX stores this skeleton at centimetre scale. Compare against
+                # the generic import's units rather than assuming one provider's.
+                if route == "convert":
+                    expected_travel = travel
+                    self.assertGreater(expected_travel, 1)
+                else:
+                    self.assertAlmostEqual(travel, expected_travel, places=3)
+
+    def test_bundle_preserves_seconds_when_files_use_different_frame_rates(self):
+        first = self.directory / "Thirty fps.fbx"
+        second = self.directory / "Sixty fps.fbx"
+        fixture = MIXAMO_FBX_FIXTURE.replace("mixamorig:", "VendorRig:")
+        self.blender(self.write_script("thirty_fps.py", fixture), first, "mesh", "LeftArm", 1.0)
+        sixty = (fixture.replace("fps = 30", "fps = 60")
+                 .replace("0, 30\n", "0, 60\n")
+                 .replace("(15, 35.0), (30, 0.0)", "(30, 35.0), (60, 0.0)")
+                 .replace("frame / 30)", "frame / 60)"))
+        self.blender(self.write_script("sixty_fps.py", sixty), second, "mesh", "LeftArm", 1.0)
+        for files in ([first, second], [second, first]):
+            with self.subTest(first=files[0].name):
+                output = self.directory / "mixed-rate.glb"
+                self.blender(ROOT / "engine/mixamo_bundle.py", output, *files)
+                document, binary = read_glb(output)
+                self.assertEqual(len(document["animations"]), 2)
+                for animation in document["animations"]:
+                    duration = max(document["accessors"][s["input"]]["max"][0]
+                                   for s in animation["samplers"])
+                    self.assertGreaterEqual(duration, 0.99, animation["name"])
+                    self.assertLessEqual(duration, 1.04, animation["name"])
+
 
 if __name__ == "__main__":
     unittest.main()

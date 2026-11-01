@@ -14,6 +14,7 @@ import {
   setDialoguePath,
 } from "../shared/conversation";
 import { savePathCommands } from "../shared/path";
+import { pathActionClips } from "../shared/path";
 
 function fixture() {
   return applyCommands(starterScene(), [
@@ -47,6 +48,125 @@ const procedural = (motion: Motion, kind: "walk" | "run"): Motion => ({
   kind,
   sourceAssetId: undefined,
   animationName: undefined,
+});
+
+it("persists source-to-path correspondence and rejects incomplete or reversed anchors", () => {
+  const motion = route();
+  motion.path!.strideScale = 1;
+  motion.path!.sourceProgress = [0, 0.45, 1];
+  const saved = applyCommands(
+    fixture(),
+    savePathCommands(fixture(), "actor", motion),
+  );
+  expect(roundTrip(saved).customMotions[0].path?.sourceProgress).toEqual([
+    0, 0.45, 1,
+  ]);
+  for (const sourceProgress of [
+    [0, 1],
+    [0, 0, 1],
+    [0.1, 0.45, 1],
+    [0, 0.5, 0.4],
+    [0, NaN, 1],
+  ]) {
+    expect(() =>
+      applyCommands(
+        fixture(),
+        savePathCommands(fixture(), "actor", {
+          ...motion,
+          path: { ...motion.path!, sourceProgress },
+        }),
+      ),
+    ).toThrow();
+  }
+  expect(() =>
+    applyCommands(
+      fixture(),
+      savePathCommands(fixture(), "actor", {
+        ...motion,
+        path: { ...motion.path!, strideScale: undefined },
+      }),
+    ),
+  ).toThrow(/correspondence|progress/);
+});
+
+it("persists bounded spatial step adaptation through saves and split routes", () => {
+  const motion = route();
+  motion.path!.strideScale = 1.07;
+  const saved = applyCommands(
+    fixture(),
+    savePathCommands(fixture(), "actor", motion),
+  );
+  expect(roundTrip(saved).customMotions[0].path?.strideScale).toBe(1.07);
+  const parts = pathActionClips(motion, [
+    { pointIndex: 1, motionId: "wave", duration: 1 },
+  ]);
+  expect(
+    parts
+      .filter((part) => !part.action)
+      .every((part) => part.motion.path?.strideScale === 1.07),
+  ).toBe(true);
+  for (const strideScale of [0.89, 1.11, NaN, Infinity]) {
+    expect(() =>
+      applyCommands(
+        fixture(),
+        savePathCommands(fixture(), "actor", {
+          ...motion,
+          path: { ...motion.path!, strideScale },
+        }),
+      ),
+    ).toThrow();
+  }
+  expect(() =>
+    applyCommands(
+      fixture(),
+      savePathCommands(fixture(), "actor", procedural(motion, "walk")),
+    ),
+  ).toThrow(/Captured step length/);
+});
+
+it("saves source intervals and keeps them on split waypoint routes", () => {
+  const motion = route();
+  motion.path!.sourceRange = { start: 5.173, end: 8.91 };
+  const saved = applyCommands(
+    fixture(),
+    savePathCommands(fixture(), "actor", motion),
+  );
+  expect(roundTrip(saved).customMotions[0].path?.sourceRange).toEqual(
+    motion.path!.sourceRange,
+  );
+  const parts = pathActionClips(motion, [
+    { pointIndex: 1, motionId: "wave", duration: 1 },
+  ]);
+  expect(
+    parts
+      .filter((part) => !part.action)
+      .every(
+        (part) =>
+          JSON.stringify(part.motion.path?.sourceRange) ===
+          JSON.stringify(motion.path!.sourceRange),
+      ),
+  ).toBe(true);
+  for (const sourceRange of [
+    { start: 2, end: 1 },
+    { start: -1, end: 2 },
+    { start: NaN, end: 2 },
+  ]) {
+    expect(() =>
+      applyCommands(
+        fixture(),
+        savePathCommands(fixture(), "actor", {
+          ...motion,
+          path: { ...motion.path!, sourceRange },
+        }),
+      ),
+    ).toThrow();
+  }
+  expect(() =>
+    applyCommands(
+      fixture(),
+      savePathCommands(fixture(), "actor", procedural(motion, "walk")),
+    ),
+  ).toThrow(/Source ranges/);
 });
 
 function speakingScene() {
@@ -367,4 +487,39 @@ describe("route timing normalization", () => {
       expect(roundTrip(result)).toEqual(result);
     }
   });
+});
+
+it("preserves a terminal imported-route hold when editing or splitting movement", () => {
+  const motion = route();
+  let scene = applyCommands(
+    fixture(),
+    savePathCommands(fixture(), "actor", motion),
+  );
+  const clip = scene.entities[0].clips[0];
+  clip.duration = 12.75;
+  clip.routeHold = 0.75;
+  scene = validateScene(scene);
+  const edited = applyCommands(
+    scene,
+    savePathCommands(scene, "actor", { ...motion, duration: 10 }, clip.id),
+  );
+  expect(edited.entities[0].clips[0]).toMatchObject({
+    duration: 10.75,
+    routeHold: 0.75,
+  });
+  const split = applyCommands(
+    scene,
+    savePathCommands(scene, "actor", motion, clip.id, [
+      { pointIndex: 1, motionId: "wave", duration: 1 },
+    ]),
+  );
+  const clips = split.entities[0].clips;
+  expect(clips.filter((c) => c.routeHold)).toHaveLength(1);
+  expect(clips.at(-1)?.routeHold).toBe(0.75);
+  expect(clips.reduce((n, c) => n + c.duration, 0)).toBeCloseTo(13.75, 8);
+  const proceduralEdit = applyCommands(
+    scene,
+    savePathCommands(scene, "actor", procedural(motion, "walk"), clip.id),
+  );
+  expect(proceduralEdit.entities[0].clips[0].routeHold).toBeUndefined();
 });

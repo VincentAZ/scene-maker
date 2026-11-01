@@ -39,7 +39,7 @@ export function measureSeatBody(rig: T.Group): SeatBody | undefined {
     const index = object.skeleton.bones.indexOf(bones.hips),
       indices = object.geometry.getAttribute("skinIndex"),
       weights = object.geometry.getAttribute("skinWeight");
-    if (index < 0 || !indices || !weights) return;
+    if (!indices || !weights) return;
     for (const side of ["left", "right"] as const) {
       const footBones: number[] = [];
       bones[side + "Shin"].traverse((bone) => {
@@ -47,6 +47,10 @@ export function measureSeatBody(rig: T.Group): SeatBody | undefined {
           const i = object.skeleton.bones.indexOf(bone);
           if (i >= 0) footBones.push(i);
         }
+      });
+      bones[side + "Foot"]?.traverse((bone) => {
+        const i = object.skeleton.bones.indexOf(bone as T.Bone);
+        if (i >= 0 && !footBones.includes(i)) footBones.push(i);
       });
       const vertices: number[] = [];
       for (let i = 0; i < indices.count; i++) {
@@ -142,14 +146,40 @@ export function applySeatSupport(rig: T.Group, actor: Entity) {
       sample.plan.front[2] + horizontal[2],
     );
     const pole = new T.Vector3(...turnPoint([0, 0, 1], sample.plan.facing));
-    const solve = () =>
-      solveLimb(
+    const foot = bones[side + "Foot"],
+      shin = bones[side + "Shin"];
+    const detached =
+      foot &&
+      (
+        rig.userData.detachedJointAnchors as Map<T.Bone, T.Bone> | undefined
+      )?.has(foot);
+    const relativeRotation = detached
+      ? shin
+          .getWorldQuaternion(new T.Quaternion())
+          .invert()
+          .multiply(foot.getWorldQuaternion(new T.Quaternion()))
+      : undefined;
+    const solve = () => {
+      const result = solveLimb(
         bones[side + "Leg"],
         bones[side + "Shin"],
         contacts[`${side}Foot`]!,
         goal,
         pole,
-      ).error;
+      );
+      if (detached && relativeRotation) {
+        foot.position.copy(foot.parent!.worldToLocal(result.hand.clone()));
+        foot.quaternion.copy(
+          foot
+            .parent!.getWorldQuaternion(new T.Quaternion())
+            .invert()
+            .multiply(shin.getWorldQuaternion(new T.Quaternion()))
+            .multiply(relativeRotation),
+        );
+        foot.updateWorldMatrix(true, true);
+      }
+      return result.error;
+    };
     let reachError = solve();
     const meshes = rig.userData.seatSoles[side] as {
       mesh: T.SkinnedMesh;

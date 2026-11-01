@@ -48,6 +48,7 @@ function crouch(
   actor: Entity,
   goal: T.Vector3,
   contacts: RigContacts,
+  influence = 1,
 ) {
   if (rig.userData.seat?.amount > 0) return;
   const bones = rig.userData.bones as Record<string, T.Bone>;
@@ -60,10 +61,12 @@ function crouch(
   // A tall/short-armed body may need a shallow crouch even for a tabletop.
   // Leave some arm span available horizontally rather than exhausting it vertically.
   const drop = rig.worldToLocal(shoulder.clone()).y - localY - reach * 0.65;
-  const amount = Math.max(
-    smooth((0.7 - localY) / 0.7),
-    Math.min(1, Math.max(0, drop / 0.65)),
-  );
+  const amount =
+    influence *
+    Math.max(
+      smooth((0.7 - localY) / 0.7),
+      Math.min(1, Math.max(0, drop / 0.65)),
+    );
   if (!amount || !bones.spine || !contacts.leftFoot || !contacts.rightFoot)
     return;
   const feet = ["left", "right"].map((side) =>
@@ -99,19 +102,43 @@ function handTarget(
   actor: Entity,
   goal: T.Vector3,
   contacts: RigContacts,
+  influence = 1,
 ) {
-  crouch(rig, actor, goal, contacts);
   const bones = rig.userData.bones as Record<string, T.Bone>;
+  if (influence === 0) {
+    const hand = bones.rightForearm.localToWorld(contacts.hand.clone());
+    return { error: hand.distanceTo(goal), hand };
+  }
+  crouch(rig, actor, goal, contacts, influence);
+  const before =
+    influence < 1
+      ? [
+          bones.rightArm.quaternion.clone(),
+          bones.rightForearm.quaternion.clone(),
+        ]
+      : undefined;
   const pole = new T.Vector3(-1, -0.3, 0.2).applyQuaternion(
     rig.getWorldQuaternion(new T.Quaternion()),
   );
-  return solveLimb(
+  const result = solveLimb(
     bones.rightArm,
     bones.rightForearm,
     contacts.hand,
     goal,
     pole,
   );
+  if (!before) return result;
+  // Reaching/releasing must not snap into the IK bend plane at zero contact
+  // weight. Full grip contact still uses the exact solved pose at influence 1.
+  bones.rightArm.quaternion.copy(
+    before[0].slerp(bones.rightArm.quaternion, influence),
+  );
+  bones.rightForearm.quaternion.copy(
+    before[1].slerp(bones.rightForearm.quaternion, influence),
+  );
+  rig.updateWorldMatrix(true, true);
+  const hand = bones.rightForearm.localToWorld(contacts.hand.clone());
+  return { error: hand.distanceTo(goal), hand };
 }
 // Uses the same crouch and arm solver as actual acquisition. Callers restore
 // the sampled rig afterward; this probe never edits scene data or a prop.
@@ -263,11 +290,13 @@ export function applyInteractions(
       : interactionPhase(session, time);
     let desired = carry,
       attached = true,
+      influence = 1,
       goal: T.Vector3 | undefined;
     if (kind === "pick" && acquiring) {
       if (u < 0.4) {
         desired = home;
         attached = false;
+        influence = smooth(u / 0.4);
         goal = restHand.clone().lerp(homeGrip, smooth(u / 0.4));
       } else desired = blend(home, carry, smooth((u - 0.4) / 0.6));
     } else if (kind === "sip") {
@@ -275,6 +304,7 @@ export function applyInteractions(
         if (u < 0.22) {
           desired = home;
           attached = false;
+          influence = smooth(u / 0.22);
           goal = restHand.clone().lerp(homeGrip, smooth(u / 0.22));
         } else if (u < 0.48)
           desired = blend(home, drinking, smooth((u - 0.22) / 0.26));
@@ -284,6 +314,7 @@ export function applyInteractions(
         else {
           desired = home;
           attached = false;
+          influence = 1 - smooth((u - 0.85) / 0.15);
           goal = homeGrip.clone().lerp(restHand, smooth((u - 0.85) / 0.15));
         }
       } else {
@@ -299,6 +330,7 @@ export function applyInteractions(
       else {
         desired = home;
         attached = false;
+        influence = 1 - smooth((u - 0.65) / 0.35);
         goal = homeGrip.clone().lerp(restHand, smooth((u - 0.65) / 0.35));
       }
     }
@@ -309,7 +341,7 @@ export function applyInteractions(
         .multiplyScalar(target.scale)
         .applyQuaternion(desired.rotation)
         .add(desired.position);
-    const solved = handTarget(rig, actor, intendedGrip, contacts);
+    const solved = handTarget(rig, actor, intendedGrip, contacts, influence);
     if (attached) {
       // The hand and grip stay coincident even at the limb's reach limit.
       desired.position.add(solved.hand.clone().sub(intendedGrip));

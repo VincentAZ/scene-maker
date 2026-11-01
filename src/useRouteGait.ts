@@ -9,7 +9,12 @@ import {
   type Scene,
 } from "../shared/scene";
 import { loadImportedAsset } from "./importedAsset";
-import { locomotionProfile, locomotionScale } from "./locomotion";
+import { importedClip } from "./rig";
+import {
+  locomotionProfile,
+  locomotionScale,
+  routeEntryHeading,
+} from "./locomotion";
 import { createCharacter } from "./world";
 import { routePace, type RouteGaitCycle } from "./routeLocomotion";
 
@@ -68,7 +73,7 @@ function assetDisposer() {
   };
 }
 
-/** Measure the full source clip, not a route's movement duration or trim. The
+/** Measure the selected source interval, never a route's movement duration. The
  * result is actor-local: PathEditor/planner apply the placed actor's scale once.
  * No scene or viewport pose is sampled or changed by this operation. */
 export async function loadRouteGait(
@@ -76,7 +81,11 @@ export async function loadRouteGait(
   actorAsset: Asset | undefined,
   animationName: string | undefined,
   signal?: AbortSignal,
+  sourceRange?: { start: number; end: number },
+  strideScale = 1,
 ): Promise<RouteGaitCycle> {
+  if (!Number.isFinite(strideScale) || strideScale < 0.9 || strideScale > 1.1)
+    throw Error("Captured step length must be between 90% and 110%.");
   if (!sourceAsset?.url || sourceAsset.category !== "characters")
     throw Error(
       "The original gait source is unavailable. Reimport it or choose another gait.",
@@ -125,15 +134,12 @@ export async function loadRouteGait(
             });
     const [source, actor] = await Promise.all([sourcePending, actorPending]);
     signal?.throwIfAborted();
-    const clip = T.AnimationClip.findByName(
-      source.userData.animations || [],
-      animationName,
-    );
+    const clip = importedClip(source.userData.animations || [], animationName);
     if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0)
       throw Error(
         `The original animation “${animationName}” is unavailable in ${sourceAsset.name}. Choose another gait or reimport its source.`,
       );
-    const profile = locomotionProfile(source, clip);
+    const profile = locomotionProfile(source, clip, sourceRange);
     if (
       !profile ||
       !Number.isFinite(profile.distance) ||
@@ -143,15 +149,23 @@ export async function loadRouteGait(
       throw Error(
         "This take has no reliable locomotion stride. Choose a walking/running cycle; no procedural gait has been substituted.",
       );
-    const ratio = source === actor ? 1 : locomotionScale(source, actor);
+    const ratio =
+      (source === actor ? 1 : locomotionScale(source, actor)) * strideScale;
     if (!Number.isFinite(ratio) || ratio <= 0)
       throw Error(
         "The gait cannot be measured for this character's rig. Choose a compatible character or another gait.",
       );
     return {
       distance: profile.distance * ratio,
-      duration: clip.duration,
-      ...(profile.warning ? { warning: profile.warning } : {}),
+      duration: profile.duration,
+      entryHeading: routeEntryHeading(profile),
+      samples: profile.frames.map((frame) => ({
+        time: frame.time,
+        distance: frame.distance * ratio,
+      })),
+      ...((profile.loopProfile || profile).warning
+        ? { warning: (profile.loopProfile || profile).warning }
+        : {}),
     };
   } finally {
     signal?.removeEventListener("abort", cleanup);
@@ -173,11 +187,29 @@ export function useRouteGait(
   );
   const imported = motion.kind === "imported";
   const animationName = motion.animationName;
+  const sourceRange = motion.path?.sourceRange;
+  const strideScale = motion.path?.strideScale;
   const [attempt, setAttempt] = useState(0);
   const enabled = imported && !override;
   const request = useMemo(
-    () => ({ sourceAsset, actorAsset, animationName, enabled, attempt }),
-    [sourceAsset, actorAsset, animationName, enabled, attempt],
+    () => ({
+      sourceAsset,
+      actorAsset,
+      animationName,
+      sourceRange,
+      strideScale,
+      enabled,
+      attempt,
+    }),
+    [
+      sourceAsset,
+      actorAsset,
+      animationName,
+      sourceRange,
+      strideScale,
+      enabled,
+      attempt,
+    ],
   );
   const [result, setResult] = useState<{
     request: typeof request;
@@ -191,6 +223,8 @@ export function useRouteGait(
       request.actorAsset,
       request.animationName,
       controller.signal,
+      request.sourceRange,
+      request.strideScale,
     ).then(
       (cycle) => {
         if (!controller.signal.aborted)

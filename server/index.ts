@@ -1,4 +1,5 @@
 import { thinkingLevels, thinkingChoices } from "../shared/thinking";
+import { untitledAnimationName } from "../shared/animation";
 import { createCodingService, codingRouter, repositoryRoot } from "./coding";
 import { scheduleRestart } from "./codingDeploy";
 import { runShell } from "./codingAgent";
@@ -587,7 +588,7 @@ app.post("/api/import", upload.single("file"), async (req, res) => {
     }
     const animations = (metadata.animations || []).map(
       (a: { name?: string; samplers: { input: number }[] }, i: number) => ({
-        name: a.name || "Animation " + (i + 1),
+        name: a.name || untitledAnimationName(i),
         duration: Math.max(
           0.2,
           ...a.samplers.map(

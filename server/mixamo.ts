@@ -10,6 +10,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { untitledAnimationName } from "../shared/animation";
 import { dataDir } from "./storage";
 
 const run = promisify(execFile);
@@ -218,13 +219,8 @@ export function createMixamoService(deps: MixamoDeps) {
       fs.rmSync(temporary, { recursive: true, force: true });
     }
     // Never write or delete texture directories beside user-owned Downloads files.
-    const stats = stdout
-      .split("\n")
-      .reverse()
-      .find((line) => line.startsWith("STATS "));
-    const parsed = stats
-      ? (JSON.parse(stats.slice(6)) as { animations: string[] })
-      : { animations: [] };
+    // The bundle's STATS line lists Blender action names; the GLB loader only
+    // sees the names written into the file, so those are reported instead.
     const bytes = fs.readFileSync(output);
     const metadata = JSON.parse(
       bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString("utf8"),
@@ -233,7 +229,9 @@ export function createMixamoService(deps: MixamoDeps) {
       accessors: { max?: number[] }[];
     };
     const animations = (metadata.animations || []).map((a, i) => ({
-      name: a.name || parsed.animations[i] || "Animation " + (i + 1),
+      // The loader ignores Blender action names; an untitled GLB animation
+      // can only be found by its index name.
+      name: a.name || untitledAnimationName(i),
       duration: Math.max(
         0.2,
         ...a.samplers.map((s) => metadata.accessors[s.input]?.max?.[0] || 1),

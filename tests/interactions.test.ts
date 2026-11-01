@@ -16,6 +16,8 @@ import {
 } from "../src/world";
 import { applyInteractions } from "../src/interactions";
 import { configureRigContacts, solveLimb, type RigContacts } from "../src/ik";
+import { animationSampleBoundaries, bakeAnimation } from "../src/bakeAnimation";
+import { exportSnapshot } from "../src/exportSnapshot";
 
 function fixture(standalone = false, low = false) {
   const scene = starterScene();
@@ -60,7 +62,7 @@ function renderer(scene: Scene) {
     root.updateMatrixWorld(true);
     return warnings;
   };
-  return { objects, sample };
+  return { objects, sample, root };
 }
 function hand(rig: T.Group) {
   return rig.userData.bones.rightForearm.localToWorld(
@@ -72,6 +74,97 @@ function grip(prop: T.Group) {
 }
 
 describe("targeted prop choreography", () => {
+  it("exports the same continuous reach at a fractional clip boundary", () => {
+    const { scene, actor } = fixture(),
+      start = 10.4;
+    actor.clips = [
+      { id: "before", motionId: "idle", duration: start },
+      actor.clips[0],
+    ];
+    const { objects, sample, root } = renderer(scene),
+      total = start + 2;
+    const clip = bakeAnimation(
+      objects.values(),
+      total,
+      sample,
+      animationSampleBoundaries(scene, objects),
+    );
+    sample(0);
+    const snapshot = exportSnapshot(root),
+      mixer = new T.AnimationMixer(snapshot),
+      action = mixer.clipAction(clip);
+    action.setLoop(T.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    for (const time of [
+      start - 1e-5,
+      start,
+      start + 1e-5,
+      start + 0.13,
+      start + 0.8,
+      total,
+      start + 0.13,
+    ]) {
+      sample(time);
+      action.reset().play();
+      mixer.setTime(time);
+      snapshot.updateMatrixWorld(true);
+      root.traverse((node) => {
+        if (!(node instanceof T.Bone)) return;
+        const exported = snapshot.getObjectByProperty("uuid", node.uuid)!;
+        expect(
+          node
+            .getWorldPosition(new T.Vector3())
+            .distanceTo(exported.getWorldPosition(new T.Vector3())),
+          node.name,
+        ).toBeLessThan(0.0003);
+      });
+    }
+  });
+  it.each([
+    { standalone: false, low: false },
+    { standalone: false, low: true },
+    { standalone: true, low: false },
+    { standalone: true, low: true },
+  ])(
+    "keeps the whole body continuous at acquisition and release: %j",
+    ({ standalone, low }) => {
+      const { scene, actor } = fixture(standalone, low),
+        start = 0.517143;
+      actor.clips.unshift({
+        id: "before-reach",
+        motionId: "idle",
+        duration: start,
+      });
+      const { objects, sample } = renderer(scene),
+        rig = objects.get(actor.id)!;
+      const bones: T.Bone[] = [];
+      rig.traverse((n) => {
+        if (n instanceof T.Bone) bones.push(n);
+      });
+      const end = actor.clips.reduce((sum, clip) => sum + clip.duration, 0);
+      for (const boundary of [start, end, start]) {
+        sample(boundary - 1e-5);
+        const before = bones.map((b) => ({
+          point: b.getWorldPosition(new T.Vector3()),
+          rotation: b.getWorldQuaternion(new T.Quaternion()),
+        }));
+        expect(sample(boundary + 1e-5)).toEqual([]);
+        bones.forEach((bone, i) => {
+          expect(
+            bone.getWorldPosition(new T.Vector3()).distanceTo(before[i].point),
+            bone.name,
+          ).toBeLessThan(0.0001);
+          expect(
+            bone
+              .getWorldQuaternion(new T.Quaternion())
+              .angleTo(before[i].rotation),
+            bone.name,
+          ).toBeLessThan(0.0001);
+        });
+      }
+    },
+  );
   it("preserves native animation on the rest of the body while carrying a prop", () => {
     const { scene, actor, cup } = fixture();
     scene.customMotions.push({
