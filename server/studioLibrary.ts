@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { assets, motions, type Scene } from "../shared/scene";
-import { libraryMotions, motionSource } from "../shared/motionLibrary";
+import {
+  libraryMotions,
+  capturedMotions,
+  motionSources,
+} from "../shared/motionLibrary";
 import {
   emptyStudioLibrary,
   studioLibrarySchema,
@@ -25,10 +29,12 @@ export function readStudioLibrary(): StudioLibrary {
   }
   const assetIds = new Set([
     ...assets.map((asset) => asset.id),
-    motionSource.id,
+    ...motionSources.map((source) => source.id),
   ]);
   const motionIds = new Set(
-    [...motions, ...libraryMotions].map((motion) => motion.id),
+    [...motions, ...libraryMotions, ...capturedMotions].map(
+      (motion) => motion.id,
+    ),
   );
   for (const project of projects) {
     for (const asset of project.customAssets) {
@@ -51,7 +57,7 @@ export function readStudioLibrary(): StudioLibrary {
     }
   }
   const sources = new Map(
-    [...library.assets, ...assets, motionSource].map((asset) => [
+    [...library.assets, ...assets, ...motionSources].map((asset) => [
       asset.id,
       asset,
     ]),

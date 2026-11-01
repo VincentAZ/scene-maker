@@ -52,3 +52,40 @@ blender --background --factory-startup --disable-autoexec --python-exit-code 1 -
 ```
 
 The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing Athletic jump → Forward roll → Wave hello, and Mila playing Disappointed → Stage punch → Wave hello. The independent Blender reader compares the actual baked scene against the studio's sampled joint positions, checks final holds and motion, and rejects extra hidden rigs. See [verification](VERIFICATION.md) for measured results.
+
+## Captured performances
+
+Two CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+2.975 s) and **Captured walk and turns** (69_06, 43.433 s). These are original
+120 Hz body performances; finger/thumb channels were not captured and are
+excluded. Facial animation is not included. Source skeletons are displayed as
+capsules for original-performance previews. That display is not a body scan
+or a measured shoe surface. These entries do not replace saved authored clips.
+
+`shared/captured-motion-catalogue.json` records exact source URLs, raw/converted
+SHA-256 hashes, duration, sample count, exclusions and anatomical mappings.
+Download the listed ASF and AMC into a private source directory, then run:
+
+```sh
+node scripts/prepare-cmu-motion.mjs <source-directory> 35_01
+node scripts/prepare-cmu-motion.mjs <source-directory> 69_06
+```
+
+Use separate directories for different subjects. Copy each resulting GLB to
+`public/library/actions/cmu/`, and retain its corresponding manifest entry.
+The converter preserves original samples without denoising, looping or speed
+changes. It rejects unsupported root/unit conventions; it is not a general
+ASF/AMC app importer.
+
+CMU's [homepage](https://mocap.cs.cmu.edu/) permits including the data in
+commercial products but prohibits reselling the data directly, even converted.
+Its [FAQ](https://mocap.cs.cmu.edu/faqs.php) permits copying, modification and
+redistribution. The terms and requested attribution accompany the assets in
+`public/library/actions/cmu/LICENSE.txt` and in production ZIPs referencing
+these captures. These assets are not CC0.
+
+The complete walking take has unmatched endpoint foot poses. It is available
+for native-speed performances, but is not yet the default repeated route gait.
+Stride-window selection, source-contact calibration and normal-speed route
+verification remain open. Do not treat inclusion in the library as a claim
+that these captures solve natural movement across every receiver.

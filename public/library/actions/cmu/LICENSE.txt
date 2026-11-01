@@ -1,0 +1,18 @@
+CMU Graphics Lab Motion Capture Database
+https://mocap.cs.cmu.edu/
+https://mocap.cs.cmu.edu/faqs.php
+Terms checked 2026-11-01.
+
+CMU permits copying, modification, and redistribution of this motion data,
+including inclusion in commercially sold products. The motion data itself
+must not be resold directly, even in converted form. This restriction applies
+to these converted files too. CMU does not guarantee the quality of the data.
+
+Attribution requested by CMU:
+The data used in this project was obtained from mocap.cs.cmu.edu.
+The database was created with funding from NSF EIA-0196217.
+
+These files were converted from ASF/AMC by Scene Maker. Original 120 Hz
+joint samples and timing are retained. Uncaptured finger/thumb channels are
+excluded; the visible capsule skeleton is a visualization, not a body scan.
+See shared/captured-motion-catalogue.json for source URLs, hashes and mappings.

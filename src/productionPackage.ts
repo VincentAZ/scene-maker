@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { dialogueSubtitles } from "../shared/conversation";
 import { allMotions, type Scene } from "../shared/scene";
-import { motionSource } from "../shared/motionLibrary";
+import { motionSource, capturedMotionSources } from "../shared/motionLibrary";
 import {
   libraryCharacters,
   libraryAssetURLs,
@@ -61,6 +61,30 @@ export async function productionPackage(
             url: "/library/actions/LICENSE.txt",
             destination: "assets/actions/LICENSE.txt",
             error: "The action library license could not be loaded.",
+          },
+        ]
+      : []),
+    ...capturedMotionSources
+      .filter(
+        (source) =>
+          used.has(source.id) ||
+          scene.customAssets.some((asset) => asset.url === source.url),
+      )
+      .map((source) => ({
+        url: source.url!,
+        destination: "assets/actions/cmu/" + source.url!.split("/").pop(),
+        error: "The captured performance could not be loaded.",
+      })),
+    ...(capturedMotionSources.some(
+      (source) =>
+        used.has(source.id) ||
+        scene.customAssets.some((asset) => asset.url === source.url),
+    )
+      ? [
+          {
+            url: "/library/actions/cmu/LICENSE.txt",
+            destination: "assets/actions/cmu/LICENSE.txt",
+            error: "The capture terms could not be loaded.",
           },
         ]
       : []),

@@ -6,7 +6,11 @@ import { ladderProfile } from "./ladder";
 import { libraryAssetURLs, libraryCharacters } from "./characterLibrary";
 import { characterDesignSchema, supportsGlasses } from "./characterDesign";
 import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
-import { libraryMotions, motionSource } from "./motionLibrary";
+import {
+  libraryMotions,
+  capturedMotions,
+  motionSources,
+} from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
 import { thinkingLevels } from "./thinking";
 import { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE } from "./clipTiming";
@@ -236,7 +240,7 @@ export const assetSchema = z
       .refine(
         (url): boolean =>
           /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
-          url === motionSource.url ||
+          motionSources.some((source) => url === source.url) ||
           libraryAssetURLs.has(url) ||
           furnitureURLs.has(url),
         "Choose an uploaded file or an existing library asset.",
@@ -591,11 +595,13 @@ export const motions: Motion[] = [
 export const allAssets = (s: Scene) => [...assets, ...s.customAssets];
 export const allMotions = (s: Scene) => [
   ...motions,
+  ...capturedMotions,
   ...libraryMotions,
   ...s.customMotions,
 ];
 export const resolveMotionSource = (s: Scene, id: string | undefined) =>
-  id === motionSource.id ? motionSource : allAssets(s).find((a) => a.id === id);
+  motionSources.find((source) => source.id === id) ??
+  allAssets(s).find((a) => a.id === id);
 export function applyCommands(
   scene: Scene,
   input: unknown,
@@ -969,7 +975,10 @@ export function validateScene(
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
   if (
     !unique(s.entities.map((e) => e.id)) ||
-    !unique([...allAssets(s).map((a) => a.id), motionSource.id]) ||
+    !unique([
+      ...allAssets(s).map((a) => a.id),
+      ...motionSources.map((source) => source.id),
+    ]) ||
     !unique(allMotions(s).map((m) => m.id))
   )
     throw Error("Duplicate IDs in scene.");

@@ -11,7 +11,7 @@ import {
   type Motion,
   type Scene,
 } from "./scene";
-import { motionSource } from "./motionLibrary";
+import { motionSources } from "./motionLibrary";
 
 export type StudioLibrary = {
   version: 1;
@@ -37,7 +37,7 @@ export const studioLibrarySchema = z
         });
     }
     const sources = new Map(
-      [...library.assets, ...assets, motionSource].map((asset) => [
+      [...library.assets, ...assets, ...motionSources].map((asset) => [
         asset.id,
         asset,
       ]),
@@ -107,7 +107,7 @@ export function studioLibraryCommands(
   const registerAsset = (id: string) => {
     const asset = availableAssets.get(id);
     if (!asset) throw Error(`Unknown studio library asset: ${id}`);
-    if (id === motionSource.id)
+    if (motionSources.some((source) => id === source.id))
       throw Error("The bundled action source is not a placeable asset.");
     if (!registeredAssets.has(id)) {
       commands.push({ type: "createAsset", asset: structuredClone(asset) });
@@ -120,14 +120,14 @@ export function studioLibraryCommands(
     if (!motion) throw Error(`Unknown studio library motion: ${id}`);
     if (motion.kind === "imported") {
       const source =
-        motion.sourceAssetId === motionSource.id
-          ? motionSource
-          : availableAssets.get(motion.sourceAssetId!);
+        motionSources.find((source) => motion.sourceAssetId === source.id) ??
+        availableAssets.get(motion.sourceAssetId!);
       if (source?.category !== "characters" || !source.url)
         throw Error(
           "Imported actions need a source character with a model URL.",
         );
-      if (source.id !== motionSource.id) registerAsset(source.id);
+      if (!motionSources.some((entry) => source.id === entry.id))
+        registerAsset(source.id);
     }
     if (!registeredMotions.has(id)) {
       commands.push({ type: "createMotion", motion: structuredClone(motion) });

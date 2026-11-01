@@ -1,0 +1,92 @@
+[
+  {
+    "trial": "35_01",
+    "frames": 358,
+    "duration": 2.975,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 383592,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "35.asf": "2a8e2eda3c0d7d828566b2a9a8ab36b2b8b3864110574e8b73c8f069fded416c",
+      "35_01.amc": "0743f4ea48e7e199cd56b2810b5ce81f8ede08d32ff79aa4e363c44cc4fe33aa",
+      "35_01.glb": "7556774fffe99696c64c25e28a3db3239d19e9b84fe07374270e85ffd1e27810"
+    },
+    "name": "Captured walk",
+    "description": "A captured straight walking take at its original pace.",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/35/35.asf",
+      "https://mocap.cs.cmu.edu/subjects/35/35_01.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
+  },
+  {
+    "trial": "69_06",
+    "frames": 5213,
+    "duration": 43.43333333333333,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 2888816,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "69.asf": "c3019031ae5789b1d43d3bba424229ac544ccc68bb8c06e7d67bf75b1c41605f",
+      "69_06.amc": "73014ee63a0923674b97ae978fdfb69f5ea7e54ea5d656bccc4e11d2b01cef5b",
+      "69_06.glb": "6866110888db4f252c1dd8b3ca490ebf61961e6f3fcab5a91ea04b3fc2cdeba4"
+    },
+    "name": "Captured walk and turns",
+    "description": "A continuous captured performance with repeated walks and turns.",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/69/69.asf",
+      "https://mocap.cs.cmu.edu/subjects/69/69_06.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
+  }
+]

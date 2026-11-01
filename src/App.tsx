@@ -1750,15 +1750,17 @@ export default function App() {
                         <strong>{m.name}</strong>
                         <small>
                           {Number(m.duration.toFixed(1))}s ·{" "}
-                          {motionDetails(m).authored
-                            ? "Authored motion"
-                            : m.kind === "imported"
-                              ? isCharacter
-                                ? `Adapt to ${entity!.name}`
-                                : "From your files"
-                              : m.kind === "custom"
-                                ? "Your creation"
-                                : "Ready to use"}
+                          {motionDetails(m).captured
+                            ? "Motion capture"
+                            : motionDetails(m).authored
+                              ? "Authored motion"
+                              : m.kind === "imported"
+                                ? isCharacter
+                                  ? `Adapt to ${entity!.name}`
+                                  : "From your files"
+                                : m.kind === "custom"
+                                  ? "Your creation"
+                                  : "Ready to use"}
                         </small>
                       </span>
                       <Plus size={15} />

@@ -260,3 +260,67 @@ Party Woman and <0.00000009 m for the source. Sampling uses the harness's listed
 initial timestamps (through 1.6 s), so this is not a full-take pose audit. Report:
 `cmu-turns/clearance-export-export.json`; log `clearance-export.log`. TypeScript
 and diff checks also passed.
+
+## Continuation update — captured library integration
+
+Prior turn was **progress**: actual vertical-reference bug fixed, regression and
+normal-speed evidence saved. This turn adds the captures to the real library.
+
+- Added public CMU 35_01 and 69_06 GLBs, terms/attribution, and full provenance,
+  hashes and mappings in `shared/captured-motion-catalogue.json`. They appear
+  as **Captured walk** and **Captured walk and turns** in every project's Actions.
+  They are not hidden private project fixtures anymore. No licensed user model
+  was shipped. Source capsules are visualization geometry, not measured skin.
+- Generalized built-in motion source resolution, reserved IDs, exact URL
+  validation, studio-library dependency registration, and production packaging
+  to handle multiple sources. Legacy Quaternius source/IDs remain unchanged.
+  `libraryMotions` remains the legacy authored collection; `capturedMotions`
+  contains new entries, both included by `allMotions`.
+- Full CMU homepage terms were fetched and saved as
+  `/tmp/scene-natural-motion/cmu-home.html`. Important addition to FAQ evidence:
+  products may include captures, but the data itself may not be resold, even
+  converted. Bundled `cmu/LICENSE.txt` carries that restriction and attribution.
+- Real UI verified the bundled **Captured walk** original/Party Woman preview,
+  same 0.63-second scrub position, Play/Pause, correct Add recipient, no console
+  errors, unchanged saved scene content. Script:
+  `test-results/library-captured-preview-ui.mjs`; screenshots
+  `/tmp/scene-natural-motion/library-capture-{character,original}.png`.
+- New curved-route 1x evidence:
+  `/tmp/scene-natural-motion/cmu-long/captured-walk-route-1x.mp4` (2.967 s at
+  60 fps). Harness requests 8 s but correctly caps at the actual take duration.
+  Full 35_01 measured 4.359 m travel, with a mismatched-foot endpoint warning.
+  **Default route gait has not been switched**: repeating the full take is not
+  acceptable as a natural default.
+- An interval search found ~1.1–1.125-second stride windows with both foot seams
+  matched (e.g. 0.4–1.525 s). Results in `cmu-long/stride-candidates.json`;
+  driver `test-results/find-captured-stride.mjs`. However all candidates report
+  **zero detected contacts**. Investigate source capsule sole geometry versus
+  captured foot landmarks before trusting route planting. Do not interpret an
+  empty warning as sufficient quality evidence or change defaults from it.
+- Private API was restarted to load new catalogue code: current handle 66444,
+  port4413. Vite4546 handle80797; Chrome9451 remains live. A final UI-only badge
+  edit requires a fresh Vite port per existing no-HMR practice.
+
+Still required: natural default walking/running and remaining actions, source
+contact calibration, provider coverage and all earlier visual acceptance gates.
+No success claim from catalogue integration or tests.
+
+Validation for this integration: **1075 tests / 95 files**, TypeScript, diff
+check and isolated production build passed. One existing exact catalogue-count
+assertion was updated from 32 to 34; new tests cover actual shipped capture
+hashes, native source preview/mapping/timing, reserved source IDs, and packaging
+with terms. A new test initially hit Vitest's 5-second timeout deep-comparing
+multi-megabyte byte arrays; changed it to compare SHA-256 of actual package and
+source bytes, then passed. No assertion about visual quality was weakened.
+The real UI preview was rechecked on final Vite **4547** (handle 55420).
+
+Fresh normal-speed native evidence uses the **shipped** GLB URL, not an upload:
+`/tmp/scene-natural-motion/cmu-long/shipped-capture-native-1x.mp4` (179 frames,
+60 fps, source/Party Woman). It ends at the actual take end without a padded
+hold. Native render log is `/tmp/scene-natural-motion/shipped-capture.log`.
+Artifacts and scripts are also archived under
+`.data/natural-motion-investigation/captured-library/`.
+Final-port UI run initially logged one unlocated HTTP404 while all preview
+assertions passed. Repeated with URL-bearing log capture: no errors, only
+headless Chrome software-WebGL deprecation warnings. The original 404 URL was
+not retained, so its cause is unproven; do not claim it was a known favicon.
