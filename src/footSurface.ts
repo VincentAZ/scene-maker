@@ -178,6 +178,7 @@ export function transferFootClearance(
   basePosition: T.Vector3,
   ratio: number,
   sourceSurface = sampleFootSurfaces(source),
+  sourceOriginY = 0,
 ) {
   const a = sourceSurface,
     b = sampleFootSurfaces(target);
@@ -187,7 +188,11 @@ export function transferFootClearance(
     .sub(basePosition)
     .applyQuaternion(target.quaternion.clone().invert())
     .divide(target.scale);
-  const desired = b.bindFloor + (a.lowest - a.bindFloor) * ratio;
+  // Native playback removes the selected take's starting root displacement.
+  // Clearance must use that same origin, or the correction reintroduces the
+  // capture-space height offset after transfer has already removed it.
+  const clearance = a.lowest - a.bindFloor - sourceOriginY;
+  const desired = b.bindFloor + clearance * ratio;
   const delta = desired - b.lowest - offset.y;
   target.position.add(
     new T.Vector3(0, delta, 0)
@@ -196,7 +201,7 @@ export function transferFootClearance(
   );
   target.updateMatrixWorld(true);
   target.userData.footClearance = {
-    source: a.lowest - a.bindFloor,
+    source: clearance,
     correction: delta,
   };
 }

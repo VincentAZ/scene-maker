@@ -154,3 +154,109 @@ A durable ignored copy of the evidence and verification scripts is in
 `.data/natural-motion-investigation/` within this worktree. Use it if temporary
 files are unavailable; the separate API data copy is not included in that
 evidence archive.
+
+## Continuation update — longer capture and hand mapping (2026-11-01)
+
+Previous turn classified as **progress**: original-preview controls, source parity
+and candidate evidence existed. This turn also made progress, not completion.
+
+- Services were absent, so restarted only isolated API 4413, fresh Vite **4543**,
+  and owned Chrome 9451. Current exec handles: API 53392, Vite 68832, Chrome
+  40524. Revalidate them before relying on these handles.
+- Added tracked `scripts/prepare-cmu-motion.mjs`, an offline evaluation converter
+  accepting `<directory> <subject_trial>`. It retains the existing converter's
+  120 Hz samples without filtering or timing changes, checks its supported
+  ASF root/unit convention, and records input/output hashes. Not an app importer.
+- Fixed the evaluation mapping: CMU `lwrist/rwrist` are forearm segments with
+  axial rotation; `lhand/rhand` contain hand flexion and are the anatomical hand
+  origins. The old fixture mapped the upstream node and omitted hand flexion.
+  The app's world-orientation transfer now receives downstream hand orientation.
+  This corrects the **fixture**, not the user's original Quaternius playback.
+- Acquired CMU 69_06 (walk and turn, repeated): 5,213 frames at the official
+  catalogue's 120 Hz = 43.433333 seconds. Directory:
+  `/tmp/scene-natural-motion/cmu-turns/`. Includes ASF/AMC, converted GLB,
+  mapping, hashes, official catalogue HTML, and official rendered `69_06.avi`.
+- New isolated project `natural-motion-long-capture`, revision 1, contains the
+  full take at explicit 1x on Party Woman. Existing baseline and user project
+  were not overwritten. API copy uses `uploads/cmu-walk-69-06.glb`.
+- Normal-speed evidence: `cmu-turns/walk-turns-body-1x.mp4`, 12 seconds at 60 fps,
+  native original skeleton left / Party Woman right using app runtime. Source
+  and receiver use independent source instances. Report has 21 matched joints,
+  four unsupported channel reports, and no GL errors. These are diagnostics,
+  not proof of naturalness. Contact sheets were inspected; sequential video
+  quality acceptance remains open. Receiver shoes and hand posture deserve
+  further close views. The official rendered AVI provides an independent
+  source reference for conversion checks (different camera, not time-aligned).
+- CMU official FAQ was fetched successfully via per-command curl -k after web
+  tool failures: `/tmp/scene-natural-motion/cmu-faq.html`. Its “How can I use
+  this data?” section explicitly permits copying, modification, redistribution.
+  Source: https://mocap.cs.cmu.edu/faqs.php . Homepage attribution should be
+  retained if shipping. No new capture assets shipped in public/library yet.
+- Subject 35_01 was also tried but is only 2.975 seconds; its 8-second recording
+  includes a long final hold and is **not** evidence of a longer performance.
+  Harness now caps recording at take duration. Do not use that misleading hold
+  diagnostic (median speed is zero due to held frames).
+- Updated ignored `test-results/captured-walk.mjs` accepts `CMU_ASSET` and
+  `CMU_MAPPING`; no hardcoded skeleton index mapping. New ignored project driver
+  is `test-results/create-long-capture-project.mjs`.
+
+Reproduce comparison:
+
+```sh
+FABLE_APP=http://127.0.0.1:4543 CMU_ASSET=cmu-walk-69-06 \
+CMU_MAPPING=/tmp/scene-natural-motion/cmu-turns/69_06-mapping.json \
+AC_TAKE=69_06 AC_TO=12 AC_FPS=60 AC_TAG=walk-turns-body \
+AC_OUT=/tmp/scene-natural-motion/cmu-turns node test-results/captured-walk.mjs
+```
+
+Next: scrutinize source/app/receiver at normal speed with feet and side views;
+check source conversion against independent official AVI, especially turn timing.
+Then solve transfer/contact defects and choose natural defaults. Do not mistake
+this added evaluation take for delivery across providers, routes or exports.
+All original broad requirements above remain open.
+
+## Continuation update — native/shared vertical-reference fix
+
+The preceding turn was **progress** (longer fixture, corrected hand mapping,
+normal-speed evidence). This turn found and fixed an actual app playback defect:
+
+- `applyTransferredClip` removes the source take's initial root displacement,
+  just like native playback, but `transferFootClearance` subsequently used raw
+  capture-space clearance. This reintroduced the starting vertical offset.
+  A source above its bind root floated on transfer; one below it sank.
+- `src/footSurface.ts` now accepts an explicit source-origin Y offset (default
+  zero for existing route/contact callers); both retargeting branches in
+  `src/rig.ts` pass `profile.start.y`. No per-provider branch or animation speed
+  change. Native sampled joint curves remain untouched.
+- Added end-to-end pose regression cases to `tests/footSurface.test.ts`: native
+  versus transferred copies of the same rig, positive/negative starting capture
+  offsets, trimmed starts, airborne variation, final holds, reverse scrubbing,
+  and placed entity rotation/scale/height. Reproduced failures before the fix.
+- CMU 69_06 on Party Woman had roughly **1.98 cm extra sinking** from this bug.
+  New 60-fps, 1x feet evidence (source seconds 1–6):
+  `/tmp/scene-natural-motion/cmu-turns/walk-turns-feet-fixed-1x.mp4`.
+  Before: `walk-turns-feet-1x.mp4` in the same directory. Both retain the source
+  left / receiver right layout. At all 301 new frames the scaled native versus
+  transferred sole-clearance discrepancy is below 6.5e-10 m. This establishes
+  vertical-reference parity, **not** naturalness or no planar sliding.
+- Full suite: **1072 tests / 94 files passed**, log
+  `/tmp/scene-natural-motion/full-suite-clearance.log`. Existing AI SDK schema
+  compatibility warning remains. New Vite ports 4544 and **4545** serve changed
+  code. Latest Vite exec handle 7655; API 4413 and Chrome 9451 remain live.
+- Updated ignored capture harness includes surface samples in rows. Export
+  harness initially failed on a bare `three` import from raw node_modules;
+  fixed its imports through Vite's `test-results/animation-entry.ts`. That was
+  a harness failure, not an app export result.
+
+Still open: source quality acceptance, default natural bank, planar contacts,
+more providers, route/arrival/wait visual matrix, and full visual export review.
+The source capsule display is not a captured foot surface, and Party Woman's
+heels need explicit visual scrutiny. Do not infer all those requirements from
+this targeted clearance fix or from the green suite.
+
+Export check completed successfully after the harness import fix. The full take
+was baked and reloaded as GLB; sampled joint/skin errors were <0.000004 m for
+Party Woman and <0.00000009 m for the source. Sampling uses the harness's listed
+initial timestamps (through 1.6 s), so this is not a full-take pose audit. Report:
+`cmu-turns/clearance-export-export.json`; log `clearance-export.log`. TypeScript
+and diff checks also passed.

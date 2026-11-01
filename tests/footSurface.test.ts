@@ -7,6 +7,7 @@ import {
   applyHumanoidPose,
   applyTransferredClip,
   configureImportedRig,
+  setMotionSources,
 } from "../src/rig";
 import {
   captureFootSurfaces,
@@ -99,6 +100,70 @@ function useShoeGeometryOnly(f: ReturnType<typeof rig>) {
 }
 
 describe("geometry-based foot clearance", () => {
+  it.each([
+    [0, 0.35],
+    [0.4, 0.35],
+    [0, -0.25],
+    [0.4, -0.25],
+  ])(
+    "matches native sole height with a capture offset (sourceStart=%s, offset=%s)",
+    (sourceStart, offset) => {
+      const native = rig(),
+        source = rig(),
+        target = rig();
+      const makeClip = (f: ReturnType<typeof rig>) =>
+        new T.AnimationClip("Elevated take", 2, [
+          new T.VectorKeyframeTrack(
+            f.body.uuid + ".position",
+            [0, 1, 2],
+            [0, offset, 0, 0, offset + 0.3, 1, 0, offset + 0.05, 2],
+          ),
+        ]);
+      native.configure([makeClip(native)]);
+      source.configure([makeClip(source)]);
+      setMotionSources(target.group, new Map([["capture", source.group]]));
+      const scene = starterScene(),
+        actor = scene.entities[0];
+      scene.animationCollisions = false;
+      scene.entities = [actor];
+      actor.position = [1, 0.5, -2];
+      actor.scale = 1.3;
+      actor.rotation = 0.4;
+      actor.clips = [
+        {
+          id: "take",
+          motionId: "take",
+          duration: 2,
+          playbackRate: 1,
+          sourceStart,
+          transition: "cut",
+        },
+      ];
+      const motion = {
+        id: "take",
+        name: "Elevated take",
+        kind: "imported" as const,
+        animationName: "Elevated take",
+        sourceAssetId: actor.assetId,
+        duration: 2,
+        distance: 0,
+        poses: [],
+      };
+      scene.customMotions = [motion];
+      const shared = {
+        ...scene,
+        customMotions: [{ ...motion, sourceAssetId: "capture" }],
+      };
+      for (const time of [0, 0.25, 0.8, 1.4, 2.2, 0.25]) {
+        applyAnimatedEntityPose(native.group, actor, scene, time);
+        applyAnimatedEntityPose(target.group, actor, shared, time);
+        const sole = (g: T.Group) =>
+          sampleFootSurfaces(g)!.lowest * actor.scale + g.position.y;
+        expect(sole(target.group)).toBeCloseTo(sole(native.group), 6);
+      }
+    },
+  );
+
   it("keeps native loop ground support continuous when closure moves the studio root", () => {
     const f = rig();
     const animation = new T.AnimationClip("Small vertical endpoint drift", 2, [

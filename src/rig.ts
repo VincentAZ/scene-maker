@@ -945,6 +945,8 @@ export function applyTransferredClip(
       target,
       basePosition,
       standingHeight(target) / standingHeight(source),
+      undefined,
+      profile.start.y,
     );
     return "";
   }
@@ -994,6 +996,8 @@ export function applyTransferredClip(
     target,
     basePosition,
     standingHeight(target) / standingHeight(source),
+    undefined,
+    profile.start.y,
   );
   return "";
 }
