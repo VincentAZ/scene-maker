@@ -445,7 +445,7 @@ head joint). Existing fixtures exactly unchanged (all their necks already pair).
 New test (single-neck source fixture) fails on the previous code. Suite 1,190;
 gates on Vite 4660 identical to D11.
 
-## D16 — Root-motion convention and genuinely new Mixamo rigs (12:28–12:50)
+## D16 — Root-motion convention and genuinely new Mixamo rigs (12:28–12:31)
 
 Source variant `rootmotion` (game-engine layout: a new root bone above the hips
 carries horizontal travel; hips keep the rest): receiver result 0.00 mm / 0.02° vs
