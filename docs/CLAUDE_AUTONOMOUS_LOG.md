@@ -612,3 +612,62 @@ deviated 32.6°/24 mm at the neck on single-neck sources. Source side
 renamed): all six drive Party at 3.15 mm/0.75° (known Waist layout), source
 joints 0.00 mm vs identity. No collisions with any of 190 GLB files on disk
 (bundled + private). Suite 1,213 (`--maxWorkers=4`), tsc, prettier, build OK.
+
+## D22 — BVH motion capture imports; SOMA naming; detached feet without skin (13:20–13:55)
+
+Imports accepted only GLB and FBX (FBX through Blender, which is not installed
+on this machine). BVH — the common interchange format of motion-capture
+libraries — was refused.
+
+Decision: convert BVH in the browser (`src/bvhImport.ts`, three.js BVHLoader +
+GLTFExporter) to the shape of an animation-only GLB export (a mesh-less
+animated armature, D17) and upload that through the unchanged `/api/import`;
+the import picker accepts `.bvh`, copy updated. Joint values and names are kept;
+only track-unsafe characters are sanitized, unnamed end sites become
+`<joint>_End`, and the per-joint position tracks BVHLoader adds are kept only
+where a joint actually translates (a constant one becomes the rest position, so
+a stationary capture keeps its height). The server is unchanged.
+
+Found while checking a real file (NVIDIA SOMA 77-joint BVH, read-only from
+another repo, not copied): SOMA names the thigh "LeftLeg" above "LeftShin"
+(Mixamo uses "LeftLeg" for the shin) and numbers its spine from "Spine1".
+Decision (`rig.ts`): with no thigh name on a side, the upper of two chained
+shin names is the thigh; `spine1` is a spine alias and the topmost-on-one-chain
+rule now also covers spine, so Mixamo/CMU-BVH/LAFAN/Biped (which have "Spine"
+above "Spine1") keep "Spine". Unrelated duplicates still stay ambiguous.
+
+Found in the end-to-end check: an armature without any skin lost its hands/feet
+when they are detached IK-style joints (not under the forearm/shin): the
+candidate filter only accepts detached extremities that carry skin weight.
+Decision: with no skin in the file at all, a single named candidate is that
+joint (it then follows the existing detached-joint path).
+
+Not done: raw CMU ASF names (`root`, `lfemur`, `lhumerus`…) — `root` cannot
+safely mean hips (Unreal's `root` is a ground bone above `pelvis`), so such
+files need the rig mapping editor; the widely used CMU BVH conversions use
+Mixamo-style names, which are recognised.
+
+Evidence: `tests/bvhImport.test.ts` (4: recognised armature, position tracks
+only on the travelling root, stationary capture keeps its height, GLB round
+trip with its take name, a BVH take driving a VRM-named skeleton);
+`rigConventions` SOMA and Mixamo cases (SOMA fails on the previous code);
+`animationOnlyImport` detached-foot case (fails without the rule). The real SOMA
+file maps every role. `test-results/claude-bvh-roundtrip.mjs` authors a real
+BVH from a GLB take (world-axis rest offsets, ZXY channels), converts it with
+`bvhToGlb` in the browser, uploads through the app's `api('/api/import')`, and
+plays it on receivers against the original GLB take: ActorCore Dummy M
+"Thoughtful walk" (≈100 joints, 34 s) — native pose 1.7e-6 (relative), every
+body role 0 mm relative to the hips on Quaternius Casual and Party; hands differ
+4–34 mm (a skin-less source gives no source-contact allowance to hand
+clearance, by design) and the root 17–28 mm vertically (a skin-less source's
+ground comes from joints, not soles). The first attempt from Quaternius Walk
+differed 0.35–0.54 m at the feet: its feet are detached IK joints with their
+own translation keys, which BVH (root translation only) cannot carry — a test
+authoring limitation, not an importer one; real BVH is pure FK. Standing
+height (the root-motion scale) of the BVH and GLB sources is identical
+(1.48096 torso lengths), so strides are unaffected. The import modal itself was
+not clicked through (that would add an asset to a review project); the driver
+calls the same `bvhToGlb` and `api('/api/import')` the modal calls.
+Gates on Vite 4670 identical to D21 (route 140, cuts 140, native exact, all 19
+cross-rig deltas, wait, export, real UI); suite 1,222 (`--maxWorkers=4`), tsc,
+prettier, build OK.

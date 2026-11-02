@@ -68,8 +68,11 @@ const aliases: Record<string, string> = {
   hip: "hips",
   pelvis: "hips",
   spine: "spine",
-  // Unreal mannequin, Daz Genesis (abdomenLower) and Genesis 1/2 (abdomen).
+  // Unreal mannequin, NVIDIA SOMA (spine numbered from 1; the plain "Spine"
+  // above it wins where both exist), Daz Genesis (abdomenLower) and
+  // Genesis 1/2 (abdomen).
   spine01: "spine",
+  spine1: "spine",
   abdomenlower: "spine",
   abdomen: "spine",
   head: "head",
@@ -304,6 +307,21 @@ export function configureImportedRig(
     leftHand: "leftForearm",
     rightHand: "rightForearm",
   };
+  // "Leg" names the thigh on some skeletons (SOMA: LeftLeg > LeftShin) and
+  // the shin on others (Mixamo: LeftUpLeg > LeftLeg). With no thigh name on
+  // that side, the upper of two chained shin names is the thigh.
+  for (const side of ["left", "right"]) {
+    const shins = candidates.get(side + "Shin");
+    if (candidates.has(side + "Leg") || shins?.length !== 2) continue;
+    const [upper, lower] = hasAncestor(shins[1], shins[0])
+      ? shins
+      : hasAncestor(shins[0], shins[1])
+        ? [shins[1], shins[0]]
+        : [];
+    if (!upper) continue;
+    candidates.set(side + "Leg", [upper]);
+    candidates.set(side + "Shin", [lower]);
+  }
   for (const [name, allMatches] of candidates) {
     const parent = candidates.get(extremityParents[name])?.[0];
     const matches = allMatches.filter(
@@ -313,13 +331,16 @@ export function configureImportedRig(
         explicit.semanticKeys.has(bone) ||
         [...weighted].some(
           (joint) => joint === bone || hasAncestor(joint, bone),
-        ),
+        ) ||
+        // Without skin there is no weight to confirm a detached (IK-style)
+        // hand or foot; a single named candidate is that joint.
+        (!weighted.size && allMatches.length === 1),
     );
     // Hip above pelvis (Daz, Character Creator): the topmost carries both the
-    // torso and the legs. Only a single ancestor chain is resolved this way;
-    // unrelated duplicates stay ambiguous.
+    // torso and the legs; likewise "Spine" above "Spine1". Only a single
+    // ancestor chain is resolved this way; unrelated duplicates stay ambiguous.
     const top =
-      name === "hips" &&
+      (name === "hips" || name === "spine") &&
       matches.find((bone) =>
         matches.every((other) => other === bone || hasAncestor(other, bone)),
       );

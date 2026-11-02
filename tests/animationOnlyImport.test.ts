@@ -160,3 +160,22 @@ it.each([0, Math.PI, Math.PI / 2, -Math.PI / 2, 0.3])(
     expect(hips.position.toArray()).toEqual([0, 100, 25]);
   },
 );
+
+it("keeps a detached (IK-style) foot of an armature exported without skin", () => {
+  const { scene, nodes, clip } = armature();
+  // Feet moved out of the leg chain, as IK rigs export them.
+  for (const side of ["Left", "Right"]) {
+    const foot = nodes[`${side}Foot`];
+    nodes.Hips.attach(foot);
+  }
+  const asset = { ...characters[0], id: "ik-feet", url: "/x.glb" } as Asset;
+  const group = prepareImportedAsset(asset, { scene, animations: [clip] });
+  const bones = group.userData.bones as Record<string, T.Object3D>;
+  expect(bones.leftFoot?.name).toBe("LeftFoot");
+  expect(bones.rightFoot?.name).toBe("RightFoot");
+  expect(
+    (group.userData.detachedJointAnchors as Map<T.Object3D, T.Object3D>).get(
+      bones.leftFoot,
+    ),
+  ).toBe(bones.leftShin);
+});
