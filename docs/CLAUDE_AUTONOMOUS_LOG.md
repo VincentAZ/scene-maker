@@ -800,7 +800,7 @@ Generality matrix (receiver and source variants, incl. local axes and Z-up
 sources) line-for-line identical to the previous run; gates on Vite 4677
 identical to D27.
 
-## D29 — Skeleton-only sources keep receivers on the ground (13:47–13:58)
+## D29 — Skeleton-only sources keep receivers on the ground (13:47–13:55)
 
 BVH round trips of every CMU take reproduced all body roles at 0 mm but the
 receiver's root sat 22–105 mm higher than with the fixture source (purely

@@ -48,6 +48,17 @@ Every decision, rejected variant, harness pitfall and measurement is in
 - `test-results/claude-source-variants.mjs` — same for a SOURCE with its motion
   kept (bind-only changes leave tracks; unit/Z-up/name changes convert tracks).
 - `test-results/claude-generality-matrix.sh` runs both on one runtime.
+- `names_<convention>` variants (unreal, rigify, daz, vrm, blender, biped) in
+  both drivers rename Party / Dummy M into each standard convention
+  (`VARIANTS='["names_unreal",...]'`).
+- `test-results/claude-bvh-roundtrip.mjs` (`SRC=<capture id>|dummyM`, `CLIP`)
+  authors a BVH from a real take, imports it through `bvhToGlb` and
+  `/api/import` with no mapping, and compares body roles, root and receiver
+  sole clearance with the original take on Casual and Party.
+- `test-results/claude-hand-notice.mjs` counts hand-clearance notices.
+- Fresh Vite ports resolve `/test-results/animation-entry.ts` lazily: request
+  it once (curl) before the first driver, or the first driver can fail with
+  "Failed to resolve module specifier".
 - Pitfalls (all hit once): re-bake skin at the shared rest before re-authoring
   (glTF bind ≠ node rest); representation-only changes must NOT re-bake; skin
   comparisons are invalid for bind-pose variants (double blend) — use bone
