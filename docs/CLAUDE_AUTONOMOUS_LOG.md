@@ -444,3 +444,31 @@ After: SwordSlash 11.2° / 19.5°, Roll 3.2° / 5.5°, Death 4.9° / 8.4° (neck
 head joint). Existing fixtures exactly unchanged (all their necks already pair).
 New test (single-neck source fixture) fails on the previous code. Suite 1,190;
 gates on Vite 4660 identical to D11.
+
+## D16 — Root-motion convention and genuinely new Mixamo rigs (12:28–12:50)
+
+Source variant `rootmotion` (game-engine layout: a new root bone above the hips
+carries horizontal travel; hips keep the rest): receiver result 0.00 mm / 0.02° vs
+the hips-travel original. (My variant double-counts the hips' rest offset in its
+own native comparison — a harness imperfection that transfer normalization
+removes; the receiver comparison is the meaningful one.)
+
+New standard rigs, not derived from any fixture: three.js example characters
+`Xbot.glb` (67 bones) and `Soldier.glb` (49 bones), both Mixamo-rigged with their
+own Mixamo clips (walk/run/idle…). Fetched from jsdelivr (three.js r160 examples)
+into `/tmp/scene-natural-motion/claude-session/mixamo-eval/` and the private API's
+`uploads/mixamo-eval-*.glb` only — evaluation fixtures, not shipped or committed;
+their redistribution terms were not established. Driver `claude-new-rigs.mjs`.
+
+- Real importer mapping: all 15 roles, no ambiguous/missing/invalid.
+- 8 transfer directions (CMU, ActorCore, Quaternius → Xbot/Soldier; Xbot/Soldier
+  walk → Party, Dummy M, each other): no sharing warnings, all poses finite.
+- Disclosure behaves: ActorCore → Xbot reports 26 unsupported CC twist/share
+  channels (Xbot has none); Soldier ↔ Xbot report 3 distal finger channels the
+  other rig lacks; composed chest/neck notices appear where segment counts differ.
+- 1× pair movies (native left / receiver right) `mixamo-eval/{xbot-walk-party,
+  cmu-xbot,actorcore-xbot}-1x.mp4`: Xbot's own walk on Party looks consistent.
+- Hand clearance on a new body: CMU 91_34 → Xbot, the resting left hand is buried
+  in Xbot's very wide thigh shell without correction (only fingertips visible);
+  with it the hand rests on the thigh surface (86 mm, capped → `unresolved`).
+  `mixamo-eval/cmu-capture-91-34-xbot-{1,3}.png` (left = correction off).
