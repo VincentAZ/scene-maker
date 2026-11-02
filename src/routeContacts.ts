@@ -256,7 +256,9 @@ export function footContactPosition(group: T.Group, side: "left" | "right") {
 }
 /** Horizontal contact correction keeps native vertical motion and foot world
  * orientation. Unreachable targets are limited by the two-link leg, never by
- * stretching bones or moving the whole actor off the route. */
+ * stretching bones or moving the whole actor off the route. `reachReference`
+ * retains the initial reach envelope across refinements without sharing their
+ * per-pass correction budget. */
 export function correctFootContact(
   group: T.Group,
   side: "left" | "right",
@@ -266,6 +268,7 @@ export function correctFootContact(
   endpoint?: T.Vector3,
   vertical = false,
   referencePoint?: T.Vector3,
+  reachReference?: T.Vector3,
 ) {
   const bones = group.userData.bones as Record<string, T.Bone>;
   const upper = bones[side + "Leg"],
@@ -293,7 +296,10 @@ export function correctFootContact(
     const hip = point(upper),
       knee = point(lower);
     const length = hip.distanceTo(knee) + knee.distanceTo(current);
-    const offset = reference.clone().sub(hip);
+    const currentOffset = reference.clone().sub(hip);
+    const offset = reachReference
+      ? reachReference.clone().sub(hip)
+      : currentOffset;
     const reserve = Math.min(
       length * 0.005,
       Math.max(0, length - offset.length()) * 0.1,
@@ -311,7 +317,7 @@ export function correctFootContact(
             : offset.y * offset.y),
       ),
     );
-    const target = offset.clone().add(delta);
+    const target = currentOffset.clone().add(delta);
     const desiredRadius = vertical
       ? Math.abs(target.y)
       : Math.hypot(target.x, target.z);
@@ -329,11 +335,15 @@ export function correctFootContact(
       if (vertical) {
         // Ground support must not move a planted foot sideways when the
         // downward goal lies beyond the leg's reach.
-        delta.set(0, (target.y * distance) / desiredRadius - offset.y, 0);
+        delta.set(
+          0,
+          (target.y * distance) / desiredRadius - currentOffset.y,
+          0,
+        );
       } else {
         target.x *= distance / desiredRadius;
         target.z *= distance / desiredRadius;
-        delta.set(target.x - offset.x, 0, target.z - offset.z);
+        delta.set(target.x - currentOffset.x, 0, target.z - currentOffset.z);
       }
     }
   }
@@ -509,6 +519,12 @@ export function supportRouteFootContacts(
       Math.max(0, clearance) * ratio,
       weight,
     );
+    // Both geometry-refinement passes use the same original reach envelope.
+    // Rebasing it on the first solve spends that solve's knee-bend reserve;
+    // conditionally skipping the next pass instead introduces a pose step.
+    const reference = group.userData.bones[side + "Foot"]
+      ? footPosition(group, side)!
+      : footContactPosition(group, side)!;
     for (let iteration = 0; iteration < 2; iteration++) {
       const surface = sampleFootSurfaces(group)!;
       const delta =
@@ -526,7 +542,7 @@ export function supportRouteFootContacts(
             .multiply(group.scale)
             .applyQuaternion(group.quaternion),
         );
-      const result = correctFootContact(
+      correctFootContact(
         group,
         side,
         desired,
@@ -534,10 +550,9 @@ export function supportRouteFootContacts(
         sourceLegHeight * ratio * group.scale.y * 0.1,
         endpoint,
         true,
+        undefined,
+        reference,
       );
-      // A second solve must not spend the knee-bend reserve retained by the
-      // first. Iteration is only useful for nonlinear sole geometry changes.
-      if (result && result.reachLimited > 1e-7) break;
     }
   }
 }

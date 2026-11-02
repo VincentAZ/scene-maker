@@ -201,3 +201,9 @@ prevent automatic composition. The transfer report distinguishes composed
 channels from direct matches and unsupported channels. Combining two source
 segments cannot reproduce their independent skin deformation on a one-joint
 receiver. Neck, wrist, toe and other unsupported details remain disclosed.
+
+Ground support retains the original leg reach envelope through both sole-geometry
+refinement passes. Each pass keeps its own correction allowance. This avoids a
+threshold-dependent extra leg solve while retaining knee bend; it does not alter
+the capture, its cadence, or the route. Explicit held endings still require a
+separate natural-arrival solution.

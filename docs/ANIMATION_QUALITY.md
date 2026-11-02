@@ -4602,3 +4602,29 @@ channels are disclosed, and no compatible standing take means a safe frozen
 wait rather than an invented idle performance. Perceptual feedback on the
 provided videos is still welcome; arbitrary unseen rigs are not certified by
 these representative cases.
+
+### Captured curved-walk ground refinement (2026-11-01)
+
+Ground support had an iteration-count discontinuity: a tiny reach-limit result
+could suppress the second vertical leg solve. Both passes now retain the original
+reach envelope while keeping separate correction budgets. Real Pirate Male/Female
+regressions catch the nearby knee step at two-microsecond intervals and reverse
+seeks. Scaled synthetic fixtures verify knee reserve, foot orientation, bone
+lengths, and reachable corrections requiring both passes.
+
+The final 140-case straight/curved walking/running comparison covers 23,870 full
+motion timestamps. Route position and source clock are unchanged; repeat position,
+rotation and sampled skin checks pass. Maximum finite-difference velocity residual
+falls from 1.631317 to 0.027001 m/s. Some knees change away from the repeat: up to
+33.797 mm where a formerly skipped second solve now completes more of the ground
+correction. Party Woman retains more knee bend (up to 20.685 mm knee change) instead
+of spending its reserve twice. These are intentional pose changes, not an assertion
+that every pose is identical.
+
+Normal-speed before/after comparisons for Pirate, Casual Bald and Party Woman,
+full reports, and diagnostic traces are retained under the ignored
+`.data/natural-motion-investigation/pirate-curves/` archive. Curved-route GLB reload
+matches app joints/skin within 0.044 mm across 457 samples. A rejected implementation
+that inadvertently shared the correction budget across passes is isolated under
+`rejected-distance-budget/`; its reports are not final. This milestone fixes contact
+continuity; natural source quality and complete arrival/wait behavior remain open.

@@ -33,7 +33,7 @@ numerical tests presented as visual proof.
   user project, not a disposable fixture. Do not overwrite it or its source data
   in `/tmp/scene-animation-review/astra-data`.
 - This worktree's disposable copy is `/tmp/scene-natural-motion/data`.
-  Private API is 4413, latest Vite 4571, owned headless Chrome 9451. Confirm availability
+  Private API is 4413, latest Vite 4581, owned headless Chrome 9451. Confirm availability
   before use. The API startup log incorrectly prints 4311 regardless of PORT;
   inspect the listening socket instead of trusting that message.
 - Vite uses `test-results/natural.config.ts`, with HMR disabled. Start a fresh
@@ -1189,3 +1189,89 @@ isolated production build (`/tmp/scene-natural-motion/running-final-build`) and
 whitespace checks passed. Existing SDK schema compatibility and build chunk-size
 warnings remain. Final render/UI runtime is4574; the frozen previous-code runtime
 is4575. The goal is still active; these checks close this implementation milestone.
+
+## Curved walking contact continuity (2026-11-01, after faaf5a1)
+
+This turn is **progress**, not natural-animation completion. The remaining
+Pirate velocity mismatch came from a discontinuous ground-support iteration
+count, not a bad loop cut or a collinear knee pole. Natural arrivals, waits,
+source diversity and unsupported transfer channels remain unfinished.
+
+- `supportRouteFootContacts` previously stopped after its first vertical solve
+  when `reachLimited > 1e-7`. Crossing that threshold could add/remove the next
+  solve. At the first curved walking repeat plus about .0002 seconds, this
+  produced a roughly .3mm knee step on both Pirate bodies. The earlier 1.63m/s
+  residual at h=.0001 straddled this nearby event; it was not an exact-wrap
+  derivative. A 2-microsecond dense sample exposed 160.43/155.02m/s spikes.
+- Both vertical passes now use the original reach envelope and knee-bend reserve.
+  `correctFootContact` accepts a separate optional `reachReference`; the existing
+  reference and each pass's distance budget keep their previous meaning. The
+  reach-limit branch is removed. No source, route, clock, bone length, quality
+  threshold, or provider-specific condition changed.
+- Rejected intermediate implementation reused `referencePoint` for both meanings.
+  It accidentally made the per-pass distance allowance a shared total allowance,
+  blocking Party Woman's second correction and changing one knee by 71.7 mm. The
+  refined implementation separates these two references. Do not use reports in
+  `rejected-distance-budget/` as final evidence.
+- Final full-motion comparison against frozen faaf5a1: 140 cases, 23,870 timestamps,
+  all bone positions, same actual three-cycle straight/curved paths as last turn.
+  Planar group position and source clock are identical. Minimum sole clearance
+  is numerical noise (-8.15e-10m). Maximum changed joint is 33.797 mm on Casual Bald;
+  maximum Party knee change 20.685 mm. These are NOT zero-change claims: a second
+  solve now lowers Casual's ankle another 13.594 mm where the old branch skipped
+  it, while Party's second solve retains the initial knee reserve instead of
+  consuming it. Private IK traces establish both causes.
+- 140-case repeat position/rotation/skin checks still pass. Maximum finite-h
+  velocity residual falls from 1.631317 to 0.027001 m/s. Dense real shipped-asset
+  regressions on both Pirate bodies fail the baseline and pass the fix, including
+  reverse-seek identity. Six scale-parameterized synthetic cases cover retained
+  knee reserve and completing a reachable correction larger than one pass's
+  allowance; existing geometry/orientation/contact tests remain intact.
+- Final normal-speed comparisons: `review/pirate-curve-before-after-1x.mp4`,
+  `casual-review/casual-ground-before-after-1x.mp4`,
+  `party-review/party-ground-before-after-1x.mp4`. Each is 3.65 seconds at 30 fps,
+  frozen faaf5a1 left/live final code right. Source phase, route and cadence match.
+  Explicit held endings remain visible; these are not natural-arrival proof.
+  Representative whole-body frames inspected, with no pose collapse visible.
+- Final actual curved-route export: 457 samples across 3.65 s, 31 bone/mesh nodes,
+  12 vertices/mesh, 1,882,780-byte GLB; max joint .043592 mm/max skin .042832 mm on reload.
+  120 Hz samples include repeat and clip-boundary neighbours. Export code unchanged.
+
+Reproduction/state:
+
+- Private API 4413 and owned Chrome 9451 unchanged. Final uninstrumented Vite 4581
+  PID 2750454. Frozen faaf5a1 Vite 4577 PID 2744616 uses the pre-transform in
+  `pirate-before.config.ts`; old Vite ports alone are NOT frozen (HMR is disabled).
+  Current IK diagnostic Vite 4582 uses `pirate-diagnostic.config.ts`; ports 4576/4580
+  can serve cached intermediate modules and must not be used as final evidence.
+  Revalidate every PID/cwd before lifecycle operations.
+- Work `/tmp/scene-natural-motion/pirate-curves`; durable ignored archive
+  `.data/natural-motion-investigation/pirate-curves/`. Drivers include
+  `pirate-curve-diagnostic.mjs`, `pirate-full-contact-audit.mjs`,
+  `pirate-curve-{project,review,export,ui}.mjs`, and Party/Casual ground traces and
+  normal-speed renderers. Frozen before files and final after files retained.
+  Private Party Woman/Dummy assets are not published or copied into the archive.
+- Private saved projects `captured-pirate-curve-review`,
+  `captured-casual-ground-review`, `captured-party-ground-review`. Pirate uses
+  shipped assets only, a three-stride curved walking path, collisions=true,
+  and an explicit held ending. Party/Casual are straight diagnostic fixtures.
+- Invalid first Casual fixture attempt duplicated a bundled asset in customAssets;
+  validation rejected it before saving. Corrected fixture uses bundled asset ID.
+
+Next: move back to natural gait-to-stop/standing joins using the existing captured
+arrival planner. This small numerical contact fix does not settle the user's
+rejection of the original performances, broader provider detail transfer, natural
+starts, running stops, long waits, collision recovery, or complete export history.
+
+Final checks: **1,119 tests / 97 files passed**, TypeScript, isolated build at
+`/tmp/scene-natural-motion/pirate-final-build`, formatting and diff checks.
+Existing SDK schema-compatibility and bundle-size advisories remain. Run browser
+drivers with `FABLE_APP=http://127.0.0.1:4581`; the shared `waitReady` checks this
+origin even when an explicit openApp URL is supplied. An initial UI probe omitted
+that environment override and timed out on the origin guard before interaction.
+
+Final real UI check: saved Pirate fixture loads, Play/Pause responds, and scene
+content is unchanged (opening/recovery can increment only the save revision).
+No JS/HTTP errors; software-WebGL advisory remains. The six-channel transfer
+warning is still visible and remains a real limitation. `actual-ui.json` and
+`actual-playback.png` record this check. No protected workspace/service changed.

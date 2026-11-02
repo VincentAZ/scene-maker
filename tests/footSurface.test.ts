@@ -428,6 +428,105 @@ describe("geometry-based foot clearance", () => {
     ).toEqual(pose);
   });
   it.each([0.1, 1, 4])(
+    "allows ground refinement to finish a reachable correction across both passes at scale %s",
+    (scale) => {
+      const f = rig();
+      useShoeGeometryOnly(f);
+      f.group.scale.setScalar(scale);
+      for (const side of ["left", "right"]) {
+        f.bones[side + "Leg"].rotation.x = 0.9;
+        f.bones[side + "Shin"].rotation.x = -1.8;
+        f.bones[side + "Foot"].rotation.x = 0.9;
+      }
+      const surface = sampleFootSurfaces(f.group)!;
+      // A reachable 12cm correction needs more than one 7.5cm pass. The
+      // shared reach envelope must not also become a shared per-pass budget.
+      f.group.position.y = (0.12 - surface.left + surface.bindFloor) * scale;
+      const foot = footPosition(f.group, "left")!;
+      supportRouteFootContacts(
+        f.group,
+        new T.Vector3(),
+        {
+          left: surface.bindFloor,
+          right: surface.bindFloor,
+          bindFloor: surface.bindFloor,
+        },
+        1,
+        0.75,
+      );
+      const after = sampleFootSurfaces(f.group)!;
+      expect(
+        Math.abs(after.left - after.bindFloor + f.group.position.y / scale),
+      ).toBeLessThan(1e-8);
+      expect(
+        Math.abs(after.right - after.bindFloor + f.group.position.y / scale),
+      ).toBeLessThan(1e-8);
+      const placed = footPosition(f.group, "left")!;
+      expect(foot.y - placed.y).toBeCloseTo(0.12 * scale, 7);
+      expect(Math.hypot(foot.x - placed.x, foot.z - placed.z)).toBeLessThan(
+        1e-8,
+      );
+    },
+  );
+  it.each([0.1, 1, 4])(
+    "retains knee bend when ground support refines an unreachable sole target at scale %s",
+    (scale) => {
+      const f = rig();
+      useShoeGeometryOnly(f);
+      f.group.scale.setScalar(scale);
+      f.group.position.set(0.4, 0.15 * scale, -0.2);
+      f.group.rotation.y = 0.7;
+      for (const side of ["left", "right"]) {
+        f.bones[side + "Leg"].rotation.x = 0.3;
+        f.bones[side + "Shin"].rotation.x = -0.6;
+        f.bones[side + "Foot"].rotation.x = 0.3;
+      }
+      f.group.updateMatrixWorld(true);
+      const point = (name: string) =>
+        f.bones[name].getWorldPosition(new T.Vector3());
+      const hip = point("leftLeg"),
+        knee = point("leftShin"),
+        foot = point("leftFoot");
+      const length = hip.distanceTo(knee) + knee.distanceTo(foot);
+      const reserve = Math.min(
+        length * 0.005,
+        (length - hip.distanceTo(foot)) * 0.1,
+      );
+      const rotation = f.bones.leftFoot.getWorldQuaternion(new T.Quaternion());
+      const surface = sampleFootSurfaces(f.group)!;
+      supportRouteFootContacts(
+        f.group,
+        new T.Vector3(0.4, 0, -0.2),
+        {
+          left: surface.bindFloor,
+          right: surface.bindFloor,
+          bindFloor: surface.bindFloor,
+        },
+        1,
+        0.75,
+      );
+      const after = point("leftFoot");
+      expect(hip.distanceTo(after)).toBeLessThanOrEqual(
+        length - reserve + 1e-8,
+      );
+      expect(after.y).toBeLessThan(foot.y);
+      expect(Math.hypot(after.x - foot.x, after.z - foot.z)).toBeLessThan(1e-8);
+      expect(
+        f.bones.leftFoot
+          .getWorldQuaternion(new T.Quaternion())
+          .angleTo(rotation),
+      ).toBeLessThan(1e-7);
+      expect(hip.distanceTo(point("leftShin"))).toBeCloseTo(
+        hip.distanceTo(knee),
+        8,
+      );
+      expect(point("leftShin").distanceTo(after)).toBeCloseTo(
+        knee.distanceTo(foot),
+        8,
+      );
+    },
+  );
+  it.each([0.1, 1, 4])(
     "keeps small ground-support changes continuous at scale %s",
     (scale) => {
       for (const clearance of [0.5e-6, 1e-6, 1.5e-6]) {

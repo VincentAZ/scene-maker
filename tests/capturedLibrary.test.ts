@@ -31,6 +31,7 @@ import {
   studioLibraryCommands,
 } from "../shared/studioLibrary";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
+import { compilePath } from "../shared/path";
 
 async function load(asset: Asset) {
   const bytes = await fs.readFile("public" + asset.url);
@@ -40,6 +41,94 @@ async function load(asset: Asset) {
   );
   return { bytes, gltf, group: prepareImportedAsset(asset, gltf) };
 }
+
+it.each(["quaternius-pirate-male", "quaternius-pirate-female"])(
+  "keeps the supported knee continuous near a curved captured repeat on %s",
+  async (receiverId) => {
+    const { capturedRouteGaits } = await import("../shared/motionLibrary");
+    const gait = capturedRouteGaits.find((m) => m.animationName === "35_01")!;
+    const asset = capturedMotionSources.find(
+      (a) => a.id === gait.sourceAssetId,
+    )!;
+    const { group: source, gltf } = await load(asset);
+    const target = (
+      await load(libraryCharacters.find((a) => a.id === receiverId)!)
+    ).group;
+    try {
+      setMotionSources(target, new Map([[asset.id, source]]));
+      const profile = locomotionProfile(
+        source,
+        gltf.animations[0],
+        gait.path!.sourceRange,
+      )!;
+      const scene = starterScene(),
+        actor = scene.entities[0];
+      scene.entities = [actor];
+      scene.animationCollisions = false;
+      actor.assetId = receiverId;
+      actor.position = [0, 0, 0];
+      actor.rotation = 0;
+      actor.scale = 1;
+      const initial = {
+        ...gait.path!,
+        smooth: true,
+        points: [
+          [0, 0, 0],
+          [0.2, 0, 1.6],
+          [1.2, 0, 3],
+          [2.8, 0, 3.6],
+          [4.2, 0, 2.6],
+          [4.8, 0, 1],
+        ] as [number, number, number][],
+      };
+      const length = profile.distance * locomotionScale(source, target) * 3;
+      const scale = length / compilePath(initial).length;
+      const path = {
+        ...initial,
+        points: initial.points.map(
+          (p) => p.map((v) => v * scale) as [number, number, number],
+        ),
+      };
+      expect(compilePath(path).length).toBeCloseTo(length, 8);
+      scene.customMotions = [{ ...gait, id: "curve", path }];
+      actor.clips = [
+        {
+          id: "curve",
+          motionId: "curve",
+          duration: profile.duration * 3,
+          playbackRate: 1,
+        },
+      ];
+      const knee = target.userData.bones.rightShin as T.Bone;
+      const sample = (time: number) => {
+        applyAnimatedEntityPose(target, actor, scene, time);
+        target.updateMatrixWorld(true);
+        return knee.getWorldPosition(new T.Vector3());
+      };
+      // The discontinuity lies just after the repeat, where a second ground
+      // solve used to switch off. Checking only the exact wrap misses it.
+      const dt = 2e-6,
+        begin = profile.duration - 0.0005;
+      let previous = sample(begin),
+        speed = 0;
+      for (let i = 1; i <= 500; i++) {
+        const next = sample(begin + i * dt);
+        speed = Math.max(speed, previous.distanceTo(next) / dt);
+        previous = next;
+      }
+      expect(speed).toBeLessThan(5);
+      const expected = sample(profile.duration + 0.0002);
+      sample(profile.duration * 2 + 0.3);
+      sample(0.1);
+      expect(
+        sample(profile.duration + 0.0002).distanceTo(expected),
+      ).toBeLessThan(1e-9);
+    } finally {
+      disposeObject(target);
+      disposeObject(source);
+    }
+  },
+);
 it.each(capturedMotions)(
   "loads and previews $name from the shipped original capture",
   async (motion) => {
