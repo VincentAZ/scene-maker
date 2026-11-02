@@ -33,7 +33,7 @@ numerical tests presented as visual proof.
   user project, not a disposable fixture. Do not overwrite it or its source data
   in `/tmp/scene-animation-review/astra-data`.
 - This worktree's disposable copy is `/tmp/scene-natural-motion/data`.
-  Private API is 4413, latest Vite 4589, owned headless Chrome 9451. Confirm availability
+  Private API is 4413, latest Vite 4592, owned headless Chrome 9451. Confirm availability
   before use. The API startup log incorrectly prints 4311 regardless of PORT;
   inspect the listening socket instead of trusting that message.
 - Vite uses `test-results/natural.config.ts`, with HMR disabled. Start a fresh
@@ -1405,3 +1405,120 @@ Reproduction and checkpoint:
 Next: resolve the measured Casual split-frame translation defect, then return to
 source/receiver normal-speed comparisons and compatible starts/stops. Preserve
 this transition fidelity while improving the remaining route/contact handoff.
+
+## Complete receiving frame through source cuts (2026-11-01, after dd2ba3f)
+
+Previous turn: **progress**. This turn also makes progress, but the broad
+natural-animation goal is still **not complete**. It resolves the measured
+Casual split-frame defect and establishes a separate, higher-priority playback
+clock defect in the actual Original performance UI (details below).
+
+- `applyTransferredClip` applied the selected source frame's inverse heading to
+  mapped joint orientations and travel, while leaving the receiving bind frame
+  in its old orientation. Off-center pelvis origins, ancestor controls and rigid
+  attachments consequently changed placement after a source cut. Correct joint
+  rotations alone did not establish pose/material-point equivalence.
+- `src/rig.ts` now rebases the complete imported receiving hierarchy before the
+  detailed joint solve. It rotates only immediate children present in the saved
+  bind hierarchy; application overlays added later are untouched. Existing bind
+  restoration prevents accumulation. No provider-name condition, source keys,
+  cadence, route defaults, thresholds or native playback path was changed.
+- A real 69_06 → Casual Female regression compares every bone and EVERY skin
+  vertex around/after a source split, including reverse seeking, actor rotation,
+  elevated placement and scale. A synthetic regression uses a translated,
+  rotated/scaled imported parent, different bind axes, rigid attachment and an
+  excluded application overlay. Both fail frozen dd2ba3f and pass the correction.
+  The real test's first version compared unnormalized world quaternions; even
+  identical scaled matrices produced a false angular residual. Normalizing that
+  comparison exposed the actual baseline position failure (1.750 mm already at
+  its early join sample). The synthetic baseline failure is 605.519 mm.
+- Final 140-case split matrix: four takes (35_01,69_06,82_14,private ActorCore
+  Thoughtful walk) × original/Party Woman/32 bundled characters/private Dummy,
+  thirteen join-adjacent and reverse samples, all bones and twelve vertices per
+  mesh (the ActorCore original/Dummy case is duplicated). Max joint difference .000035802 mm, skin .000025641 mm, angle 5.961e-8 rad.
+  No cases exceed the unchanged 1e-6 m/rad comparison limits. Casual's previous
+  17.526811 mm skin /102.981295 mm weighted-joint discrepancy is resolved.
+- Before/after original-performance audit: 26 cases ×39 timestamps covering all
+  eight shipped CMU sources and private ActorCore Thoughtful walk. ALL nine
+  original/native performances are exactly unchanged. Party joint positions
+  change only at numerical scale (<.000069 mm); its unmapped ancestor/control
+  orientations now follow the source frame. Casual body positions legitimately
+  change by up to16.179 mm for the standing capture; unweighted helper points
+  move up to840.097 mm. Do not claim all receiving transforms remain unchanged.
+- Walking/running route audit: 140 cases,23,870 full-motion timestamps, same
+  straight/curved three-stride paths. Final minimum clearance -9.61e-10 m;
+  source clocks identical. Max repeat joint/skin differences .008496/.008104 mm,
+  angle .000028998 rad, finite-h velocity residual .027001 m/s, no seam failures.
+  Group planar positions change by up to .765412 mm as `world.ts` aligns the
+  corrected pelvis to the route; this is not changed source timing or route
+  geometry. All-bone differences up to39.015 mm include controls. Final guarded
+  implementation's complete route report equals the first corrected report.
+- The earlier experimental82_14 range1.2–2.375 still fails all four tested Casual
+  arrival requests (6 m straight/detours and3 m). This frame correction does not
+  solve the gait/stop phase compatibility problem; no preset was promoted.
+
+Visible/production evidence:
+
+- `review/turning-capture-before-after-1x.mp4`: source seconds3–9, six seconds at
+  30 fps, frozen dd2ba3f left/final code right. Both panels use the SAME camera
+  position from the corrected reference body, avoiding independent tracking that
+  would hide the position difference. Same source phase and source cut at4.5 s.
+  Full-body frames at4.6/5.0 s inspected. This is split fidelity evidence, not a
+  claim that stylized proportions or all original actions are naturally accepted.
+- Saved private `captured-transfer-frame-review` uses only shipped assets and
+  two clips from69_06 (source0–4.5,4.5–10), native rate, explicit ending hold.
+  Final UI seeks to4.35 and plays across the cut to4.65; saved scene content is
+  unchanged and no JS/HTTP errors appear. Software-WebGL advisory remains.
+- Actual full10.3-second scene export/reload:1,275 timestamps including boundary
+  neighbours,29 bone/mesh nodes,12vertices/mesh,2,539,740-byte GLB. Maximum joint
+  error .053639 mm and skin .053634 mm, worst just before the cut at4.465667 s.
+  Export implementation unchanged.
+- Final70-second standing wait/recovery:4,309timestamps/all101bones, history
+  component discrepancy3.445464e-8; endpoint error6.00545mm,no recovery issues.
+  Saved disposable project is `transfer-frame-standing-wait-review`.
+- Final suite **1,128 tests/97 files passed**, TypeScript, formatting/diff checks,
+  isolated build `/tmp/scene-natural-motion/transfer-frame-build`. An earlier
+  full run during concurrent render/audit load hit the existing5s geometry
+  conversation test timeout. Final run uses `--maxWorkers=2` without competing
+  rendering; timeout and assertions unchanged. Dependency annotation, SDK schema
+  compatibility, software-WebGL and bundle-size advisories remain.
+
+New urgent evidence: the actual preview does not keep 1× at low frame rates.
+
+- `src/Viewport.tsx` caps `dt` at .1 seconds before advancing the scene clock.
+  This is shared by ActionPreview and scene playback. Its loop also discards
+  overshoot by setting elapsed to0 when passing the loop duration.
+- `preview-clock-probe.mjs` opens the REAL Actions → Captured walk and turns →
+  Original performance UI, with a private-tab requestAnimationFrame wrapper
+  delaying callbacks200ms. No source/animation methods are replaced. The displayed
+  text still says “Original take … at1×. No transfer to another character.”
+- Measured3.0001 wall seconds advance1.4 source seconds (1.1→2.5), rate0.466651×.
+  `preview-clock.json`, `.log`, `.png` retain actual clocks and UI. The wrapper
+  exists only in its disposable CDP tab, which was closed; product code unchanged.
+- This directly affects the user's rejected original-preview workflow. It is a
+  stronger next priority than more source searches. Correct wall-time playback,
+  preserve loop remainder, and verify pause/resume/seek/planning ownership and
+  voice timing. Do not blindly remove the cap without checking dialogue: main
+  Viewport passes `voice.advance`, and speech/audio transports can intentionally
+  gate time while a line plays. Large deltas can cross a transcript boundary.
+  Treat this clock defect as verified and OPEN, not fixed by the frame correction.
+
+Reproduction/state:
+
+- Final Vite **4592**,PID2786630; frozen dd2ba3f Vite**4590**,PID2778331, uses
+  `transfer-frame-before.config.ts` to replace only rig.ts with the frozen file.
+  Vite4591 predates only the bound-hierarchy/overlay guard. API4413 had exited;
+  restarted the same private data directory, PID2779004. Owned Chrome9451 remains
+  on `/tmp/scene-natural-motion/chrome-transition-final`. Revalidate before use.
+- Work `/tmp/scene-natural-motion/transfer-frame`; durable ignored archive
+  `.data/natural-motion-investigation/transfer-frame/` contains reports, video,
+  UI captures, code snapshots and `transfer-frame-*`/clock-probe drivers. Large
+  JSON compressed; frame PNG sequences and licensed input GLBs omitted.
+- Drivers use FABLE_APP4592; renderer reuses saved frozen poses with
+  USE_SAVED_BEFORE=1. Frozen before file hash verified against dd2ba3f. No protected
+  original/dialogue workspace, user service or astra project was changed.
+
+Next: fix the confirmed low-frame-rate playback clock in the actual original
+preview and scene player. Then return to compatible natural starts/arrivals,
+running stops, remaining neck/wrist/toe composition and broad source quality.
+The user's complete natural-animation requirement remains active.

@@ -121,6 +121,63 @@ function fixture() {
   return { source, clip, scene, actor, target, sample };
 }
 describe("shared imported humanoid actions", () => {
+  it("rebases off-center receiving parents and rigid attachments through a source cut", () => {
+    const f = fixture(),
+      target = imported(false, -0.2);
+    target.body.position.set(0.3, 0.1, -0.25);
+    target.body.rotation.set(0.1, -0.3, 0.05);
+    target.body.scale.setScalar(0.8);
+    const attachment = new T.Mesh(new T.BoxGeometry(0.1, 0.2, 0.1));
+    attachment.position.set(0.5, 0.8, 0.2);
+    target.body.add(attachment);
+    configureImportedRig(target.group, target.body, []);
+    // An application overlay is not part of the imported bind hierarchy.
+    const overlay = new T.Object3D();
+    overlay.position.set(0.2, 2, 0.1);
+    target.group.add(overlay);
+    setMotionSources(target.group, new Map([["original", f.source.group]]));
+    const whole = {
+      ...f.actor,
+      clips: [
+        { id: "whole", motionId: "turn-wave", duration: 2, playbackRate: 1 },
+      ],
+    };
+    const split = {
+      ...f.actor,
+      clips: [
+        { id: "first", motionId: "turn-wave", duration: 1, playbackRate: 1 },
+        {
+          id: "second",
+          motionId: "turn-wave",
+          duration: 1,
+          sourceStart: 1,
+          playbackRate: 1,
+          transition: "smooth" as const,
+        },
+      ],
+    };
+    const nodes: T.Object3D[] = [...Object.values(target.bones), attachment];
+    const sample = (actor: typeof whole | typeof split, t: number) => {
+      applyAnimatedEntityPose(target.group, actor, f.scene, t);
+      target.group.updateMatrixWorld(true);
+      expect(overlay.position.toArray()).toEqual([0.2, 2, 0.1]);
+      expect(overlay.quaternion.toArray()).toEqual([0, 0, 0, 1]);
+      return nodes.map((n) => ({
+        p: world(n),
+        q: n.getWorldQuaternion(new T.Quaternion()).normalize(),
+        v: n.localToWorld(new T.Vector3(0.1, 0.2, -0.1)),
+      }));
+    };
+    for (const t of [0.5, 1, 1.001, 1.125, 1.249, 1.3, 1.7, 1.125]) {
+      const a = sample(whole, t),
+        b = sample(split, t);
+      a.forEach((pose, i) => {
+        expect(pose.p.distanceTo(b[i].p)).toBeLessThan(1e-6);
+        expect(pose.q.angleTo(b[i].q)).toBeLessThan(1e-6);
+        expect(pose.v.distanceTo(b[i].v)).toBeLessThan(1e-6);
+      });
+    }
+  });
   it("allows the same original action on another character and retains its source without a source actor", () => {
     const f = fixture();
     f.actor.clips = [];

@@ -4654,3 +4654,25 @@ Female retains a separate frame/attachment defect (up to 17.527 mm sampled skin)
 that still needs correction. Full suite: 1,126 tests across 97 files; tests support
 the fidelity claims but do not establish that the overall natural-motion goal is
 complete.
+
+### Receiving-frame fidelity through trimmed takes (2026-11-01)
+
+Shared playback now rebases the entire imported receiving bind hierarchy to the
+selected source frame before solving detailed joints. Rebasing only mapped
+orientations left off-center pelvis origins and ancestor controls in a different
+frame, damaging poses and skin when one original take was split into clips.
+Application overlays outside the saved bind hierarchy are excluded.
+
+A140-case source/receiver matrix now preserves the split performance within
+.000036mm on every sampled joint and .000026mm on sampled skin; the real Casual
+regression also checks every skin vertex. Native original performances are
+unchanged. The recorded full scene exports/reloads within .054mm. Normal-speed
+comparison and reproduction details are in the continuation brief and ignored
+`transfer-frame` evidence archive. This resolves the previously documented
+Casual split-frame discrepancy; it does not establish universal naturalness.
+
+The actual Original performance UI has a separate verified timing defect still
+open: Viewport's .1-second delta cap slows playback below10fps. A private-tab
+200ms frame-delay probe advanced1.4source seconds during3.0001wall seconds while
+the UI advertised1×. Correcting that clock, including loop and dialogue behavior,
+is the next priority. No clock implementation change is included in this fix.

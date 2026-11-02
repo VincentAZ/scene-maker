@@ -920,6 +920,18 @@ export function applyTransferredClip(
     -profile.startHeading,
   );
   for (const name of boneNames) rotations[name]!.premultiply(initialTurn);
+  if (targetData) {
+    // Rebase the complete receiving frame, including the hip's bind offset,
+    // ancestor controls and rigid attachments. Rebasing only mapped joint
+    // orientations changes the shape/placement when a take is trimmed after
+    // turning, even if its source samples continue without interruption.
+    for (const { object } of targetData.bind) {
+      if (object.parent !== target) continue;
+      object.position.applyQuaternion(initialTurn);
+      object.quaternion.premultiply(initialTurn);
+    }
+    target.updateWorldMatrix(true, true);
+  }
   const offset = source
     .worldToLocal(position(source.userData.bones.hips))
     .sub(data.bindHips)

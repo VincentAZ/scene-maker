@@ -162,6 +162,95 @@ it.each(["cmu-capture-82-14", "quaternius-casual-female"])(
   },
 );
 
+it("preserves the complete receiving rig and skin when a turning capture is split", async () => {
+  const asset = capturedMotionSources.find(
+    (a) => a.id === "cmu-capture-69-06",
+  )!;
+  const { group: source, gltf } = await load(asset);
+  const { group: target } = await load(
+    libraryCharacters.find((a) => a.id === "quaternius-casual-female")!,
+  );
+  try {
+    setMotionSources(target, new Map([[asset.id, source]]));
+    const scene = starterScene(),
+      actor = scene.entities[0],
+      take = gltf.animations[0];
+    scene.entities = [actor];
+    actor.assetId = "quaternius-casual-female";
+    actor.position = [0.4, 0.7, -0.5];
+    actor.rotation = 0.4;
+    actor.scale = 1.3;
+    const motion = {
+      ...capturedMotions.find((m) => m.animationName === "69_06")!,
+      id: "performance",
+    };
+    scene.customMotions = [motion];
+    const cut = 4.5;
+    const whole = {
+      ...actor,
+      clips: [
+        {
+          id: "whole",
+          motionId: motion.id,
+          duration: take.duration,
+          playbackRate: 1,
+        },
+      ],
+    };
+    const split = {
+      ...actor,
+      clips: [
+        { id: "first", motionId: motion.id, duration: cut, playbackRate: 1 },
+        {
+          id: "second",
+          motionId: motion.id,
+          duration: take.duration - cut,
+          sourceStart: cut,
+          playbackRate: 1,
+          transition: "smooth" as const,
+        },
+      ],
+    };
+    const bones: T.Bone[] = [],
+      meshes: T.Mesh[] = [];
+    target.traverse((n) => {
+      if (n instanceof T.Bone) bones.push(n);
+      if (n instanceof T.Mesh) meshes.push(n);
+    });
+    const sample = (edited: typeof split | typeof whole, time: number) => {
+      applyAnimatedEntityPose(target, edited, scene, time);
+      target.updateMatrixWorld(true);
+      return {
+        joints: bones.map((b) => ({
+          p: b.getWorldPosition(new T.Vector3()),
+          q: b.getWorldQuaternion(new T.Quaternion()).normalize(),
+        })),
+        vertices: meshes.flatMap((m) =>
+          Array.from({ length: m.geometry.attributes.position.count }, (_, i) =>
+            m.localToWorld(m.getVertexPosition(i, new T.Vector3())),
+          ),
+        ),
+      };
+    };
+    for (const time of [4.49, 4.5, 4.501, 4.625, 4.749, 4.8, 6, 4.6]) {
+      const a = sample(whole, time),
+        b = sample(split, time);
+      expect(
+        Math.max(...a.joints.map((j, i) => j.p.distanceTo(b.joints[i].p))),
+      ).toBeLessThan(1e-6);
+      expect(
+        Math.max(...a.joints.map((j, i) => j.q.angleTo(b.joints[i].q))),
+      ).toBeLessThan(1e-6);
+      expect(
+        Math.max(...a.vertices.map((v, i) => v.distanceTo(b.vertices[i]))),
+      ).toBeLessThan(1e-6);
+    }
+  } finally {
+    disposeObject(target);
+    disposeObject(source);
+  }
+});
+
 it.each(["35_01", "82_14"])(
   "preserves the actual %s capture across consecutive source cuts",
   async (trial) => {
