@@ -406,3 +406,26 @@ any skin-weighted bone after transfer, vs the identity re-import):
 (Before this session the same receiver variants measured 21° palm roll, 40° finger
 curl, 20° feet; renamed sources/receivers lost torso segments, twist, finger and
 toe animation.) Raw: `claude-session/matrix/{receiver,source}.{json,log}`.
+
+## D14 — Correction, structural tie-break, rejected residual pairing (12:12–12:35)
+
+Correction to D13: the 53–85° "elbow share bone" errors on renamed rigs are on
+bones with ZERO skin weight on both Character Creator rigs (Party, Dummy M) — not
+visible. The receiver harness counted unweighted bones; it now counts only
+skin-weighted ones (the source harness already did). The visible residual was
+`ForearmTwist01` (59 weighted vertices on Party; 3–4.5°), declined because a leaf
+share bone sits at exactly the same place.
+
+Decision: break such ties by structure — among equally placed helpers, pair the
+one whose own sub-hierarchy size matches (twist 01 carries twist 02; the share
+bone is a leaf). Renamed receivers now: all arm/leg twist and share bones ≈0.1°;
+remaining visible residuals eyes 10.4°/5.5° and rib twist 2.6° (name-matched
+facial/torso helpers). Renamed source: max 0.75°. New test fails on the previous
+code. Suite 1,189; gates on Vite 4659 identical to D11.
+
+Rejected: generic "residual child" pairing (unpaired children of paired joints by
+normalized bind offset, mutual unique nearest within 3%). It broke five existing
+tests that encode deliberate policy — a disabled chest role must not be re-enabled
+by topology; renamed facial/control joints are REPORTED as unsupported rather than
+silently paired. Overriding that for a 5–10° eye residual is not justified.
+Source archived at `.data/natural-motion-investigation/claude-session/rejected/residualPairs.ts`.

@@ -101,20 +101,36 @@ export function limbHelperPairs<J extends Joint>(
         // receiver without skin has nothing visible to protect).
         (j) => !usedTarget.has(j) && (!weighted.size || weighted.has(j.bone)),
       );
-    const nearest = <X extends { at: number }>(at: number, list: X[]) => {
+    // Number of bones in a helper's own sub-hierarchy: a twist helper that
+    // carries the next twist segment differs from a leaf share bone at the
+    // same place, which breaks ties between equally placed helpers.
+    const size = (bone: T.Bone) => {
+      let n = 0;
+      bone.traverse((c) => {
+        if (c instanceof T.Bone) n++;
+      });
+      return n;
+    };
+    const nearest = <X extends { at: number; joint: J }>(
+      at: number,
+      list: X[],
+      like: J,
+    ) => {
       const sorted = [...list].sort(
         (p, q) => Math.abs(p.at - at) - Math.abs(q.at - at),
       );
-      const best = sorted[0],
-        second = sorted[1];
+      const best = sorted[0];
       if (!best || Math.abs(best.at - at) > 0.2) return undefined;
-      if (second && Math.abs(second.at - at) - Math.abs(best.at - at) < 0.1)
-        return undefined;
-      return best;
+      const close = sorted.filter(
+        (c) => Math.abs(c.at - at) - Math.abs(best.at - at) < 0.1,
+      );
+      if (close.length === 1) return best;
+      const same = close.filter((c) => size(c.joint.bone) === size(like.bone));
+      return same.length === 1 ? same[0] : undefined;
     };
     for (const t of targets) {
-      const s = nearest(t.at, sources);
-      if (s && nearest(s.at, targets) === t)
+      const s = nearest(t.at, sources, t.joint);
+      if (s && nearest(s.at, targets, s.joint) === t)
         result.push({ source: s.joint, target: t.joint });
     }
   }

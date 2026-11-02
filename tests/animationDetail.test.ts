@@ -307,6 +307,77 @@ function expectSnapshot(f: Fixture, expected: ReturnType<typeof snapshot>) {
 }
 
 describe("detailed imported animation runtime", () => {
+  it("tells a twist helper from a share bone at the same place by structure", () => {
+    // Character Creator places a leaf share bone exactly where the first
+    // forearm twist bone (which carries the second) sits. Renamed, only their
+    // structure distinguishes them.
+    const build = () => {
+      const f = fixture();
+      const twist = f.joints.CC_Base_L_ForearmTwist01;
+      const share = new T.Bone();
+      share.name = "CC_Base_L_ForearmShare";
+      twist.parent!.add(share);
+      share.position.copy(twist.position);
+      const next = new T.Bone();
+      next.name = "CC_Base_L_ForearmTwist02";
+      next.position.set(0, 0, 0);
+      twist.add(next);
+      next.position.copy(
+        twist.worldToLocal(
+          point(f.joints.CC_Base_L_Hand).lerp(point(twist), 0.5),
+        ),
+      );
+      f.group.updateWorldMatrix(true, true);
+      f.joints.CC_Base_L_ForearmShare = share;
+      f.joints.CC_Base_L_ForearmTwist02 = next;
+      f.bind.CC_Base_L_ForearmShare = {
+        position: share.position.clone(),
+        quaternion: share.quaternion.clone(),
+        world: orientation(share),
+      };
+      f.bind.CC_Base_L_ForearmTwist02 = {
+        position: next.position.clone(),
+        quaternion: next.quaternion.clone(),
+        world: orientation(next),
+      };
+      return f;
+    };
+    const original = build(),
+      renamed = build(),
+      direct = build(),
+      viaRenamed = build();
+    renamed.joints.CC_Base_L_ForearmTwist01.name = "aux_a";
+    renamed.joints.CC_Base_L_ForearmShare.name = "aux_b";
+    renamed.joints.CC_Base_L_ForearmTwist02.name = "aux_c";
+    const clip = (f: Fixture) =>
+      new T.AnimationClip("Forearm twist", duration, [
+        new T.QuaternionKeyframeTrack(
+          `${f.joints.CC_Base_L_ForearmTwist01.name}.quaternion`,
+          [0, duration],
+          [
+            ...f.bind.CC_Base_L_ForearmTwist01.quaternion.toArray(),
+            ...f.bind.CC_Base_L_ForearmTwist01.quaternion
+              .clone()
+              .multiply(rotation(0.6, 0, 0))
+              .toArray(),
+          ],
+        ),
+      ]);
+    const a = clip(original),
+      b = clip(renamed);
+    original.configure([a]);
+    renamed.configure([b]);
+    direct.configure();
+    viaRenamed.configure();
+    schedule(direct, original, [a], true);
+    schedule(viaRenamed, renamed, [b], true);
+    for (const time of [0.4, 1.2, 2.1, 0.4]) {
+      direct.sample(time);
+      viaRenamed.sample(time);
+      expectPoseEqual(viaRenamed, direct);
+    }
+  });
+
   it("matches renamed fingers and toes by hand and foot layout", () => {
     // Same body; the source's fingers and toe carry another convention's
     // names (UE-style). Their animation must still reach the receiver.
