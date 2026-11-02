@@ -1522,3 +1522,83 @@ Next: fix the confirmed low-frame-rate playback clock in the actual original
 preview and scene player. Then return to compatible natural starts/arrivals,
 running stops, remaining neck/wrist/toe composition and broad source quality.
 The user's complete natural-animation requirement remains active.
+
+## Actual preview clock and framing correction (2026-11-01, after af59daf)
+
+The preceding low-frame-rate clock defect is now corrected. The overall natural
+animation goal remains OPEN; this is playback fidelity and usable preview framing,
+not evidence that every source action or recipient looks human.
+
+Production changes:
+
+- `createPlaybackClock` advances by real elapsed time without the .1-second cap,
+  retaining loop overshoot. Pauses, route-planning pauses, dragging and explicit
+  seeks do not charge their waiting time to the next frame. Audio may still
+  deliberately hold or retime the scene. Exact endings fire once per playback.
+- `usePlayhead` separates explicit seek generations from renderer publications.
+  Delayed React echoes cannot rewind playback or overwrite a newer seek, including
+  Restart to a timestamp that was recently published. Both App and ActionPreview
+  use the same ownership rule. Drag blocking also pauses/resumes the audio owner.
+- VoiceTransport stops a large step at the first actually audible dialogue entry,
+  rather than skipping an entire line. A newly started audio/speech request does
+  not inherit the preceding render gap as its timeout age. Muted/hidden lines and
+  the browser's no-voices fallback retain silent progression.
+- ActionPreview follows the performer's horizontal hip travel, retaining camera
+  orbit/zoom and leaving vertical rise/fall visible. The actual source previously
+  walked out of its preview window; custom diagnostic cameras had masked this.
+  The main editor camera and animation/export pose evaluation are unchanged.
+
+Actual UI evidence, all from disposable tabs on owned Chrome9451:
+
+- Frozen af59daf Vite4593 versus corrected Vite4597. A private-tab RAF wrapper
+  delays callbacks200ms without replacing animation methods. Matched steady
+  source-clock probes: before .489408x, corrected .999442x; unrestricted .997981x.
+- `review/actual-ui-before-after.mp4` records eight WALL seconds of Actions →
+  Captured walk and turns → Original performance. Both begin at source1s.
+  Before ends4.90s; corrected ends8.97s and remains fully in frame. The two views
+  intentionally show their respective production camera behavior. Artificially
+  slow rendering makes this timing evidence, not smooth-rendering evidence.
+- `review/native.mp4` records the actual Original Thoughtful walk source preview
+  without any RAF wrapper: eight wall seconds, source1→8.98s, source MotionDummy
+  mesh, no receiving retarget. The existing private project uses the previously
+  supplied ActorCore source; no licensed GLBs are copied into the evidence archive.
+- Videos are actual CDP screencast JPEGs resampled by their epoch timestamps at
+  30fps, holding the last captured image, without time stretching. Native capture
+  yielded136 frames over8s (maximum gap .0667s); do not call that native30fps.
+  Raw timestamp metadata and the recorder/encoder scripts are retained.
+- Final4597 real-UI control check: original .998768x, wrapping .999737x, recipient
+  1.002154x, main scene1.015562x. Pause remains4.49, restart0, source/recipient
+  switch preserves .63, scene rewind0; saved project content unchanged and no
+  JS/HTTP errors. Software-WebGL advisories remain. First visits to4596/4597
+  logged the existing missing favicon404; those earlier failures are retained.
+- Frozen voice regressions fail three cases before the correction. New tests
+  exercise render rates60/15/5/2Hz, loop remainder, stale publications, pause/drag,
+  exact ending/replay, audio holds, crossed lines, request age and no-voices mode.
+
+Reproduction and continuation:
+
+- Work/evidence `/tmp/scene-natural-motion/playback-clock`; durable ignored archive
+  `.data/natural-motion-investigation/playback-clock/`. Scripts are named
+  `playback-clock-*` under ignored test-results. FABLE_APP must point to4597.
+- Current candidate Vite4597 uses `test-results/natural.config.ts`, HMR disabled,
+  private API4413 → `/tmp/scene-natural-motion/data`. Frozen4593 replaces only the
+  six clock-related files with af59daf snapshots.4594–4596 are intermediate builds
+  and should not be used for final review. Revalidate services before use.
+- Main/dialogue workspaces, user services4311/4337 and the protected astra-long-wait
+  project are untouched. No default source/preset was changed in this correction.
+- Next: inspect the unrestricted native/recipient actual previews, then continue
+  compatible starts/arrivals, running stops, remaining neck/wrist/toe composition
+  and broad source quality. Correct time and visible framing resolve confirmed
+  damage, but do not settle the user's aesthetic rejection.
+
+Final validation: **1,141 tests across99files passed** with `--maxWorkers=2`,
+TypeScript passed, isolated production build passed at
+`/tmp/scene-natural-motion/playback-clock-build`. Existing dependency annotation,
+SDK schema compatibility, software-WebGL and bundle-size advisories remain.
+Final70-second standing wait/recovery on4597 also preserves all4,309sampled
+historical poses (maximum component difference3.445464e-8), reaches within
+6.00545mm of the requested destination, and reports no recovery issues. Disposable
+saved project: `playback-clock-standing-wait-review`. Candidate4597 PID2799457;
+frozen4593 PID2793580. Revalidate before use. The React best-practices skill was
+reviewed for stable callbacks, hook ownership and accessibility; no new global
+listeners or changed transport ARIA labels were introduced.

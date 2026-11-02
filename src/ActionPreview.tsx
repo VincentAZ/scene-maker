@@ -1,3 +1,4 @@
+import { usePlayhead } from "./usePlayhead";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Plus } from "lucide-react";
 import { resolveMotionSource, type Scene, type Motion } from "../shared/scene";
@@ -33,8 +34,13 @@ export function ActionPreview({
     [scene, motion, actorId, seatScale, view],
   );
   const viewport = useRef<ViewportHandle>(null);
-  const [time, setTime] = useState(0),
-    [playing, setPlaying] = useState(false),
+  const {
+    time,
+    seekVersion,
+    seek: setTime,
+    publish: publishTime,
+  } = usePlayhead();
+  const [playing, setPlaying] = useState(false),
     [ready, setReady] = useState(false),
     [error, setError] = useState(""),
     [warning, setWarning] = useState("");
@@ -114,12 +120,14 @@ export function ActionPreview({
             onSelect={ignore}
             time={time}
             playing={playing}
-            onTime={setTime}
+            onTime={publishTime}
+            seekVersion={seekVersion}
             onMove={ignore}
             onError={setError}
             onInteractionWarning={setWarning}
             move={false}
             loopDuration={rehearsal.total}
+            followActorId={rehearsal.actor.id}
           />
           {!ready && !error && (
             <span className="preview-loading" role="status">

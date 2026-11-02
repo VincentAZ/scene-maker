@@ -1,3 +1,4 @@
+import { usePlayhead } from "./usePlayhead";
 import { routeActiveDuration } from "../shared/clipTiming";
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
@@ -189,6 +190,12 @@ const versionSummary = (s: Scene) => {
   return `Revision ${s.revision} · ${s.entities.length} objects (${cast} characters) · ${actions} actions · ${s.transcript.length} dialogue lines`;
 };
 export default function App() {
+  const {
+    time,
+    seekVersion,
+    seek: setTime,
+    publish: publishTime,
+  } = usePlayhead();
   const [scene, setScene] = useState<Scene>(starterScene),
     [ready, setReady] = useState(false),
     [studioLibrary, setStudioLibrary] =
@@ -199,7 +206,6 @@ export default function App() {
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("All"),
     [playing, setPlayingState] = useState(false),
-    [time, setTime] = useState(0),
     [move, setMove] = useState(false),
     [transformMode, setTransformMode] = useState<
       "translate" | "rotate" | "scale"
@@ -2000,7 +2006,8 @@ export default function App() {
               onSelect={setSelected}
               time={time}
               playing={playing}
-              onTime={setTime}
+              onTime={publishTime}
+              seekVersion={seekVersion}
               onNavigationResolved={(expected, next) => {
                 if (sameContent(sceneRef.current) !== sameContent(expected))
                   return;

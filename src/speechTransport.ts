@@ -65,6 +65,8 @@ export class SpeechTransport {
       this.stop();
       const voices = this.synth.getVoices();
       if (!voices.length) return time + delta * options.rate;
+      // This request starts now; the preceding render gap is not its age.
+      delta = 0;
       const fraction = Math.max(
         0,
         (time - timing.start) / (timing.end - timing.start),

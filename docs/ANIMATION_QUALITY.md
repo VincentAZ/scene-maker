@@ -4676,3 +4676,20 @@ open: Viewport's .1-second delta cap slows playback below10fps. A private-tab
 200ms frame-delay probe advanced1.4source seconds during3.0001wall seconds while
 the UI advertised1×. Correcting that clock, including loop and dialogue behavior,
 is the next priority. No clock implementation change is included in this fix.
+
+### Actual preview timing and framing (2026-11-01)
+
+The clock defect documented above is now corrected: playback uses elapsed wall
+time, retains loop remainder, and treats explicit seeks separately from delayed
+React publications. Audio still owns intentional speech holds; large frame gaps
+cannot skip an audible line or instantly time out a newly started request.
+Action previews follow horizontal performer travel while preserving the chosen
+orbit/zoom and the performance's vertical motion.
+
+Actual UI captures compare frozen af59daf to corrected playback under200ms render
+delays: steady source rate improves from .4894x to .9994x. Unrestricted original
+playback measures .9980x. Eight-second timestamp-preserving UI videos, including
+an unrestricted imported original performance, are in the ignored `playback-clock`
+evidence archive. These verify timing and framing; natural source quality and
+remaining start/stop/retargeting work are still open. See the continuation brief
+for exact reproduction, limits and final validation.

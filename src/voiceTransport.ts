@@ -44,6 +44,29 @@ export class VoiceTransport {
     );
   }
   advance(scene: Scene, time: number, delta: number, options: VoiceOptions) {
+    const next = this.advanceCurrent(scene, time, delta, options);
+    if (!options.enabled || next <= time) return next;
+    // A slow render frame may cross an entire line. Stop at the first audible
+    // entry so the next transport sample starts at its first word; once active,
+    // speech/audio continues to own the clock as before.
+    return scene.transcript.reduce((end, line) => {
+      if (!scene.entities.some((e) => e.id === line.characterId && e.visible))
+        return end;
+      const timing = dialogueTiming(scene, line);
+      return timing &&
+        timing.start > time &&
+        timing.start < end &&
+        dialogueAt(scene, timing.start)[0] === line
+        ? timing.start
+        : end;
+    }, next);
+  }
+  private advanceCurrent(
+    scene: Scene,
+    time: number,
+    delta: number,
+    options: VoiceOptions,
+  ) {
     const line = options.enabled ? dialogueAt(scene, time)[0] : undefined;
     const choice = line
       ? parseVoiceChoice(options.choices[line.characterId])

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import * as T from "three";
+import { createPlaybackClock } from "./playbackClock";
 import { applyConversationPerformance } from "./conversationPerformance";
 import { dialogueAt } from "../shared/conversation";
 import { sceneDragging } from "./sceneDragging";
@@ -90,7 +91,8 @@ type Props = {
   onSelect: (id: string | null) => void;
   time: number;
   playing: boolean;
-  onTime: (t: number) => void;
+  seekVersion: number;
+  onTime: (t: number, seekVersion: number) => void;
   onMove: (id: string, position: [number, number, number]) => void;
   onTransform?: (
     id: string,
@@ -107,6 +109,8 @@ type Props = {
   onNavigationSettled?: () => void;
   move: boolean;
   loopDuration?: number;
+  /** Keep a rehearsal actor in view while retaining the chosen orbit/zoom. */
+  followActorId?: string;
   thinkingId?: string;
   advanceTime?: (time: number, delta: number) => number;
   onPlaybackState?: (state: "seek" | "pause" | "play") => void;
@@ -672,67 +676,61 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       };
       renderer.domElement.addEventListener("pointerdown", down);
       renderer.domElement.addEventListener("pointerup", up);
-      let frame = 0,
-        previous = performance.now(),
-        elapsed = live.current.time,
-        wasPlaying = false,
-        lastSent = 0,
-        ended = false;
+      let frame = 0;
+      const clock = createPlaybackClock(
+        live.current.time,
+        performance.now(),
+        live.current.seekVersion,
+      );
       let paintedNavigation: AbortController | undefined,
         navigationView = "";
-      // Times published to React recently. The parent may lag several frames
-      // behind, so a prop that matches any of them is an echo, not a seek.
-      const published: number[] = [live.current.time];
-      const remember = (t: number) => {
-        published.push(t);
-        if (published.length > 12) published.shift();
-      };
+      let followedActor: T.Group | undefined;
+      const followedPosition = new T.Vector3();
       const loop = (now: number) => {
         frame = requestAnimationFrame(loop);
-        const dt = Math.min((now - previous) / 1000, 0.1);
-        previous = now;
-        if (!published.some((t) => Math.abs(live.current.time - t) <= 0.001)) {
-          elapsed = live.current.time;
-          published.length = 0;
-          remember(elapsed);
-          ended = false;
-          live.current.onPlaybackState?.("seek");
-        }
-        if (live.current.playing !== wasPlaying)
-          live.current.onPlaybackState?.(
-            live.current.playing ? "play" : "pause",
-          );
-        if (live.current.playing && !dragging.active() && !transform.dragging) {
-          if (!wasPlaying) elapsed = live.current.time;
-          elapsed = live.current.advanceTime?.(elapsed, dt) ?? elapsed + dt;
-          const total =
-            live.current.loopDuration ??
-            (live.current.stopAtEnd
-              ? Math.max(
-                  0,
-                  ...live.current.scene.entities.map((e) =>
-                    e.clips.reduce((t, c) => t + c.duration, 0),
-                  ),
-                )
-              : duration(live.current.scene));
-          if (elapsed >= total && live.current.stopAtEnd) {
-            elapsed = total;
-            if (!ended) {
-              ended = true;
-              live.current.onEnded?.();
-            }
-          } else {
-            ended = false;
-            if (elapsed > total) elapsed = 0;
-          }
-          if (now - lastSent > 40) {
-            remember(elapsed);
-            live.current.onTime(elapsed);
-            lastSent = now;
-          }
-        } else elapsed = live.current.time;
-        wasPlaying = live.current.playing;
+        const total =
+          live.current.loopDuration ??
+          (live.current.stopAtEnd
+            ? Math.max(
+                0,
+                ...live.current.scene.entities.map((e) =>
+                  e.clips.reduce((t, c) => t + c.duration, 0),
+                ),
+              )
+            : duration(live.current.scene));
+        const sample = clock.sample({
+          now,
+          time: live.current.time,
+          seekVersion: live.current.seekVersion,
+          playing: live.current.playing,
+          blocked: dragging.active() || transform.dragging,
+          duration: total,
+          stopAtEnd: live.current.stopAtEnd,
+          advance: live.current.advanceTime,
+          onState: live.current.onPlaybackState,
+          onEnded: live.current.onEnded,
+        });
+        const elapsed = sample.time;
+        if (sample.publish) live.current.onTime(elapsed, sample.seekVersion);
         renderAt(elapsed);
+        const following = live.current.followActorId
+          ? objects.get(live.current.followActorId)
+          : undefined;
+        if (following) {
+          const anchor = (
+            following.userData.bones?.hips ?? following
+          ).getWorldPosition(new T.Vector3());
+          if (following === followedActor) {
+            const delta = anchor.clone().sub(followedPosition);
+            // Follow travel across the floor; keep the performance’s vertical
+            // rise and fall visible rather than cancelling it with the camera.
+            delta.y = 0;
+            camera.position.add(delta);
+            controls.target.add(delta);
+          }
+          followedPosition.copy(anchor);
+        }
+        followedActor = following;
         if (interactionWarning !== lastWarning) {
           lastWarning = interactionWarning;
           live.current.onInteractionWarning(interactionWarning);

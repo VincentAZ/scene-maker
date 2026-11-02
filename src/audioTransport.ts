@@ -133,6 +133,8 @@ export class AudioLineTransport {
     this.rate = rate;
     if (this.active?.key !== key) {
       this.stop();
+      // This request starts now; the preceding render gap is not its age.
+      delta = 0;
       const fraction = Math.max(
         0,
         Math.min(1, (time - timing.start) / (timing.end - timing.start || 1)),

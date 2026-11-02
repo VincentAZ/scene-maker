@@ -87,6 +87,105 @@ function speechFixture() {
 }
 
 describe("synthesized voice playback", () => {
+  it("does not skip a spoken line when a slow frame crosses its entire interval", () => {
+    const s = fixture();
+    for (const actor of s.entities)
+      actor.clips.unshift({
+        id: `lead-${actor.id}`,
+        motionId: "idle",
+        duration: 2,
+      });
+    const { speech, utterances, report } = speechFixture();
+    const audio = new AudioLineTransport(
+      async () => ({ url: "/test.mp3" }),
+      (url) => new FakeAudio(url),
+      report,
+    );
+    const transport = new VoiceTransport(speech, audio);
+    const options = {
+      enabled: true,
+      choices: { a: "browser:english", b: "browser:english" },
+      rate: 1,
+    };
+    const first = dialogueTiming(s, s.transcript[0])!;
+    expect(transport.advance(s, 0, 100, options)).toBe(first.start);
+    expect(utterances).toHaveLength(0);
+    // A new speech request must not inherit the preceding stalled frame's age.
+    expect(transport.advance(s, first.start, 100, options)).toBe(first.start);
+    expect(utterances).toHaveLength(1);
+    expect(utterances[0].text).toBe(s.transcript[0].text);
+    expect(report).not.toHaveBeenCalled();
+    utterances[0].onend!({} as SpeechSynthesisEvent);
+    expect(transport.advance(s, first.start, 1, options)).toBe(first.end);
+    const second = dialogueTiming(s, s.transcript[1])!;
+    const next = transport.advance(s, first.end, 100, options);
+    expect(next).toBe(second.start);
+    transport.advance(s, second.start, 0.2, options);
+    expect(utterances.at(-1)!.text).toBe(s.transcript[1].text);
+  });
+  it("starts newly entered synthesized audio without counting an old render stall as a load timeout", async () => {
+    FakeAudio.created = [];
+    const s = fixture(),
+      { speech, report } = speechFixture();
+    const audio = new AudioLineTransport(
+      async () => ({ url: "/test.mp3" }),
+      (url) => new FakeAudio(url),
+      report,
+    );
+    const transport = new VoiceTransport(speech, audio);
+    const options = { enabled: true, choices: { a: "openai:nova" }, rate: 1 };
+    expect(transport.advance(s, 0, 40, options)).toBe(0);
+    expect(report).not.toHaveBeenCalled();
+    await flush();
+    const clip = FakeAudio.created[0];
+    clip.ready(4);
+    clip.currentTime = 2;
+    const end = dialogueTiming(s, s.transcript[0])!.end;
+    expect(transport.advance(s, 0, 0.25, options)).toBeCloseTo(end / 2, 8);
+    expect(report).not.toHaveBeenCalled();
+  });
+  it("keeps muted playback on wall time and ignores invisible future speakers", () => {
+    const s = fixture();
+    for (const actor of s.entities)
+      actor.clips.unshift({
+        id: `lead-${actor.id}`,
+        motionId: "idle",
+        duration: 2,
+      });
+    const { speech, report } = speechFixture();
+    const audio = new AudioLineTransport(
+      async () => ({ url: "/test.mp3" }),
+      (url) => new FakeAudio(url),
+      report,
+    );
+    const transport = new VoiceTransport(speech, audio);
+    expect(
+      transport.advance(s, 0, 100, { enabled: false, choices: {}, rate: 1 }),
+    ).toBe(100);
+    s.entities.find((e) => e.id === "a")!.visible = false;
+    expect(
+      transport.advance(s, 0, 100, { enabled: true, choices: {}, rate: 1 }),
+    ).toBe(dialogueTiming(s, s.transcript[1])!.start);
+  });
+  it("keeps advancing silently when the browser has no available voices", () => {
+    const s = fixture(),
+      { speech, synth, report } = speechFixture();
+    synth.getVoices = () => [];
+    const audio = new AudioLineTransport(
+      async () => ({ url: "/test.mp3" }),
+      (url) => new FakeAudio(url),
+      report,
+    );
+    const transport = new VoiceTransport(speech, audio);
+    const options = {
+      enabled: true,
+      choices: { a: "browser:english" },
+      rate: 1,
+    };
+    expect(transport.advance(s, 0, 0.5, options)).toBe(0.5);
+    expect(transport.advance(s, 0.5, 0.5, options)).toBe(1);
+    expect(report).not.toHaveBeenCalled();
+  });
   it("holds the clock while audio loads, then follows the audio clock and ends the line", async () => {
     FakeAudio.created = [];
     const synthesize = vi.fn(async () => ({ url: "/speech/abc.mp3" }));
