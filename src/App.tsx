@@ -1379,6 +1379,8 @@ export default function App() {
     setBusy(true);
     try {
       // Motion capture arrives as an animated armature GLB; VRM as its GLB.
+      // A capture has no body to place: its takes go to Actions for any cast.
+      const capture = /\.bvh$/i.test(file.name);
       file = await importableFile(file);
       const data = new FormData();
       data.append("file", file);
@@ -1415,11 +1417,18 @@ export default function App() {
               animationName: a.name,
             },
           })),
-        { type: "add", assetId: asset.id },
+        ...(capture ? [] : [{ type: "add" as const, assetId: asset.id }]),
       ]);
-      setSelected(sceneRef.current.entities.at(-1)!.id);
       setModal(null);
-      toast(`${asset.name} is ready`);
+      if (capture) {
+        setTab("motions");
+        setFilter("My actions");
+        setSearch("");
+        toast(`${asset.name} is ready in Actions`);
+      } else {
+        setSelected(sceneRef.current.entities.at(-1)!.id);
+        toast(`${asset.name} is ready`);
+      }
     } catch (e) {
       report((e as Error).message);
     } finally {

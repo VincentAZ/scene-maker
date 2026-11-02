@@ -833,3 +833,29 @@ indistinguishable; the BVH-sourced feet sit about 1 cm lower (front toe tip
 touching into the floor plane at 1.6 s), in line with the measured medians —
 the fixture-sourced path also sinks ≈1.5 cm on this take, so this is the
 existing ground-contact accuracy, not a new regression.
+
+## D30 — BVH import through the real dialog; captures go to Actions (13:56–14:08)
+
+D22 exercised `bvhToGlb` and `/api/import` from a driver, not the dialog. New
+`test-results/claude-bvh-ui.mjs` seeds a fresh private throwaway project (the
+app's own recovery mechanism, never a review project), clicks "Import your own
+asset", sets the real file input to a BVH authored from CMU 35_01, and checks
+the saved project and console. First run: the take imported (asset + imported
+motion "CMU 35_01 walk", 2.97 s, no rig warning, no errors) — but the dialog
+placed the bodiless capture in the scene as an invisible "character" (only the
+move gizmo showed).
+Decision (`App.tsx` `importAsset`): a `.bvh` import creates the asset and its
+takes but no actor; the library opens on Actions → "My actions" (the take is
+listed there with Preview/+) and the toast says "… is ready in Actions". Other
+imports are unchanged.
+Housekeeping: the studio library lists custom takes from every private
+project, so each test run added a "CMU 35_01 walk" to "My actions"
+everywhere. The three throwaway project files and their uploads were removed
+from the private data (copies in `claude-session/removed-test-projects/`); the
+driver now removes its own project and upload when it finishes. Library
+verified clean.
+Evidence: driver run on Vite 4679 — accept list `.glb,.fbx,.bvh,.vrm`, take
+listed in Actions, no entities, no console errors (the first run on that new
+origin logged Chrome's one-time `/favicon.ico` 404 again; rerun clean); real
+UI gate unchanged; suite 1,239, build OK. Screenshot
+`claude-session/bvh-ui-imported.png`.

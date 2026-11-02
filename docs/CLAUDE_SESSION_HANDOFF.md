@@ -35,9 +35,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | ef6a76a | CMU ASF skeletons recognised |
 | 1024ae7 | Characters lying along another axis stood up on import |
 | 96671b5 | Skeleton-only sources keep receivers on the ground |
+| (next) | BVH imports go to Actions (verified through the real dialog) |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D29). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D30). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -56,6 +57,9 @@ Every decision, rejected variant, harness pitfall and measurement is in
   `/api/import` with no mapping, and compares body roles, root and receiver
   sole clearance with the original take on Casual and Party.
 - `test-results/claude-hand-notice.mjs` counts hand-clearance notices.
+- `test-results/claude-bvh-ui.mjs` (`BVH_FILE=...`) imports a BVH through the
+  real dialog into a throwaway private project and removes it afterwards;
+  `claude-bvh-stills.mjs` renders original vs BVH take side by side.
 - Fresh Vite ports resolve `/test-results/animation-entry.ts` lazily: request
   it once (curl) before the first driver, or the first driver can fail with
   "Failed to resolve module specifier".
@@ -117,8 +121,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4678 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4677 serve
+Final Vite 4679 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4678 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
