@@ -718,3 +718,45 @@ it.each([
     }
   },
 );
+
+it("retains an uninterrupted recorded standing start and settled finish in the normal walking performance", async () => {
+  const motion = capturedMotions.find((m) => m.animationName === "91_34")!;
+  const asset = capturedMotionSources.find(
+    (a) => a.id === motion.sourceAssetId,
+  )!;
+  const { group, gltf } = await load(asset);
+  try {
+    const take = gltf.animations[0];
+    const samples = take.tracks.map((t) => ({
+      times: Array.from(t.times),
+      values: Array.from(t.values),
+    }));
+    const profile = locomotionProfile(group, take)!;
+    for (const side of ["left", "right"])
+      expect(
+        profile.contacts!.some(
+          (c) => c.side === side && c.start === 0 && c.end > 2.9,
+        ),
+      ).toBe(true);
+    expect(profile.distance).toBeGreaterThan(10);
+    expect(profile.stops).toHaveLength(1);
+    const finish = profile.stops![0];
+    expect(finish.end - finish.settled).toBeGreaterThan(0.8);
+    expect(finish.end).toBeCloseTo(take.duration, 6);
+    expect(
+      finish.entries.some((entry) => entry.distance > 2 && entry.speed > 1),
+    ).toBe(true);
+    // Measurement identifies existing performance; it does not append a pose
+    // hold or overwrite the walking keys to manufacture the start/finish.
+    expect(
+      take.tracks.map((t) => ({
+        times: Array.from(t.times),
+        values: Array.from(t.values),
+      })),
+    ).toEqual(samples);
+    expect(take.tracks[0].times.length).toBe(2208);
+    expect(take.duration).toBeCloseTo(2207 / 120, 5);
+  } finally {
+    disposeObject(group);
+  }
+});

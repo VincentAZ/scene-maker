@@ -365,5 +365,52 @@
       "https://mocap.cs.cmu.edu/subjects/35/35_18.amc"
     ],
     "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
+  },
+  {
+    "trial": "91_34",
+    "frames": 2208,
+    "frequency": 120,
+    "duration": 18.391666666666666,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 1338280,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "91.asf": "de06a1ee5d917e4bd23461e22e49b43591ed8d9bd84a92d6b6927f423a972b30",
+      "91_34.amc": "ff6b59f2ccbdfab80836bca5447d0d60464b8ba0eb5205d1c6bc4a41aafdfa91",
+      "91_34.glb": "7659480e14ab22773948fc1168fb20b50a9b195bfd6adb6b28d2dc724f88ff73"
+    },
+    "name": "Captured stand, walk, and stop",
+    "description": "A continuous standing start, walking turns, and settled finish at the recorded pace.",
+    "routeRole": "arrival",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/91/91.asf",
+      "https://mocap.cs.cmu.edu/subjects/91/91_34.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
   }
 ]

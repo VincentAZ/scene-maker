@@ -16,7 +16,7 @@ describe("creator scene workflows", () => {
   it("ships rigged characters, props, sets and distinct actions", () => {
     const s = starterScene();
     expect(allAssets(s).length).toBeGreaterThanOrEqual(32);
-    expect(allMotions(s).length).toBe(40);
+    expect(allMotions(s).length).toBe(41);
     for (const a of characters) {
       const rig = createCharacter(a);
       const mesh = rig.children.find(

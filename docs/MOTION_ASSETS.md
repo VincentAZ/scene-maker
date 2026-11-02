@@ -55,17 +55,25 @@ The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing A
 
 ## Captured performances
 
-Eight CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+Nine CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
 2.975 s), **Captured walk and turns** (69_06, 43.433 s), **Captured run**
 (35_17, 1.383 s), **Captured walk and stop** (16_33, 2.367 s),
 **Captured run and stop** (16_57, 2.225 s), **Captured standing**
 (77_02, 15.6 s), and **Captured walking with a gradual stop**
-(82_14, 7.55 s), plus **Captured running pass** (35_18, 1.45 s).
-Standing retains its original 60 Hz samples; the other seven
+(82_14, 7.55 s), **Captured running pass** (35_18, 1.45 s), and
+**Captured stand, walk, and stop** (91_34, 18.392 s).
+Standing retains its original 60 Hz samples; the other eight
 retain their original 120 Hz samples. These are body performances; finger/thumb
 channels were not captured and are excluded. Facial animation is not included. Source skeletons are displayed as
 capsules for original-performance previews. That display is not a body scan
 or a measured shoe surface. These entries do not replace saved authored clips.
+
+The stand/walk/stop take retains its initial standing and weight shift, walking
+turns, and final settled stance as one original performance. It is a selectable
+action, not a new default repeating route gait. Its short steady-cycle candidates
+do not reliably match its later stop across route lengths. No source samples or
+standing intervals were fabricated to make it loop or end sooner. Body proportions
+and missing finger/face capture still limit transferred appearance.
 
 `shared/captured-motion-catalogue.json` records exact source URLs, raw/converted
 SHA-256 hashes, duration, sample count, exclusions and anatomical mappings.
@@ -80,6 +88,7 @@ node scripts/prepare-cmu-motion.mjs <source-directory> 16_57
 node scripts/prepare-cmu-motion.mjs <source-directory> 77_02 60
 node scripts/prepare-cmu-motion.mjs <source-directory> 82_14
 node scripts/prepare-cmu-motion.mjs <source-directory> 35_18
+node scripts/prepare-cmu-motion.mjs <source-directory> 91_34
 ```
 
 Use separate directories for different subjects. Copy each resulting GLB to

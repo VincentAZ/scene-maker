@@ -1890,3 +1890,97 @@ Next priority: inspect this source finish in motion and improve the real default
 route experience (35_01 still has no measured stop). Native starts, running
 arrivals, source hand/toe limitations, and broader action quality remain open.
 Do not spend another turn merely tuning the already tiny seam/export residuals.
+
+## Recorded standing start and upright finish — 2026-11-01
+
+Progress after c7d83fb; natural-animation goal remains OPEN. Added one selectable
+complete captured performance. This does not solve arbitrary-route starts/stops,
+all-provider naturalness, fingers/face, or hand/clothing intersection.
+
+Source investigation:
+
+- 82_14 remains backward-leaning through its original end. Extending its recorded
+  tail does not produce a neutral finish. The existing stop detector was unchanged.
+- Official CMU walk catalogue lists 617 trials. Subject133's stop/walk examples
+  are baby-styled; subject134's stop/go examples involve a skateboard. Rejected
+  both as ordinary human walking references. Public downloads used per-command
+  curl -k after certificate errors, without credentials or persistent TLS changes.
+- Converted and screened 82_11,82_13,15_01,56_01,91_29,91_34. Only **91_34**
+  has a sustained settled finish under current gates. Original bilateral standing
+  contacts extend from zero through at least2.965s; the performance then starts,
+  walks, turns/returns, and settles. The total captured arclength is12.231source
+  units. Settled interval17.542051–18.391666s; measured sourceEnd18.158439s.
+- Official91_34 AVI (320x240,30fps,18.333s) ending frame was inspected. Its stance
+  qualitatively agrees with the source preview; this is not frame-exact independent
+  parity. Raw official video remains private in the /tmp investigation directory.
+- 363 foot-prefiltered intervals yielded124foot candidates and9full-body compatible
+  cuts across source/Party/Casual, near4.316–4.383 to5.683–5.750s. However testing
+  those9ranges on2receivers at3,4,6,8m gave only **1/72** admissible arrivals:
+  Casual4m,4.383333–5.733333s. None were added to automatic arrival selection.
+
+Shipped change:
+
+- Added `public/library/actions/cmu/91_34.glb` and provenance/catalogue entry
+  **Captured stand, walk, and stop**, all2,208 original120Hz frames,26tracks,
+  31bones,18.3916667s. Catalogue records raw/converted SHA-256, source URLs,
+  anatomical mapping and uncaptured finger/thumb exclusions.
+- Classified as `arrival`, retaining its complete performance as a selectable
+  action. Default walking remains35_01. No runtime planner/playback thresholds,
+  collision gates, navigation ownership, source cadence, or key samples changed.
+- Added real-source regression for bilateral initial standing, measured travel,
+  sustained ending and unchanged samples. Existing catalogue/packaging/preview
+  checks also include the new asset. Updated expected action inventory40→41.
+
+Evidence and limitations:
+
+- Full normal-speed movies at30fps,552frames,18.4s:
+  `.data/natural-motion-investigation/stop-source-review/91-34-native-1x.mp4`
+  compares source capsules (left) and Party Woman (right).
+  `91-34-casual-native-1x.mp4` compares the same source with Quaternius Casual
+  Female (library name Sage). The body view follows each actor separately and
+  scales framing to its height; it does not demonstrate scene obstacle clearance.
+- Source and receiver frames at initial standing, walking and ending were inspected.
+  The ending is more upright than82_14. Party's left hand/fingers intersect its
+  clothing at the start. Missing individual fingers/face and receiver proportions
+  still limit appearance. Casual lacks supported toe/wrist channels; the report
+  identifies four source rotations retained only on the original. Do not describe
+  unavailable target joints as preserved. No user visual acceptance obtained.
+- Actual UI4608: opened new action preview, switched Original/OnParty preserving
+  phase, played/paused/scrubbed at1x, verified preview left saved content unchanged,
+  then added it through **Add to Party Woman**. Saved clip retains source id,
+  playbackRate1 and full duration. Played saved scene and sought to finish.
+  Network/console report has no failed HTTP requests or JS errors. Existing
+  anatomical-composition information is visible in the scene UI.
+- Production export/reload checked2,248times per receiver, including end-boundary
+  neighbours, all matched bone origins and12sampled vertices per mesh. Party:
+  102nodes,max bone0.000571mm/skin0.000389mm. Casual:29nodes,
+  bone0.000206mm/skin0.000438mm. These establish export parity, not visual quality.
+
+Reproduction and state:
+
+- Current source work/reports/drivers: `/tmp/scene-natural-motion/stop-source-review`.
+  Durable ignored archive: `.data/natural-motion-investigation/stop-source-review`.
+  It contains videos, selected frames, reports and driver copies; no licensed
+  character models were added. Raw public sources/conversions remain in /tmp.
+- Final private runtime4608/PID2838043, API4413/PID2837944; API restarted only
+  after verifying its private data path. Chrome9451/PID2775841 remains available.
+  Prior4607 is frozen before the new catalogue entry; use4608 for new UI work.
+- Saved private projects: `captured-stand-walk-stop-{party,casual,ui}-review`.
+  All now contain the full native action. The UI driver expected an empty fixture
+  before Add; do NOT rerun it against the current project without adapting that
+  precondition. Do not rerun project creation blindly over saved revisions.
+- User4311/4337 services, protected workspaces and Astra source data were not
+  modified. Native review fixtures have no automatically planned obstacle route.
+
+Next substantive work: fix visible transfer/contact issues and the default route
+experience. The new complete performance supplies a genuine start and finish, but
+cannot be promoted as a general repeating gait based on the current match results.
+Do not spend another turn tuning tiny export residuals or call this all-actions
+naturalness. Running arrivals and broader supported-source action quality remain.
+
+Final validation: **1,167 tests / 100 files passed** with unchanged timeouts and
+maxWorkers=2; TypeScript and isolated production build passed. The initial suite
+had only the stale40-action inventory expectation fail; it was updated to41 and
+the full suite rerun. Changed implementation/data/test files pass formatting and
+diff checks. Existing SDK schema-compatibility and bundle-size advisories remain.
+Build output: `/tmp/scene-natural-motion/stop-source-build`.
