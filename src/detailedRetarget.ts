@@ -189,6 +189,41 @@ function torsoChain(group: T.Group, rig: DetailRig) {
     })),
   };
 }
+/** Neck bones from just above the arm/head branch up to and including the
+ * head, with normalized height along the bind chain from the branch. */
+function neckChain(group: T.Group, rig: DetailRig) {
+  const { leftArm, rightArm, head } = group.userData.bones ?? {};
+  if (!leftArm || !rightArm || !head) return;
+  let branch = leftArm.parent;
+  while (branch && !ancestor(rightArm, branch)) branch = branch.parent;
+  if (!(branch instanceof T.Bone) || !ancestor(head, branch)) return;
+  const chain: Joint[] = [];
+  for (
+    let node: T.Object3D | null = head;
+    node !== branch;
+    node = node.parent
+  ) {
+    if (!node) return;
+    if (!(node instanceof T.Bone)) continue;
+    const joint = rig.joints.find((j) => j.bone === node);
+    if (!joint) return;
+    chain.unshift(joint);
+  }
+  const base = rig.joints.find((j) => j.bone === branch);
+  if (!base) return;
+  const points = [base, ...chain].map((j) => j.bindPoint);
+  const lengths = points.slice(1).map((p, i) => p.distanceTo(points[i]));
+  const total = lengths.reduce((s, l) => s + l, 0);
+  if (!(total > 0)) return;
+  let run = 0;
+  return {
+    base,
+    chain: chain.map((joint, i) => ({
+      joint,
+      at: (run += lengths[i]) / total,
+    })),
+  };
+}
 type Pair = {
   source: Joint;
   target: Joint;
@@ -378,6 +413,44 @@ function planFor(
           target: t,
           blend: { other: hi.joint, t: f },
         });
+    }
+  }
+  // A receiving neck with more segments than the source's (two Character
+  // Creator neck bones under a single Mixamo/Quaternius neck): unpaired
+  // receiving neck bones follow the source neck-to-head bend at their height,
+  // instead of holding still while the head turns above them. Existing neck
+  // pairs, disabled roles and excluded joints keep their meaning.
+  const sourceNeckChain = neckChain(source, a),
+    targetNeckChain = neckChain(target, b);
+  if (sourceNeckChain && targetNeckChain) {
+    const knots = [
+      { joint: sourceNeckChain.base, at: 0 },
+      ...sourceNeckChain.chain,
+    ];
+    const assigned = new Set(
+      (
+        target.userData.rigSemanticKeys as Map<T.Bone, string> | undefined
+      )?.values(),
+    );
+    for (const { joint: t, at } of targetNeckChain.chain.slice(0, -1)) {
+      if (
+        pairs.some((p) => p.target === t) ||
+        t.key.startsWith("unmapped:") ||
+        (target.userData.disabledRigRoles?.has(t.key) && !assigned.has(t.key))
+      )
+        continue;
+      let i = 0;
+      while (i + 2 < knots.length && knots[i + 1].at < at) i++;
+      const lo = knots[i],
+        hi = knots[i + 1];
+      pairs.push({
+        source: lo.joint,
+        target: t,
+        blend: {
+          other: hi.joint,
+          t: T.MathUtils.clamp((at - lo.at) / (hi.at - lo.at), 0, 1),
+        },
+      });
     }
   }
   for (const pair of pairs) {

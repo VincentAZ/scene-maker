@@ -307,6 +307,61 @@ function expectSnapshot(f: Fixture, expected: ReturnType<typeof snapshot>) {
 }
 
 describe("detailed imported animation runtime", () => {
+  it("bends both receiving neck segments under a single-neck source", () => {
+    // A single-neck source (Mixamo/Quaternius) driving a two-segment
+    // receiving neck: the upper segment shares the bend instead of holding
+    // still while the head turns above it.
+    const source = fixture(),
+      target = fixture();
+    const upper = source.joints.CC_Base_NeckTwist02;
+    source.joints.CC_Base_NeckTwist01.attach(source.joints.CC_Base_Head);
+    upper.removeFromParent();
+    delete source.joints.CC_Base_NeckTwist02;
+    source.group.updateWorldMatrix(true, true);
+    const head = source.joints.CC_Base_Head;
+    const clip = new T.AnimationClip("Head turn", duration, [
+      new T.QuaternionKeyframeTrack(
+        `${head.name}.quaternion`,
+        [0, duration],
+        [
+          ...head.quaternion.toArray(),
+          ...head.quaternion
+            .clone()
+            .multiply(rotation(0.2, 0.7, 0))
+            .toArray(),
+        ],
+      ),
+    ]);
+    source.configure([clip]);
+    target.configure();
+    schedule(target, source, [clip], true);
+    const segment = (f: Fixture) =>
+      orientation(target.joints.CC_Base_NeckTwist01)
+        .invert()
+        .multiply(orientation(target.joints.CC_Base_NeckTwist02))
+        .angleTo(
+          target.bind.CC_Base_NeckTwist01.world
+            .clone()
+            .invert()
+            .multiply(target.bind.CC_Base_NeckTwist02.world),
+        );
+    for (const time of [1.2, 2.1, 0.4]) {
+      target.sample(time);
+      const headTurn = orientation(target.joints.CC_Base_NeckTwist02)
+        .invert()
+        .multiply(orientation(target.joints.CC_Base_Head))
+        .angleTo(
+          target.bind.CC_Base_NeckTwist02.world
+            .clone()
+            .invert()
+            .multiply(target.bind.CC_Base_Head.world),
+        );
+      // The upper neck now carries part of the turn.
+      expect(segment(target)).toBeGreaterThan(0.05 * (time / duration));
+      expect(headTurn).toBeLessThan(0.75 * (time / duration));
+    }
+  });
+
   it("tells a twist helper from a share bone at the same place by structure", () => {
     // Character Creator places a leaf share bone exactly where the first
     // forearm twist bone (which carries the second) sits. Renamed, only their

@@ -429,3 +429,18 @@ tests that encode deliberate policy — a disabled chest role must not be re-ena
 by topology; renamed facial/control joints are REPORTED as unsupported rather than
 silently paired. Overriding that for a 5–10° eye residual is not justified.
 Source archived at `.data/natural-motion-investigation/claude-session/rejected/residualPairs.ts`.
+
+## D15 — Single-neck sources bend both receiving neck segments (12:21–12:40)
+
+Quaternius sources have one neck bone; their heads bend up to 65° relative to it
+(SwordSlash; Roll 48°, Death 39°). Character Creator receivers have two neck
+segments; the upper one was unpaired and held still, so the whole bend landed at
+the top of the neck (Party, SwordSlash: neck joint 0°, head joint 30.7°).
+Decision: unpaired receiving neck bones are FILLED by height between the source's
+neck-chain knots (branch → … → head), slerping the source rotations. Existing
+pairs, including the validated two-to-one "single neck takes the upper endpoint"
+rule, are untouched; disabled (listed and unassigned) and excluded roles skip.
+After: SwordSlash 11.2° / 19.5°, Roll 3.2° / 5.5°, Death 4.9° / 8.4° (neck joint /
+head joint). Existing fixtures exactly unchanged (all their necks already pair).
+New test (single-neck source fixture) fails on the previous code. Suite 1,190;
+gates on Vite 4660 identical to D11.
