@@ -712,7 +712,7 @@ anatomical rest, D2) identical at both sampled times while the fingers move
 Gates on Vite 4672 identical to D22 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI).
 
-## D25 — Eyes paired across naming conventions (13:40–13:50)
+## D25 — Eyes paired across naming conventions (13:33–13:35)
 
 The renamed-rig evidence kept one name-only gap: eyes (10.4°/5.5° on Thoughtful
 walk), because CC "CC_Base_L_Eye" keyed as "ccbaseleye" and never met another
@@ -729,3 +729,28 @@ on all six, worst bone 2.6° (rib twist) instead of 10.38°. Suite 1,229
 (`--maxWorkers=4`).
 Gates on Vite 4673 identical to D24 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI).
+
+## D26 — VRM files' declared humanoid map is used (13:36–13:45)
+
+VRM 1.0 (`VRMC_vrm.humanoid.humanBones`) and VRM 0.x (`VRM.humanoid.humanBones`)
+files declare which node is which human bone. D21/D23 recognised VRoid avatars
+by their J_Bip names only; an avatar from another exporter with other names
+would be refused although the file says exactly where its joints are.
+
+Decision (`src/vrmHumanoid.ts`, used in `prepareImportedAsset` for characters):
+translate the declaration into the existing rig-mapping form (child-index paths
+below the imported scene, found through GLTFLoader's node associations) for
+body roles, shoulders, toes, chest/upper chest/neck and the fingers (VRM 1.0
+thumbs start at the metacarpal, 0.x thumbs at the proximal; "Little" is the
+pinky). It is computed before mesh-less joint promotion (paths are index-based)
+and merged under the user's own mapping, which wins per role. Files without a
+declaration are unaffected. Eyes and jaw still pair by name (D25).
+Not verified on a real .vrm file (none on this machine; none downloaded —
+licensed avatars are not fetched into the repo).
+Evidence: tests (VRM 1.0 and 0.x declarations over meaningless bone names map
+body, toe and finger joints; no declaration → no mapping; an avatar with only
+the declaration recognises every role, and a user mapping overrides the
+declared head). Suite 1,233 (`--maxWorkers=4`), tsc, build OK.
+Gates on Vite 4674 identical to D25 (route rerun after a fresh-port
+module-resolution cold start; cuts, native exact, all 19 cross-rig deltas,
+wait, export, real UI).

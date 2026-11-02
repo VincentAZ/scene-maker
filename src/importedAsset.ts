@@ -10,6 +10,7 @@ import {
 import { configureImportedRig } from "./rig";
 import { repairOpaqueImportedMaterials } from "./importedMaterials";
 import { recordedStanding } from "../shared/motionLibrary";
+import { embeddedHumanoidMapping } from "./vrmHumanoid";
 
 // Imported files are immutable per URL, so the bytes are downloaded once and
 // kept for the session. Each use is parsed separately: original animation
@@ -124,10 +125,16 @@ function facingCorrection(group: T.Group) {
 
 export function prepareImportedAsset(
   asset: Asset,
-  gltf: Pick<GLTF, "scene" | "animations">,
+  gltf: Pick<GLTF, "scene" | "animations"> & { parser?: unknown },
 ): T.Group {
   const group = new T.Group(),
     imported = gltf.scene;
+  // A VRM file declares its own humanoid joints; the user's mapping refines it.
+  const declared =
+    asset.category === "characters" ? embeddedHumanoidMapping(gltf) : undefined;
+  const rigMapping = declared
+    ? { ...declared, ...asset.rigMapping }
+    : asset.rigMapping;
   repairOpaqueImportedMaterials(imported);
   if (asset.category === "characters")
     promoteAnimatedJoints(imported, gltf.animations);
@@ -170,7 +177,7 @@ export function prepareImportedAsset(
         content,
         gltf.animations,
         imported,
-        asset.rigMapping,
+        rigMapping,
       );
     configure();
     // glTF assets face +Z, and placement, routes and in-place stride

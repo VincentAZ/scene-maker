@@ -31,9 +31,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 5c1987d | VRM/VRoid characters import |
 | c039dca | Fingers paired across different finger counts |
 | 50270b6 | Eyes paired across naming conventions |
+| (next) | VRM declared humanoid map used |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D25). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D26). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -72,7 +73,8 @@ full suite, typecheck, build.
   on any recognised rig; a BVH authored from ActorCore Dummy M's 34 s take
   reproduces every body role exactly on Casual and Party (D22,
   `claude-bvh-roundtrip.mjs`). Raw CMU ASF joint names need the mapping editor.
-- VRM/VRoid `.vrm` characters import as their GLB (D23).
+- VRM/VRoid `.vrm` characters import as their GLB (D23) and their declared
+  humanoid joints are used whatever the bones are named (D26).
 
 ## Known remaining gaps (measured)
 
@@ -88,8 +90,8 @@ full suite, typecheck, build.
   channels stay excluded (not fabricated).
 - A full Rigify export that also carries its control bones ("hips", "head")
   reports ambiguity and needs the rig mapping editor (by policy, not guessed).
-  VRM 1.0 files whose humanoid map lives only in the VRMC_vrm extension (no
-  J_Bip names) are not read; GLTFLoader ignores that extension.
+  VRM files' declared humanoid map is read (D26), but VRM materials (MToon)
+  and spring bones are not; no real .vrm file was available to test.
 - Hand-clearance notice is per pose (as the foot-contact notice), so it can
   appear for a fraction of a second on takes with a brief deep contact.
 - Not addressed this session: natural default route starts/stops (35_01 lacks a
@@ -100,8 +102,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4673 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4672 serve
+Final Vite 4674 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4673 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
