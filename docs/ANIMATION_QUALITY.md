@@ -9,6 +9,59 @@ and controlled comparisons. The saved scene identifies bundled Quaternius
 must be compared before attributing the failure. Sampled recording frames show
 an exaggerated stride, but do not by themselves isolate its cause.
 
+## Captured running repeat and skeleton-branch correction
+
+The new running fallback uses CMU 35_18, source seconds 0.2–116/120,
+at its original cadence (92/120 seconds per stride). The previous 35_17
+interval matched the feet but exceeded the unchanged body-loop wrist limit.
+Its original take and saved routes remain unchanged. The new complete take
+is available as **Captured running pass**, with source URLs, hashes and the
+existing CMU terms alongside it.
+
+Loop correction previously omitted skeleton ancestors and sibling branches.
+Those branches can drive skin or attached objects. It now closes their
+positions in the moving route frame and corrects the pelvis within its parent,
+so the pelvis adjustment cannot move an already-closed root. All bone branches
+use the existing position, rotation, velocity and scale bounds; no limit was
+loosened. A synthetic attachment regression reproduced a 49 mm jump before the
+fix and now checks repeat position, rotation, velocity, reverse seeking,
+unchanged one-shot playback and rejection of excessive correction.
+
+The final browser sweep covers both walking/running presets, straight/curved
+paths, original source rigs, Party Woman, Motion Dummy Male and 32 bundled
+characters: 140 cases. Across two repeats sampled within one microsecond on
+each side, maximum joint/skin changes are 0.00850/0.00811 mm and maximum bone
+rotation change is 0.000029 rad. A frozen pre-change runtime fails 68 cases,
+primarily on omitted root/control bones; its maximum joint jump is 3.086 mm
+for these candidate intervals. These figures compare the same candidate
+motions before/after the branch fix, not the old running preset against the new.
+The source/receiver native-playback matrix (23 cases, 39 timestamps each) is
+exactly unchanged in every sampled bone position and rotation.
+
+The first broader sweep mutated paths after compiling them and therefore sampled
+the wrong repeat times. It was discarded and rerun with fresh immutable paths
+and explicit length assertions. Only the corrected sweep supports these numbers.
+Finite-difference velocity residuals remain about 1.63 m/s on the curved walking
+Pirate Male case (1.66 before), and 1.58 m/s on Pirate Female (1.60 before).
+All measured running cases are below 0.0018 m/s. The pirate walking discontinuity
+still needs diagnosis; position closure alone does not establish natural motion.
+
+The actual PathEditor fixture saves a 6 m running route at 2.028612363 seconds
+with collisions enabled and the exact new source interval. Its entire route
+plus 0.3-second held tail bakes/reloads within 0.0271 mm at joints and 0.0255 mm
+at sampled skin vertices, including samples near each repeat. The previous
+walking fixture also passes (0.0365/0.0357 mm). The final preview retains the
+0.63-second comparison timestamp, plays/pauses, keeps the correct Add recipient,
+and leaves saved project content unchanged. Final UI runs have no HTTP or
+JavaScript errors; the browser still emits its software-WebGL advisory.
+
+Evidence is retained in ignored `.data/natural-motion-investigation/running-loop/`:
+`running-review/running-before-after-1x.mp4` compares old/new presets at native
+pace on the actual route; `35-18-native-1x.mp4` compares original/receiver motion.
+The route movie includes the explicit held ending. Natural arrivals, ongoing
+wait/recovery quality, contacts on broader providers and natural performances
+for the remaining action library are still open.
+
 ## Scope: every imported model and motion path
 
 The fix belongs to the shared import, rig mapping, retargeting, route playback,

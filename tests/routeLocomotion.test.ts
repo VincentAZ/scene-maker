@@ -116,8 +116,8 @@ describe("route locomotion selection", () => {
     expect(
       defaultRouteLocomotion(scene, actor, "run").path?.sourceRange,
     ).toEqual({
-      start: 0.15,
-      end: 106 / 120,
+      start: 0.2,
+      end: 116 / 120,
     });
   });
 

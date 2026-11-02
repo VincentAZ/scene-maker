@@ -74,17 +74,17 @@ export const capturedRouteGaits: Motion[] = [
     },
   },
   {
-    ...capturedMotions.find((motion) => motion.animationName === "35_17")!,
+    ...capturedMotions.find((motion) => motion.animationName === "35_18")!,
     id: "captured-running-stride",
     name: "Captured running stride",
-    duration: 88 / 120,
+    duration: 92 / 120,
     path: {
       points: [
         [0, 0, 0],
-        [0, 0, 2.6321303311993876],
+        [0, 0, 2.7281847433098694],
       ],
       smooth: false,
-      sourceRange: { start: 0.15, end: 106 / 120 },
+      sourceRange: { start: 0.2, end: 116 / 120 },
     },
   },
 ];

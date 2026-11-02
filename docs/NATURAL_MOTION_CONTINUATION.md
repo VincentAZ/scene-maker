@@ -1056,3 +1056,136 @@ preserves0.63s across source/receiver views, plays/pauses, keeps the Add recipie
 and leaves saved content unchanged. Its only HTTP error is the recorded
 `/favicon.ico`404; there are no animation-load or JavaScript errors. Screenshots
 are `library-slowdown-{character,original}.png` in the new durable archive.
+
+## Running repeat and complete skeleton closure milestone
+
+Continued from009acb3. Goal remains active and broader visual acceptance remains
+OPEN. This turn fixed a real loop-closure omission and selected a better default
+running source; it did not resolve the full human-motion requirement.
+
+Production changes:
+
+- `src/routeLoopPose.ts` now includes every bone branch, including ancestors of
+  hips and sibling roots. Previously those could retain source-facing changes
+  despite closed hips/limbs/hands. Source search exposed~0.005rad jumps on Party
+  Woman's `root`, and millimetre jumps on Casual Female's `Bone`/`PoleTarget*`.
+  Those particular helpers need not deform skin, so do not claim a corresponding
+  visible body jump. A separate synthetic rigid attachment DOES reproduce a
+  49.013mm material-point jump before the fix.
+- Top-level skeleton root positions are measured/closed in the moving route
+  frame. Pelvis correction changes its local position through its parent instead
+  of translating the whole actor, which would shift already-closed ancestors and
+  sibling attachments. Detached anatomical anchors retain their existing handling.
+  Every branch uses unchanged rotation/position/velocity/scale bounds. There is
+  no provider-name condition or wrist filtering. One-shot playback is unchanged.
+- Regression includes complete bone/material-point continuity and derivatives,
+  two repeat boundaries with reverse seeks, unchanged one-shot pose, and rejection
+  of large correction. The first incomplete implementation closed rotations but
+  still moved roots via group translation; the test caught a10mm residual. Adding
+  route-frame root positions and parent-local pelvis correction fixed it. Existing
+  walking regressions also caught the intermediate root-position error.
+- Added full CMU35_18 as **Captured running pass**:175frames/120Hz/1.45s,
+  26tracks/31bones/289112bytes. Source URLs, hashes, mapping and uncaptured-channel
+  exclusions are in `shared/captured-motion-catalogue.json`; existing CMU terms
+  cover this asset and packaging. Raw capture samples are unchanged.
+- NEW running fallback `captured-running-stride` references35_18 source.2–116/120,
+  duration92/120, source distance2.7281847433098694. Original35_17 remains selectable;
+  saved routes retain their source/interval. Existing/native gait precedence remains.
+  New library total is40actions. Walking preset remains1.1–266/120of35_01.
+
+Source investigation and evidence:
+
+- Official catalogue cached at `/tmp/scene-natural-motion/running-candidates/catalogue.html`.
+  Downloads include short runs from09/16/35 and longer runs104_01,111_23,111_24,
+  113_07,127_03,139_10,141_34,143_42. All selected catalogue frequencies120Hz.
+  Individual URLs/hashes/conversion summaries are retained. TLS-chain failures
+  required per-download verification bypass for public CMU files only; no global
+  TLS settings/credentials changed. Longer does not mean suitable:104_01 includes
+  zero-pose initialization;139_10 includes stand/start/turns; many take endpoints
+  or repeat cuts remain incompatible. Neither is bundled.
+- Coarse starts/lengths at4-frame increments can MISS a running foot match. The
+  finer driver samples original capture frames, prefilters both route-aligned
+  feet with a loose65mm bound, then applies the actual profile/body gates on the
+  source, Party Woman and Casual Female. This does not relax production bounds.
+- Before branch fix, several35_18/35_20/113_07 intervals close body descendants but
+  fail complete-skeleton checks on omitted root/control branches. Afterward43,
+  18and5intervals respectively pass the three-rig screen. Selected35_18 .2–116/120.
+  Existing35_17 default still fails its wrist correction limit; do not enlarge it.
+- FINAL matrix:2gaits(walk35_01/run35_18)×2paths(straight/curved)×35rigs(source,
+  Party Woman,32bundledcharacters,Motion Dummy Male)=140cases. Samples include
+  both repeats±1microsecond, world positions/quaternions of ALL bones,12skin
+  vertices/mesh, and finite-difference velocity. Max joint/skin changes across
+  the2microsecond interval0.008496/0.008104mm; max angle0.000028998rad. No
+  position/rotation/skin failures. Same candidate intervals on frozen previous
+  code fail68cases(maxjoint3.085935mm,angle.00535977rad), mostly on root/control
+  bones. This is not the old35_17-vs-new35_18 source comparison.
+- IMPORTANT evidence correction: first broad matrix mutated `path.points` AFTER
+  `compilePath(path)` had cached the original geometry. It sampled wrong repeat
+  times, making even old code appear seamless. Those preliminary0.024mm/0.8m/s
+  figures are INVALID. Final drivers create a NEW path object with resized points
+  and assert compiled length. JSON/logs were overwritten with corrected results.
+  Source cut searches and actual UI/export fixtures did not have that mutation.
+- Do not rely on an old Vite port alone for a frozen baseline. Port4575 uses a
+  PRIVATE pre-transform serving committed009acb3 versions of routeLoopPose,
+  motionLibrary and captured catalogue from `before-code/`. Verified served
+  module includes old `group.position.add`, while4574 includes `routeRoot`.
+  Final before matrix/preservation/video were rerun against this frozen baseline.
+- Corrected finite-difference velocity residual remains high ONLY for curved
+  walking Pirate Male1.631317m/s(before1.655107), Pirate Female1.575473(before
+  1.598442). Other measured cases are<.05m/s; all running cases<.001775m/s.
+  `velocity-followup.json` records these actual results. Do not call curved
+  walking velocity smooth. Earlier wrong-path matrix gave different offenders;
+  discard that diagnosis. Source curve/contact/loop evaluation needs investigation.
+-23native/receivercases×39timestamps, including reverse seeks, on seven existing
+  CMU takes and ActorCore Thoughtful walk: EVERY bone position/rotation and group
+  root matches frozen baseline exactly. This verifies one-shot preservation,
+  not all route histories. `preservation.json`.
+- `35-18-native-1x.mp4`: original source/Party Woman at30fps/native cadence.
+  `running-review/running-before-after-1x.mp4`:2.6s/30fps, old35_17preset left and
+  new35_18preset right, each at its own measured pace on the actual6m UI route.
+  Before poses sampled on frozen4575 and replayed in a single viewport beside
+  live4574poses. Their different cadence/phase is intentional. Explicit held
+  endings remain visible; this is NOT evidence of a natural stop.
+- Actual PathEditor private project `captured-full-body-run-review`:6m across,
+  2.0286123634290463s, exact35_18range, collisions=true. Final repeated UI run
+  has no HTTP/JS errors. Initial404s were favicon and the not-yet-created private
+  fixture; exact URL logs retained. This project was recreated during recheck;
+  movie `projects.json` retains its original equivalent fixture.
+- Final action preview of Captured running pass preserves.63s across original /
+  Party Woman, Play/Pause and Add recipient, saved content unchanged. Final log
+  no HTTP/JSerrors; software-WebGL advisory remains. Empty-clip private project
+  `captured-running-preview-review` avoids unrelated navigation planning.
+- Whole running route+.3sheldtail:304samples/102nodes/12verticespermesh,
+  maxjoint.027079mm/maxskin.025421mm,39,854,688byteGLB. Includes120Hzgrid and
+  repeat neighbours±1microsecond. Walking regression export:656samples/102nodes,
+  .036497/.035611mm,47,139,128bytes. Export algorithm unchanged.
+
+Reproduction/current state:
+
+- Final Vite4574(PID2734237), frozen baseline4575(PID2735899), privateAPI4413
+  restarted(PID2734140), ownedChrome9451(PID2594784). Revalidate PIDs/cwd/env
+  before any lifecycle operation. API data remains `/tmp/scene-natural-motion/data`.
+  Keep user4311/4337 and original/dialogue workspaces/protected project untouched.
+- Private work `/tmp/scene-natural-motion/running-candidates`; durable ignored
+  archive `.data/natural-motion-investigation/running-loop/` contains final
+  reports/videos/drivers and before/after runtime snapshots. Licensed private
+  Party Woman/Dummy GLBs are not archived/published; fixture uploads required.
+- Drivers: `find-running-candidates-{fine,bones,complete,frozen}.mjs`,
+  `running-candidate-matrix{,-before}.mjs`, `running-preservation.mjs`,
+  `full-body-running-{ui,review,export}.mjs`, `running-walking-export.mjs`,
+  `library-running-preview-ui.mjs`, `running-before.config.ts`. Generic
+  `captured-walk.mjs` generated native source comparisons. Always specify
+  FABLE_APP explicitly for drivers using APP default.
+- First final full suite found stale39-action count; updated expectation40.
+  No timeout limits or loop-quality limits changed. Final check results below.
+
+Next: diagnose curved walking velocity on both Pirate bodies using actual repeat
+boundaries and immutable compiled paths; continue natural stop/wait/recovery
+visual verification with the existing navigation planner. Retarget neck/wrist/toe
+composition and broader action/provider performance quality remain unfinished.
+
+Final checks for this milestone: **1,111tests/97files passed**, TypeScript,
+isolated production build (`/tmp/scene-natural-motion/running-final-build`) and
+whitespace checks passed. Existing SDK schema compatibility and build chunk-size
+warnings remain. Final render/UI runtime is4574; the frozen previous-code runtime
+is4575. The goal is still active; these checks close this implementation milestone.

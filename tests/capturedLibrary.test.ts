@@ -193,11 +193,16 @@ it("retains the earlier walking lead-in of a gradual recorded stop", async () =>
   }
 });
 
-it.each([undefined, "quaternius-casual-female"])(
-  "keeps the complete captured walking body continuous at repeats on %s",
-  async (receiverId) => {
+it.each([
+  { trial: "35_01", receiverId: undefined },
+  { trial: "35_01", receiverId: "quaternius-casual-female" },
+  { trial: "35_18", receiverId: undefined },
+  { trial: "35_18", receiverId: "quaternius-casual-female" },
+])(
+  "keeps the complete captured $trial body continuous at repeats on $receiverId",
+  async ({ trial, receiverId }) => {
     const { capturedRouteGaits } = await import("../shared/motionLibrary");
-    const gait = capturedRouteGaits.find((m) => m.animationName === "35_01")!;
+    const gait = capturedRouteGaits.find((m) => m.animationName === trial)!;
     const asset = capturedMotionSources.find(
       (a) => a.id === gait.sourceAssetId,
     )!;

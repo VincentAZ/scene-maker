@@ -361,6 +361,82 @@ it.each([false, true])(
   },
 );
 
+it("closes skeleton ancestors and sibling attachments with the body", () => {
+  const f = fixture(),
+    root = new T.Bone(),
+    attachment = new T.Bone();
+  f.group.add(root);
+  root.add(f.hips, attachment);
+  attachment.position.set(0.3, 0.7, 0.1);
+  const mesh = new T.Mesh(new T.BoxGeometry(0.1, 0.1, 0.1));
+  attachment.add(mesh);
+  let rootAmplitude = 0.1;
+  const raw = (time: number) => {
+    const frame = f.raw(time),
+      phase = time % 1;
+    root.rotation.set(0.03 * phase, rootAmplitude * phase, 0.02 * phase);
+    attachment.rotation.set(0.04 * phase, 0, 0);
+    f.group.updateMatrixWorld(true);
+    return frame;
+  };
+  const sample = (time: number, sourceDuration = 3) => {
+    const frame = raw(time);
+    closeRouteLoopPose(
+      f.group,
+      f.entity,
+      f.scene,
+      time,
+      {
+        profile: f.profile,
+        start: 0,
+        duration: sourceDuration,
+        sourceDuration,
+        sample: { time: time % 1 },
+        heading: frame.heading,
+      },
+      frame,
+      raw,
+    );
+    f.group.updateMatrixWorld(true);
+    return [root, attachment, f.foot, mesh].map((node) => ({
+      point: node.localToWorld(new T.Vector3(0.07, 0.03, 0.09)),
+      rotation: node.getWorldQuaternion(new T.Quaternion()).normalize(),
+    }));
+  };
+  for (const seam of [2, 1, 2]) {
+    const h = 1e-7,
+      before = sample(seam - h),
+      center = sample(seam),
+      after = sample(seam + h);
+    center.forEach((pose, i) => {
+      expect(before[i].point.distanceTo(after[i].point)).toBeLessThan(1e-5);
+      expect(before[i].rotation.angleTo(after[i].rotation)).toBeLessThan(1e-5);
+      expect(
+        pose.point
+          .clone()
+          .multiplyScalar(2)
+          .sub(before[i].point)
+          .sub(after[i].point)
+          .length() / h,
+      ).toBeLessThan(1e-4);
+    });
+  }
+  expect(f.group.userData.motionNotice).toBeUndefined();
+  raw(0.95);
+  const original = root.quaternion.clone();
+  sample(0.95, 1);
+  expect(root.quaternion.angleTo(original)).toBeLessThan(1e-7);
+  rootAmplitude = 0.8;
+  raw(0.95);
+  const large = root.quaternion.clone();
+  sample(0.95, 4);
+  expect(f.group.userData.motionNotice).toContain(
+    "body motion does not join smoothly",
+  );
+  expect(root.quaternion.angleTo(large)).toBeLessThan(1e-7);
+  mesh.geometry.dispose();
+});
+
 it("discloses large pose or scale changes instead of forcing them into a loop", () => {
   for (const f of [fixture(false, 0.8), fixture(false, 0.08, true)]) {
     f.raw(0.95);

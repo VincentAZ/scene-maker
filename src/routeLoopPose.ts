@@ -15,6 +15,7 @@ type Joint = {
   position: T.Vector3;
   scale: T.Vector3;
   anchor?: T.Bone;
+  routeRoot: boolean;
 };
 type Pose = { hips: T.Vector3; joints: Joint[]; morphs: Map<T.Mesh, number[]> };
 type Velocity = {
@@ -99,11 +100,6 @@ function endpointVelocity(
     });
   return endpoint;
 }
-function below(node: T.Object3D, ancestor: T.Object3D) {
-  for (let parent: T.Object3D | null = node; parent; parent = parent.parent)
-    if (parent === ancestor) return true;
-  return false;
-}
 function worldRotation(node: T.Object3D) {
   const rotation = node.quaternion.clone();
   for (let parent = node.parent; parent; parent = parent.parent)
@@ -125,23 +121,32 @@ function capture(group: T.Group, frame: Frame): Pose {
   group.traverse((node) => {
     if (node instanceof T.Mesh && node.morphTargetInfluences)
       morphs.set(node, [...node.morphTargetInfluences]);
-    if (
-      !(node instanceof T.Bone) ||
-      !(
-        below(node, hips) ||
-        [...(detached?.keys() ?? [])].some((root) => below(node, root))
-      )
-    )
-      return;
+    // Skeleton roots and sibling branches can drive skin or attachments too.
+    // Closing only descendants of the hips leaves those branches with the raw
+    // source-facing jump, even when the body's world pose is continuous.
+    if (!(node instanceof T.Bone)) return;
     const anchor = detached?.get(node);
+    let routeRoot = !anchor;
+    for (
+      let parent = node.parent;
+      parent && parent !== group;
+      parent = parent.parent
+    )
+      if (parent instanceof T.Bone) routeRoot = false;
     joints.push({
       bone: node,
       anchor,
+      routeRoot,
       scale: node.scale.clone(),
       rotation: inverse.clone().multiply(worldRotation(node)).normalize(),
       position: anchor
         ? anchor.worldToLocal(node.getWorldPosition(new T.Vector3()))
-        : node.position.clone(),
+        : routeRoot
+          ? node
+              .getWorldPosition(new T.Vector3())
+              .sub(frame.root)
+              .applyQuaternion(inverse)
+          : node.position.clone(),
     });
   });
   return {
@@ -332,10 +337,13 @@ export function closeRouteLoopPose(
           height * entity.scale * 0.05 &&
         first.joints.every((joint, i) => {
           const end = last.joints[i];
-          const parentScale = Math.abs(
-            (joint.anchor ?? joint.bone.parent!).getWorldScale(new T.Vector3())
-              .x,
-          );
+          const parentScale = joint.routeRoot
+            ? 1
+            : Math.abs(
+                (joint.anchor ?? joint.bone.parent!).getWorldScale(
+                  new T.Vector3(),
+                ).x,
+              );
           return (
             end?.bone === joint.bone &&
             joint.rotation.angleTo(end.rotation) +
@@ -468,7 +476,7 @@ export function closeRouteLoopPose(
         weight,
       )
       .addScaledVector(closure.velocity.scales[i], velocityWeight);
-    if (joint.bone !== hips && !joint.anchor)
+    if (joint.bone !== hips && !joint.anchor && !joint.routeRoot)
       joint.bone.position
         .copy(joint.position)
         .addScaledVector(
@@ -501,7 +509,26 @@ export function closeRouteLoopPose(
       .normalize();
     joint.bone.updateWorldMatrix(true, true);
   }
-  group.position.add(hipPoint.sub(hips.getWorldPosition(new T.Vector3())));
+  for (const [i, joint] of current.joints.entries())
+    if (joint.routeRoot && joint.bone !== hips) {
+      const point = joint.position
+        .clone()
+        .addScaledVector(
+          closure.first.joints[i].position
+            .clone()
+            .sub(closure.last.joints[i].position),
+          weight,
+        )
+        .addScaledVector(closure.velocity.positions[i], velocityWeight)
+        .applyQuaternion(heading)
+        .add(frame.root);
+      joint.bone.position.copy(joint.bone.parent!.worldToLocal(point));
+      joint.bone.updateWorldMatrix(true, true);
+    }
+  // Move the pelvis within its parent rather than translating the whole actor.
+  // A group translation would move the already-closed skeleton root and sibling
+  // attachments by the pelvis's remaining local displacement at the repeat.
+  hips.position.copy(hips.parent!.worldToLocal(hipPoint));
   group.updateWorldMatrix(true, true);
   for (const [i, joint] of current.joints.entries())
     if (joint.anchor) {

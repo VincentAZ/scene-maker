@@ -319,5 +319,51 @@
       "https://mocap.cs.cmu.edu/subjects/82/82_14.amc"
     ],
     "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
+  },
+  {
+    "trial": "35_18",
+    "frames": 175,
+    "frequency": 120,
+    "duration": 1.45,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 289112,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "35.asf": "2a8e2eda3c0d7d828566b2a9a8ab36b2b8b3864110574e8b73c8f069fded416c",
+      "35_18.amc": "b83673d6f66b56eef95beda511ebca7ae9c759c1a1694c852bc602623430aa42",
+      "35_18.glb": "b0051f2a57f08391d7e0bb0721126527a9968547c48517346886e335239b1e55"
+    },
+    "name": "Captured running pass",
+    "description": "A captured straight running pass at its original pace.",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/35/35.asf",
+      "https://mocap.cs.cmu.edu/subjects/35/35_18.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
   }
 ]

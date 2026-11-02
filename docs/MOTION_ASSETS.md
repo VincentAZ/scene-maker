@@ -55,12 +55,13 @@ The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing A
 
 ## Captured performances
 
-Seven CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+Eight CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
 2.975 s), **Captured walk and turns** (69_06, 43.433 s), **Captured run**
 (35_17, 1.383 s), **Captured walk and stop** (16_33, 2.367 s),
 **Captured run and stop** (16_57, 2.225 s), **Captured standing**
 (77_02, 15.6 s), and **Captured walking with a gradual stop**
-(82_14, 7.55 s). Standing retains its original 60 Hz samples; the other six
+(82_14, 7.55 s), plus **Captured running pass** (35_18, 1.45 s).
+Standing retains its original 60 Hz samples; the other seven
 retain their original 120 Hz samples. These are body performances; finger/thumb
 channels were not captured and are excluded. Facial animation is not included. Source skeletons are displayed as
 capsules for original-performance previews. That display is not a body scan
@@ -78,6 +79,7 @@ node scripts/prepare-cmu-motion.mjs <source-directory> 16_33
 node scripts/prepare-cmu-motion.mjs <source-directory> 16_57
 node scripts/prepare-cmu-motion.mjs <source-directory> 77_02 60
 node scripts/prepare-cmu-motion.mjs <source-directory> 82_14
+node scripts/prepare-cmu-motion.mjs <source-directory> 35_18
 ```
 
 Use separate directories for different subjects. Copy each resulting GLB to
@@ -99,7 +101,7 @@ which references source seconds 1.1–2.2166666667 of 35_01. The editor measures
 interval and receiver proportions to offer the original pace. It saves the
 source identity and interval on the route; it does not alter the original take
 or migrate saved routes. New running routes use **Captured running stride**,
-source seconds 0.15–0.8833333333 of 35_17, unless the actor already has an
+source seconds 0.2–0.9666666667 of 35_18, unless the actor already has an
 established/native running gait. Authored and procedural choices remain available.
 
 The walking interval was selected using the complete body at repeats, including
@@ -110,13 +112,28 @@ The runtime's bounded loop correction closes the selected repeat without
 rewriting the original capture. These checks do not guarantee planted soles or
 naturalness on every imported body.
 
+The running preset replaces the earlier 35_17 interval, whose feet matched but
+whose hands exceeded the body-loop correction limit. The complete original
+35_17 capture and saved routes remain available and unchanged. The new running
+interval lasts 92/120 seconds and travels 2.7281847433 source metres. Its source
+keys remain untouched; small repeat differences use the existing bounded
+correction. No correction limit was increased.
+
 Contact evidence is measured on the uninterrupted capture and trimmed to the
-selected walking stride, preserving support when a cut falls inside a planted
-step. The running take has no detected stance intervals: it retains captured
-foot motion without stance-lock correction. Its foot endpoints match across
-the selected repeat, but full-body inspection still finds hand discontinuities
-that the loop correction rejects. A better running interval/source remains
-required; neither matching feet nor a motion-capture label proves a good loop.
+selected stride, preserving support when a cut falls inside a planted step.
+The previous running take had no detected stance intervals and retained captured
+foot motion without stance-lock correction. Neither matching feet nor a
+motion-capture label proves a good loop.
+
+Loop correction now includes skeleton roots and sibling bone branches, which
+can drive skin or attachments outside the hips hierarchy. Root positions close
+in the route frame; pelvis correction stays within its parent so it cannot
+shift an already-closed root or attachment. One-shot playback is unchanged.
+Both presets passed position, rotation and sampled-skin repeat checks on straight
+and curved routes across the source, Party Woman, Motion Dummy Male and all
+32 bundled bodies (140 cases). Curved-route velocity residuals remain under
+investigation; these checks do not establish continuous velocity or natural
+arrivals, waits and contacts across providers.
 
 Imported skins bypass cached frustum bounds, which can otherwise hide a body
 whose root motion moves its bones outside the bounds of an earlier pose.
@@ -142,8 +159,8 @@ native source timing. It does not stretch a stop into a fixed schedule.
 82_14 is a full, selectable one-shot performance. It is not a new default route
 gait. Candidate repeated intervals can match the feet while still jumping at
 the hands, and one interval that closes on Party Woman fails on Casual Female.
-Those experiments remain outside the shipped route presets. Original walking
-and running defaults and saved routes are unchanged. Automatic finishes for
+Those experiments remain outside the shipped route presets. Adding that stop
+did not replace the walking/running presets. Automatic finishes for
 manually drawn paths, reliable running stops and broader receiver compatibility
 remain unfinished. Existing saved `ending: "hold"` semantics remain unchanged.
 
