@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import * as T from "three";
 import { characters, type Asset } from "../shared/scene";
 import { prepareImportedAsset } from "../src/importedAsset";
+import { sampleSkeletonSoles } from "../src/footSurface";
 
 /** An armature without any mesh, as an animation-only export loads: joints are
  * plain nodes because no skin marks them as bones. */
@@ -213,4 +214,30 @@ it.each([
   mixer.clipAction(clip).play();
   mixer.setTime(0.5);
   expect(bones.hips.position.toArray()).toEqual([0, 100, 25]);
+});
+
+it("gives a skeleton without any mesh soles that roll with heel and toe", () => {
+  const { scene, clip } = armature();
+  const asset = { ...characters[0], id: "soles", url: "/x.glb" } as Asset;
+  const group = prepareImportedAsset(asset, { scene, animations: [clip] });
+  const bones = group.userData.bones as Record<string, T.Object3D>;
+  const rest = sampleSkeletonSoles(group)!;
+  expect(rest.lowest).toBeCloseTo(rest.bindFloor, 9);
+  // Heel strike: the foot pitches toes-up about its ankle. The heel point
+  // stays on the floor (the ankle joint itself is far above it).
+  const ankle = group.worldToLocal(
+    bones.leftFoot.getWorldPosition(new T.Vector3()),
+  ).y;
+  bones.leftFoot.rotateX(-0.35);
+  const heel = sampleSkeletonSoles(group)!;
+  expect(heel.left - heel.bindFloor).toBeLessThan(0.02);
+  expect(ankle - heel.bindFloor).toBeGreaterThan(0.05);
+  // A lifted leg lifts that sole by the same amount.
+  bones.leftFoot.rotation.set(0, 0, 0);
+  bones.leftShin.position.y +=
+    0.05 / bones.leftShin.parent!.getWorldScale(new T.Vector3()).x;
+  expect(sampleSkeletonSoles(group)!.left - rest.bindFloor).toBeGreaterThan(
+    0.01,
+  );
+  expect(sampleSkeletonSoles(group)!.right).toBeCloseTo(rest.right, 9);
 });

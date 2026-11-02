@@ -778,7 +778,7 @@ fixture has capsule meshes). Standing height identical (1.73704).
 Gates on Vite 4676 identical to D26 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI); suite 1,235 (`--maxWorkers=4`).
 
-## D28 — Characters lying along another axis are stood up (13:43–13:55)
+## D28 — Characters lying along another axis are stood up (13:43–13:47)
 
 D19 turned characters facing another way about the vertical. A body whose axis
 lies along another axis — a Z-up export without the glTF up conversion, a
@@ -799,3 +799,30 @@ all fail with the correction disabled. Suite 1,238 (`--maxWorkers=4`), build OK.
 Generality matrix (receiver and source variants, incl. local axes and Z-up
 sources) line-for-line identical to the previous run; gates on Vite 4677
 identical to D27.
+
+## D29 — Skeleton-only sources keep receivers on the ground (13:47–13:58)
+
+BVH round trips of every CMU take reproduced all body roles at 0 mm but the
+receiver's root sat 22–105 mm higher than with the fixture source (purely
+vertical; horizontal 0). Cause: `transferFootClearance` sets the receiver's
+sole clearance from the source's sole surface; a source without any mesh has
+none, so the correction was skipped and the receiver kept the raw hip offset —
+feet floating 1.5–5.5 cm (mean lowest foot joint 45–79 mm vs 24–32 mm).
+
+Decision (`footSurface.ts`): for a file with no mesh at all, capture virtual
+soles at bind — the floor point under the foot and each joint below it (toe,
+end site), carried by that joint so heel and toe roll like a sole; the lowest
+foot-chain joint sets the floor. Used ONLY as the transfer source's clearance
+(`sampleSkeletonSoles`, fallback in `transferFootClearance`).
+Rejected (tried, reverted within the change): registering them as ordinary
+foot surfaces — route foot contacts then IK-adjusted native mesh-less rigs and
+two route-playback tests caught authored foot rotations changing by ≈1°.
+Evidence: unit test (soles on the floor at bind; at a toes-up heel strike the
+heel point stays <2 cm from the floor while the ankle is >5 cm up; a lifted leg
+lifts only that sole); fails without the change. BVH round trips (Vite 4678):
+receiver root difference now 15–36 mm (was 22–105); receiver sole clearance
+median: 35_17 0.2/0.3 mm (fixture source 1.3/2.1), 77_02 −5/−8 (fixture
++7/+11), 35_01 −17/−26 (fixture −10/−16), Dummy M −0.6/−0.9 (fixture
+−1.9/−2.9) on Casual/Party — both sources now keep soles within about ±2.5 cm
+of the floor; neither is ground truth (the fixture's soles are capsules).
+Gates on Vite 4678 identical to D28; suite 1,239 (`--maxWorkers=4`).

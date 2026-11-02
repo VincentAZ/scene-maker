@@ -8,6 +8,16 @@ type FootSurfaces = {
   contact: Record<Side, Surface>;
   floor: number;
 };
+/** A skeleton without any mesh (BVH, animation-only export): points on the
+ * bind floor under the foot and each joint below it, carried by that joint,
+ * so they roll with heel and toe like a sole. Used only as a transfer
+ * source's ground clearance; native playback and route contacts see no
+ * surface, as before. */
+type SkeletonSoles = {
+  points: Record<Side, { bone: T.Object3D; local: T.Vector3 }[]>;
+  floor: number;
+};
+const skeletonSoles = new WeakMap<T.Group, SkeletonSoles>();
 const surfaces = new WeakMap<T.Group, FootSurfaces>();
 export function hasFootSurfaceContacts(group: T.Group) {
   const saved = surfaces.get(group);
@@ -23,6 +33,7 @@ const below = (node: T.Object3D | undefined, root: T.Object3D) => {
  * the shin's geometry instead of assuming that its length equals the thigh's. */
 export function captureFootSurfaces(group: T.Group) {
   surfaces.delete(group);
+  skeletonSoles.delete(group);
   const bones = group.userData.bones as Record<string, T.Bone> | undefined;
   if (!bones?.leftShin || !bones.rightShin) return;
   group.updateWorldMatrix(true, false);
@@ -117,10 +128,64 @@ export function captureFootSurfaces(group: T.Group) {
       return indices.length ? [{ mesh, indices }] : [];
     });
   }
-  if (!result.left.length || !result.right.length) return;
+  if (!result.left.length || !result.right.length) {
+    captureSkeletonSoles(group);
+    return;
+  }
   const saved = { ...result, contact, floor: 0 };
   surfaces.set(group, saved);
   saved.floor = sampleFootSurfaces(group)!.lowest;
+}
+
+/** Virtual soles for a skeleton without any mesh: the floor point under each
+ * foot-chain joint at bind (the lowest of them sets the floor). Files with
+ * any mesh keep their real geometry or have no surface. */
+function captureSkeletonSoles(group: T.Group) {
+  let meshes = false;
+  group.traverse((node) => {
+    if (node instanceof T.Mesh) meshes = true;
+  });
+  const bones = group.userData.bones as Record<string, T.Bone>;
+  if (meshes || !bones.leftFoot || !bones.rightFoot) return;
+  const chains = {} as Record<Side, T.Object3D[]>;
+  let floor = Infinity;
+  for (const side of ["left", "right"] as const) {
+    chains[side] = [];
+    bones[side + "Foot"].traverse((node) => {
+      if (node instanceof T.Bone) chains[side].push(node);
+    });
+    for (const bone of chains[side])
+      floor = Math.min(
+        floor,
+        group.worldToLocal(bone.getWorldPosition(new T.Vector3())).y,
+      );
+  }
+  const points = {} as Record<Side, { bone: T.Object3D; local: T.Vector3 }[]>;
+  for (const side of ["left", "right"] as const)
+    points[side] = chains[side].map((bone) => {
+      const at = group.worldToLocal(bone.getWorldPosition(new T.Vector3()));
+      at.y = floor;
+      return { bone, local: bone.worldToLocal(group.localToWorld(at)) };
+    });
+  skeletonSoles.set(group, { points, floor });
+}
+
+/** Sole heights of a skeleton without any mesh, in the same form as
+ * `sampleFootSurfaces`. */
+export function sampleSkeletonSoles(group: T.Group) {
+  const saved = skeletonSoles.get(group);
+  if (!saved) return;
+  group.updateMatrixWorld(true);
+  const lowest = (side: Side) =>
+    Math.min(
+      ...saved.points[side].map(
+        ({ bone, local }) =>
+          group.worldToLocal(bone.localToWorld(local.clone())).y,
+      ),
+    );
+  const left = lowest("left"),
+    right = lowest("right");
+  return { left, right, lowest: Math.min(left, right), bindFloor: saved.floor };
 }
 
 /** World-space position of a stable sole material point. Unlike the ankle,
@@ -177,7 +242,7 @@ export function transferFootClearance(
   target: T.Group,
   basePosition: T.Vector3,
   ratio: number,
-  sourceSurface = sampleFootSurfaces(source),
+  sourceSurface = sampleFootSurfaces(source) ?? sampleSkeletonSoles(source),
   sourceOriginY = 0,
 ) {
   const a = sourceSurface,

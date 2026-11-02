@@ -34,9 +34,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 6648df0 | VRM declared humanoid map used |
 | ef6a76a | CMU ASF skeletons recognised |
 | 1024ae7 | Characters lying along another axis stood up on import |
+| (next) | Skeleton-only sources keep receivers on the ground |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D28). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D29). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -89,7 +90,8 @@ full suite, typecheck, build.
   crossed/chest/behind-back contacts are untouched; gross proportion mismatches
   are only partly corrected and reported (`handClearance.unresolved`).
 - Skeleton-only sources (CMU capsules) keep their bind foot pitch; their finger
-  channels stay excluded (not fabricated).
+  channels stay excluded (not fabricated). Mesh-less sources (BVH) use virtual
+  bind-floor soles for ground clearance only (D29).
 - A full Rigify export that also carries its control bones ("hips", "head")
   reports ambiguity and needs the rig mapping editor (by policy, not guessed).
   VRM files' declared humanoid map is read (D26), but VRM materials (MToon)
@@ -104,8 +106,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4677 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4676 serve
+Final Vite 4678 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4677 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
