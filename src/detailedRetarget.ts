@@ -1,6 +1,7 @@
 import * as T from "three";
 import { forearmRollPairs } from "./forearmRoll";
 import { limbHelperPairs } from "./limbHelpers";
+import { extremityPairs } from "./extremityChains";
 import { inferDetailRoles } from "./rigDetailRoles";
 
 const normalized = (name: string) =>
@@ -307,6 +308,7 @@ function planFor(
         if (weights.getComponent(i, k) > 0)
           weighted.add(node.skeleton.bones[indices.getComponent(i, k)]);
   });
+  pairs.push(...extremityPairs(source, target, a, b, pairs));
   pairs.push(...limbHelperPairs(source, target, a, b, pairs, weighted));
   // Torso chains differ between conventions (Waist/Spine01/Spine02,
   // Spine/Spine1/Spine2, lowerback/upperback/thorax) and names disagree on

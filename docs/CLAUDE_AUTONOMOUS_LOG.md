@@ -310,7 +310,7 @@ Existing fixtures (CMU→Party/Casual, ActorCore→Party/Dummy F, Quaternius→P
 exactly unchanged. New test (renamed helpers on the CC fixture) fails on the
 previous code. Gates on Vite 4646 all identical to D9 values; suite 1,185.
 
-## D11 — Sole-flat foot rest (11:45–12:20)
+## D11 — Sole-flat foot rest (11:45–11:56)
 
 Receiver variants (`claude-rig-variants.mjs` feet/stance): a bind with feet
 pitched 20° gave every transferred pose 20° foot error (toe joints 73 mm); a legs-
@@ -347,3 +347,26 @@ Process note: `pkill -f "port 4651 "` also matched its own shell command line an
 killed that shell (and my Vite 4651). User services 4311 (listening) untouched;
 4337 was not listening when checked afterwards — not checked at session start,
 and that pattern cannot match it. Use PIDs, not -f patterns.
+
+## D12 — Fingers and toes matched by hand/foot layout (11:57–12:20)
+
+Receiver renamed to another convention (Mixamo body, UE-style fingers
+`index_01_l`, unnamed helpers): ActorCore finger animation was lost (up to 143°);
+CMU toe motion lost (26.7°). New `src/extremityChains.ts` (after name pairs and
+forearm roll, before limb helpers): thumb = chain leaving the hand clearly (>10°)
+further from the forearm axis than the others; other fingers ordered across the
+palm from the thumb side; chains pair by order and joints by segment index, only
+when both hands show the same finger count. Toe chain = the foot's forward child
+carrying the most bones (a toe share bone at the ball has none; reach only breaks
+ties — my first reach-only rule declined CC feet as ambiguous). Bind positions
+only. Explicit roles do NOT block (they say which bone a joint is; my first
+version skipped them and so missed CMU's catalogue-mapped `ltoes`); excluded
+(`unmapped:`) joints still do, so CMU's uncaptured fingers stay unfabricated.
+
+Renamed receiver after: CMU 91_34 source 0.00 mm / 0.02° (fully invariant);
+ActorCore source — fingers/toes matched; remaining elbow/knee share bones
+(57–69° / 9–15°, ambiguous positions, declined by design), eyes 5–10° (facial
+bones still name-matched), twist ≤4.5°. Existing fixtures exactly unchanged.
+New test (renamed fingers/toe; the synthetic fixture needed an anatomically
+angled thumb) fails on the previous code. Gates on Vite 4657 identical to D11;
+suite 1,188.

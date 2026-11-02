@@ -2213,3 +2213,12 @@ also removed an existing defect: Party Woman's left sole was pitched up to 12–
 while sources stood still; now within ≈5°. Transferred body heights shift ≤22 mm
 as ground support follows the flatter soles. Details: `docs/CLAUDE_AUTONOMOUS_LOG.md`
 D11. Runtime Vite 4653.
+
+## Fingers and toes by layout (Claude, 2026-11-02)
+
+Finger and toe joints now also pair by hand/foot layout and segment order when
+names follow different conventions (`src/extremityChains.ts`): a CMU source drives
+a receiver renamed to Mixamo/UE-style conventions with 0.02° difference; ActorCore
+finger animation reaches UE-style receiver fingers. Still name-only: facial bones
+(eyes 5–10° on that variant); elbow/knee share bones are declined when their place
+is ambiguous. Details: `docs/CLAUDE_AUTONOMOUS_LOG.md` D12. Runtime Vite 4657.

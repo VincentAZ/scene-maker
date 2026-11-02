@@ -307,6 +307,72 @@ function expectSnapshot(f: Fixture, expected: ReturnType<typeof snapshot>) {
 }
 
 describe("detailed imported animation runtime", () => {
+  it("matches renamed fingers and toes by hand and foot layout", () => {
+    // Same body; the source's fingers and toe carry another convention's
+    // names (UE-style). Their animation must still reach the receiver.
+    const fingers = ["Thumb", "Index", "Mid", "Ring", "Pinky"];
+    const names: Record<string, string> = { CC_Base_L_ToeBase: "ball_l" };
+    for (const [i, finger] of fingers.entries())
+      for (const segment of [1, 2, 3])
+        names[`CC_Base_L_${finger}${segment}`] = `digit_${i}_0${segment}_l`;
+    const original = fixture(),
+      renamed = fixture(),
+      direct = fixture(),
+      viaRenamed = fixture();
+    for (const [from, to] of Object.entries(names))
+      renamed.joints[from].name = to;
+    // An anatomical thumb: it leaves the palm angled forward and down.
+    for (const f of [original, renamed, direct, viaRenamed]) {
+      const hand = point(f.joints.CC_Base_L_Hand);
+      [1, 2, 3].forEach((segment) => {
+        const bone = f.joints[`CC_Base_L_Thumb${segment}`];
+        bone.position.copy(
+          bone.parent!.worldToLocal(
+            hand
+              .clone()
+              .add(new T.Vector3(0.015, -0.02, 0.03).multiplyScalar(segment)),
+          ),
+        );
+        f.group.updateWorldMatrix(true, true);
+      });
+    }
+    const clip = (f: Fixture) =>
+      new T.AnimationClip(
+        "Hand and toe",
+        duration,
+        Object.keys(names).map(
+          (name, i) =>
+            new T.QuaternionKeyframeTrack(
+              `${f.joints[name].name}.quaternion`,
+              [0, duration],
+              [
+                ...f.bind[name].quaternion.toArray(),
+                ...f.bind[name].quaternion
+                  .clone()
+                  .multiply(rotation(0.3, 0.02 * i, -0.1))
+                  .toArray(),
+              ],
+            ),
+        ),
+      );
+    const a = clip(original),
+      b = clip(renamed);
+    original.configure([a]);
+    renamed.configure([b]);
+    direct.configure();
+    viaRenamed.configure();
+    schedule(direct, original, [a], true);
+    schedule(viaRenamed, renamed, [b], true);
+    for (const time of [0.4, 1.2, 2.1, 0.4]) {
+      direct.sample(time);
+      viaRenamed.sample(time);
+      expectPoseEqual(viaRenamed, direct);
+    }
+    expect(
+      retargetReport(renamed.group, viaRenamed.group, b)!.unsupported,
+    ).toEqual([]);
+  });
+
   it("matches renamed limb helpers by their place on the limb", () => {
     // Same body; the source's twist/share helpers carry another convention's
     // names. Their animation must still reach the receiver's helpers.
