@@ -179,3 +179,38 @@ it("keeps a detached (IK-style) foot of an armature exported without skin", () =
     ),
   ).toBe(bones.leftShin);
 });
+
+it.each([
+  ["Z-up", new T.Euler(Math.PI / 2, 0, 0)],
+  ["lying face down", new T.Euler(-Math.PI / 2, 0, 0)],
+  ["on its side", new T.Euler(0, 0, Math.PI / 2)],
+])("stands up a character authored %s", (_, rotation) => {
+  const { scene, clip } = armature();
+  scene.children[0].rotation.copy(rotation);
+  const asset = { ...characters[0], id: "upright", url: "/x.glb" } as Asset;
+  const group = prepareImportedAsset(asset, { scene, animations: [clip] });
+  const bones = group.userData.bones as Record<string, T.Object3D>;
+  group.updateMatrixWorld(true);
+  const at = (o: T.Object3D) =>
+    group.worldToLocal(o.getWorldPosition(new T.Vector3()));
+  const up = at(bones.head).sub(at(bones.hips)).normalize();
+  expect(up.y).toBeGreaterThan(0.999);
+  expect(forwardOf(group).distanceTo(new T.Vector3(0, 0, 1))).toBeLessThan(
+    1e-6,
+  );
+  // Grounded and 1.85 tall from its joints; tracks keep their values.
+  let low = Infinity,
+    high = -Infinity;
+  group.traverse((n) => {
+    if (n instanceof T.Bone) {
+      low = Math.min(low, at(n).y);
+      high = Math.max(high, at(n).y);
+    }
+  });
+  expect(low).toBeCloseTo(0, 6);
+  expect(high - low).toBeCloseTo(1.85, 6);
+  const mixer = group.userData.mixer as T.AnimationMixer;
+  mixer.clipAction(clip).play();
+  mixer.setTime(0.5);
+  expect(bones.hips.position.toArray()).toEqual([0, 100, 25]);
+});

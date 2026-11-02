@@ -100,6 +100,52 @@ function promoteAnimatedJoints(root: T.Object3D, clips: T.AnimationClip[]) {
   }
 }
 
+/** The rotation that brings a character's body axis (hips to head) onto +Y
+ * when it lies along another axis (a Z-up export, a capture lying down), or
+ * undefined for an upright body. Leaning poses stay as authored. */
+function uprightCorrection(group: T.Group) {
+  const bones = group.userData.bones as Record<string, T.Object3D> | undefined;
+  if (!bones?.hips || !bones.head) return;
+  group.updateMatrixWorld(true);
+  const up = group
+    .worldToLocal(bones.head.getWorldPosition(new T.Vector3()))
+    .sub(group.worldToLocal(bones.hips.getWorldPosition(new T.Vector3())));
+  if (up.lengthSq() < 1e-12) return;
+  const axis = new T.Vector3();
+  const [k] = (["x", "y", "z"] as const)
+    .map((a) => [a, Math.abs(up[a])] as const)
+    .sort((p, q) => q[1] - p[1])[0];
+  axis[k] = Math.sign(up[k]);
+  if (k === "y" && axis.y > 0) return;
+  return new T.Quaternion().setFromUnitVectors(axis, new T.Vector3(0, 1, 0));
+}
+
+/** Uniform size (characters 1.85 tall) and grounding, applied on a node
+ * outside the animation hierarchy so authored transforms keep their units. */
+function normalize(
+  normalization: T.Object3D,
+  subject: T.Object3D,
+  character: boolean,
+) {
+  normalization.scale.setScalar(1);
+  normalization.position.set(0, 0, 0);
+  normalization.updateMatrixWorld(true);
+  const bounds = new T.Box3().setFromObject(subject);
+  // An armature without a mesh has no geometric bounds: use its joints.
+  if (bounds.isEmpty()) {
+    subject.updateMatrixWorld(true);
+    subject.traverse((n) => {
+      if (n instanceof T.Bone)
+        bounds.expandByPoint(n.getWorldPosition(new T.Vector3()));
+    });
+  }
+  const height = bounds.max.y - bounds.min.y;
+  const factor = character ? 1.85 / (height || 1) : 1;
+  normalization.scale.setScalar(factor);
+  normalization.position.y = -bounds.min.y * factor;
+  normalization.updateMatrixWorld(true);
+}
+
 /** Quarter turns that bring a character's anatomical forward (left-to-right
  * across the hips, crossed with up) to +Z, or 0 within 45 degrees of it. */
 function facingCorrection(group: T.Group) {
@@ -150,23 +196,11 @@ export function prepareImportedAsset(
   // Rooms must keep their authored transforms: grounding by bounds can lift
   // a whole interior when its foundation extends below the floor.
   if (asset.category !== "environments") {
-    const bounds = new T.Box3().setFromObject(imported);
-    // An armature without a mesh has no geometric bounds: use its joints.
-    if (bounds.isEmpty()) {
-      imported.updateMatrixWorld(true);
-      imported.traverse((n) => {
-        if (n instanceof T.Bone)
-          bounds.expandByPoint(n.getWorldPosition(new T.Vector3()));
-      });
-    }
-    const height = bounds.max.y - bounds.min.y;
     // Normalize outside the animation hierarchy. Provider-authored transforms
     // (and tracks targeting them) must retain their original units and values.
     const normalization = new T.Group();
-    const factor = asset.category === "characters" ? 1.85 / (height || 1) : 1;
-    normalization.scale.setScalar(factor);
-    normalization.position.y = -bounds.min.y * factor;
     normalization.add(imported);
+    normalize(normalization, imported, asset.category === "characters");
     content = normalization;
   }
   group.add(content);
@@ -180,6 +214,18 @@ export function prepareImportedAsset(
         rigMapping,
       );
     configure();
+    // A body lying along another axis (Z-up export or capture) is stood up
+    // on a node outside the animation hierarchy, then measured again.
+    const tilt = uprightCorrection(group);
+    if (tilt) {
+      const orient = new T.Group();
+      orient.quaternion.copy(tilt);
+      content.remove(imported);
+      orient.add(imported);
+      content.add(orient);
+      normalize(content, orient, true);
+      configure();
+    }
     // glTF assets face +Z, and placement, routes and in-place stride
     // measurement rely on it. A character authored in another convention
     // (facing -Z or sideways) is turned by the nearest quarter turn outside the

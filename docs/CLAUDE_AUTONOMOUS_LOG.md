@@ -755,7 +755,7 @@ Gates on Vite 4674 identical to D25 (route rerun after a fresh-port
 module-resolution cold start; cuts, native exact, all 19 cross-rig deltas,
 wait, export, real UI).
 
-## D27 — CMU ASF skeletons recognised (13:39–13:48)
+## D27 — CMU ASF skeletons recognised (13:39–13:43)
 
 D22 left raw CMU ASF names (`root`, `lfemur`, `ltibia`, `lhumerus`, `lradius`,
 `lowerback`, `lowerneck`) to the mapping editor because `root` cannot mean
@@ -777,3 +777,25 @@ native 3.8e-6; on Quaternius Casual and Party every body role and the head are
 fixture has capsule meshes). Standing height identical (1.73704).
 Gates on Vite 4676 identical to D26 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI); suite 1,235 (`--maxWorkers=4`).
+
+## D28 — Characters lying along another axis are stood up (13:43–13:55)
+
+D19 turned characters facing another way about the vertical. A body whose axis
+lies along another axis — a Z-up export without the glTF up conversion, a
+Z-up BVH (3ds Max writes them), a capture authored lying down — still came in
+lying on its back: grounding, 1.85 m size normalization, facing and every
+route then work on the wrong axis.
+
+Decision (`importedAsset.ts`): after the first configure, the hips→head
+direction in character space is measured; if its dominant axis is not +Y, the
+imported scene is wrapped in a node rotated to bring that axis onto +Y (outside
+the animation hierarchy: tracks keep their values), size and grounding are
+recomputed on that node and the rig is configured again; D19's facing turn runs
+after it. The bounds code became `normalize()` so it can run twice; upright
+characters take exactly the previous single path.
+Evidence: three new cases (armature authored Z-up, face down, on its side):
+upright (≥0.999), facing +Z, grounded, 1.85 tall, hips track values unchanged;
+all fail with the correction disabled. Suite 1,238 (`--maxWorkers=4`), build OK.
+Generality matrix (receiver and source variants, incl. local axes and Z-up
+sources) line-for-line identical to the previous run; gates on Vite 4677
+identical to D27.

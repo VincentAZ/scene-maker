@@ -33,9 +33,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 50270b6 | Eyes paired across naming conventions |
 | 6648df0 | VRM declared humanoid map used |
 | ef6a76a | CMU ASF skeletons recognised |
+| (next) | Characters lying along another axis stood up on import |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D27). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D28). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -63,7 +64,7 @@ full suite, typecheck, build.
   copies only) import with all roles and transfer in both directions (D16).
 - Root motion carried on a separate root bone is invariant (D16).
 - A −Z-authored character (Soldier) walks/runs its own gaits on routes after
-  import facing normalization (D19).
+  import facing normalization (D19); Z-up or lying bodies are stood up (D28).
 - Skeletons named in the Unreal, Rigify, Daz Genesis, VRM/VRoid, Blender and
   3ds Max Biped conventions are recognised as receivers and as animation
   sources, including the sanitized names three.js gives them on load; Party
@@ -103,8 +104,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4676 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4675 serve
+Final Vite 4677 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4676 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
