@@ -30,7 +30,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 21b8bd0 | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures |
 | 5c1987d | VRM/VRoid characters import |
 | c039dca | Fingers paired across different finger counts |
-| (next) | Eyes paired across naming conventions |
+| 50270b6 | Eyes paired across naming conventions |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D25). Summaries also appended to
