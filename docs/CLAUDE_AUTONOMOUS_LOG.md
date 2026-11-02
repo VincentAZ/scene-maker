@@ -348,7 +348,7 @@ killed that shell (and my Vite 4651). User services 4311 (listening) untouched;
 4337 was not listening when checked afterwards — not checked at session start,
 and that pattern cannot match it. Use PIDs, not -f patterns.
 
-## D12 — Fingers and toes matched by hand/foot layout (11:57–12:20)
+## D12 — Fingers and toes matched by hand/foot layout (11:57–12:05)
 
 Receiver renamed to another convention (Mixamo body, UE-style fingers
 `index_01_l`, unnamed helpers): ActorCore finger animation was lost (up to 143°);
@@ -370,3 +370,39 @@ bones still name-matched), twist ≤4.5°. Existing fixtures exactly unchanged.
 New test (renamed fingers/toe; the synthetic fixture needed an anatomically
 angled thumb) fails on the previous code. Gates on Vite 4657 identical to D11;
 suite 1,188.
+
+## D13 — Final 1× review movies and generality matrix (12:05–12:30)
+
+1× before/after movies (frozen 10d1d01 recorded live on Vite 4614 left, all
+session changes on 4657 right; offline fixed-time renders, 30 fps):
+`claude-session/review/actorcore-final-full-before-after-1x.mp4` (34 s ActorCore
+Thoughtful walk on Party across the 10.4 s cut), `actorcore-final-upper-…` (0–14 s,
+folded arms/chin), `cmu-final-full-…` (18.4 s 91_34), `cmu-final-feet-…` (0–8 s side
+view of the feet). Contact sheets inspected: gestures (folded arms, hand to chin,
+hands behind back) preserved, no new artefacts; differences are local to hands/feet.
+
+Final matrix (`test-results/claude-generality-matrix.sh`, Vite 4657; max error of
+any skin-weighted bone after transfer, vs the identity re-import):
+
+| receiver re-authored as | CMU 91_34 | ActorCore TW | Quaternius Walk |
+|---|---|---|---|
+| local bone axes | 0.00 mm | 0.00 mm | 0.00 mm |
+| centimetre units | 0.03° | 0.03° | 0.02° |
+| A-pose swing 40° | 0.82° | 0.82° | 0.82° |
+| + 10° forward / + elbow / + palm roll | 4.65° | 4.65° | 4.65° |
+| finger rest curl 20°/joint | 40° (no finger data: receiver keeps own rest) | 2.44° | 2.44° |
+| feet pitched 20°, toes bent | 0.85° | 0.85° | 0.85° |
+| legs apart, knees bent | 1.87° | 1.87° | 1.87° |
+| Mixamo body + UE-style finger names | 0.03° | 85° (elbow share bone) | 37° (elbow share bone) |
+
+| source re-authored as (→ Party) | max error |
+|---|---|
+| A-pose with palm roll | 0.24° |
+| finger rest curl | 2.28° |
+| centimetre armature | 0.03° (was refused before D9) |
+| Z-up armature | 0.02° |
+| Mixamo names | 53° (elbow share bone); everything else ≤ 4.5° |
+
+(Before this session the same receiver variants measured 21° palm roll, 40° finger
+curl, 20° feet; renamed sources/receivers lost torso segments, twist, finger and
+toe animation.) Raw: `claude-session/matrix/{receiver,source}.{json,log}`.

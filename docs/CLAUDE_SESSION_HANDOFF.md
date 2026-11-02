@@ -1,0 +1,70 @@
+# Claude session handoff — 2026-11-02
+
+Worktree `/home/vincent/Repos/scene-maker-natural-motion`, branch
+`fix/natural-motion-baseline`. Never work in `/home/vincent/Repos/scene-maker` or
+the dialogue worktree; never touch user services 4311/4337 or the protected Astra
+project/data. Private data: `/tmp/scene-natural-motion/data` (API 4413).
+
+Controlling scope (user): a general import-and-retarget system — any standard
+humanoid rig imported can receive any standard humanoid animation imported. The
+existing characters/takes are regression fixtures, not a whitelist. Natural motion
+at normal speed; preserve representable detail; disclose what cannot transfer.
+The overall natural-animation goal is still OPEN; nothing here is user-accepted.
+
+## What this session did (commits after 10d1d01)
+
+| commit | change |
+|---|---|
+| 1987b07 | Receiving-body hand clearance (replaces the rejected lateral candidate) |
+| 767de0f | Anatomical arm/hand/finger rest for every rig |
+| 763f58e | Torso mapped by topology; unit-independent bone-translation check |
+| 9c197c4 | Limb twist/share helpers matched by place on the limb |
+| 52204a9 | Sole-flat foot/toe rest |
+| 5362f66 | Fingers and toes matched by hand/foot layout |
+
+Every decision, rejected variant, harness pitfall and measurement is in
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D12). Summaries also appended to
+`docs/NATURAL_MOTION_CONTINUATION.md`.
+
+## How to check generality
+
+- `test-results/claude-rig-variants.mjs` — re-author a RECEIVER (axes, units,
+  A-pose parts, finger curl, foot pitch, stance, other naming conventions), export
+  GLB, re-import through the app loader, transfer, compare every bone by name.
+- `test-results/claude-source-variants.mjs` — same for a SOURCE with its motion
+  kept (bind-only changes leave tracks; unit/Z-up/name changes convert tracks).
+- `test-results/claude-generality-matrix.sh` runs both on one runtime.
+- Pitfalls (all hit once): re-bake skin at the shared rest before re-authoring
+  (glTF bind ≠ node rest); representation-only changes must NOT re-bake; skin
+  comparisons are invalid for bind-pose variants (double blend) — use bone
+  transforms; unweighted control bones follow the source frame and must be
+  excluded; `:` in three.js track names is reserved.
+
+Preservation gates rerun after every change (all drivers `test-results/claude-hand-*.mjs`):
+route repeats (140), source cuts (140), native preservation vs frozen 10d1d01
+(Vite 4614), 70 s blocked wait/recovery history, export bake/reload, real UI,
+full suite, typecheck, build.
+
+## Known remaining gaps (measured)
+
+- Elbow/knee share bones are declined when their place on the limb is ambiguous
+  with a twist bone (57–69° / 9–15° on a renamed CC source).
+- Facial bones (eyes) match only by name.
+- Upper-arm twist from a forward-tilted A-pose bind leaks ≈4.7° into twist helpers.
+- Hand clearance is limited to hands at their own side of hips/thighs/lower torso;
+  crossed/chest/behind-back contacts are untouched; gross proportion mismatches
+  are only partly corrected and reported (`handClearance.unresolved`).
+- Skeleton-only sources (CMU capsules) keep their bind foot pitch; their finger
+  channels stay excluded (not fabricated).
+- Not addressed this session: natural default route starts/stops (35_01 lacks a
+  measured stop), running arrivals, UI disclosure of hand-clearance adaptation.
+
+## Runtime at handoff
+
+Final Vite 4657 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4656 serve
+older code; do not use them for evidence. Start a fresh port after edits (no HMR).
+Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
+
+Evidence: `/tmp/scene-natural-motion/claude-session/` (durable copy in
+`.data/natural-motion-investigation/claude-session/`, incl. `drivers/`).
