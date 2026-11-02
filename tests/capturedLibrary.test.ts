@@ -3,6 +3,7 @@ import * as T from "three";
 import { libraryCharacters } from "../shared/characterLibrary";
 import { setMotionSources } from "../src/rig";
 import { locomotionScale } from "../src/locomotion";
+import { sampleFootSurfaces } from "../src/footSurface";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -41,6 +42,207 @@ async function load(asset: Asset) {
   );
   return { bytes, gltf, group: prepareImportedAsset(asset, gltf) };
 }
+
+it.each(["cmu-capture-82-14", "quaternius-casual-female"])(
+  "retains the original capture floor when a route hands over to a trimmed stop on %s",
+  async (receiverId) => {
+    const asset = capturedMotionSources.find(
+      (a) => a.id === "cmu-capture-82-14",
+    )!;
+    const { group: source, gltf } = await load(asset),
+      take = gltf.animations[0];
+    const target =
+      receiverId === asset.id
+        ? source
+        : (await load(libraryCharacters.find((a) => a.id === receiverId)!))
+            .group;
+    try {
+      if (target !== source)
+        setMotionSources(target, new Map([[asset.id, source]]));
+      const profile = locomotionProfile(source, take, {
+        start: 1.2,
+        end: 2.375,
+      })!;
+      const scene = starterScene(),
+        actor = scene.entities[0];
+      scene.entities = [actor];
+      scene.transcript = [];
+      actor.assetId = receiverId;
+      actor.position = [0.2, 0.7, -0.3];
+      actor.rotation = 0.4;
+      actor.scale = 1.3;
+      actor.ending = "hold";
+      const motion = {
+        ...capturedMotions.find((m) => m.animationName === "82_14")!,
+        id: "capture",
+      };
+      const route = {
+        ...motion,
+        id: "route",
+        path: {
+          points: [
+            [0, 0, 0],
+            [0, 0, profile.distance * locomotionScale(source, target) * 2],
+          ] as [number, number, number][],
+          smooth: false,
+          sourceRange: { start: 1.2, end: 2.375 },
+        },
+      };
+      scene.customMotions = [motion, route];
+      const boundary = profile.duration * 2,
+        entry = 1.6629956367257408;
+      const whole = {
+        ...actor,
+        clips: [
+          {
+            id: "whole",
+            motionId: motion.id,
+            duration: take.duration,
+            playbackRate: 1,
+          },
+        ],
+      };
+      const arrived = {
+        ...actor,
+        clips: [
+          {
+            id: "approach",
+            motionId: route.id,
+            duration: boundary,
+            playbackRate: 1,
+          },
+          {
+            id: "stop",
+            motionId: motion.id,
+            duration: take.duration - entry,
+            sourceStart: entry,
+            playbackRate: 1,
+            transition: "smooth" as const,
+          },
+        ],
+      };
+      const splitArrival = {
+        ...arrived,
+        clips: [
+          arrived.clips[0],
+          { ...arrived.clips[1], duration: 1 },
+          {
+            ...arrived.clips[1],
+            id: "continued-stop",
+            sourceStart: entry + 1,
+            duration: take.duration - entry - 1,
+          },
+        ],
+      };
+      const height = () =>
+        target.userData.bones.hips.getWorldPosition(new T.Vector3()).y;
+      const clearance = () => {
+        const surface = sampleFootSurfaces(target)!;
+        return (
+          (surface.lowest - surface.bindFloor) * actor.scale +
+          target.position.y -
+          actor.position[1]
+        );
+      };
+      for (const elapsed of [0.3, 0.8, 1, 1.01, 1.125, 1.7, 3, 3.8, 0.5]) {
+        applyAnimatedEntityPose(target, whole, scene, entry + elapsed);
+        // The capture itself sometimes penetrates the floor. The arrival
+        // retains its height curve with only the necessary sole support.
+        const expected = height() + Math.max(0, -clearance());
+        for (const edited of [arrived, splitArrival]) {
+          applyAnimatedEntityPose(target, edited, scene, boundary + elapsed);
+          expect(height()).toBeCloseTo(expected, 6);
+          expect(clearance()).toBeGreaterThanOrEqual(-1e-8);
+        }
+      }
+    } finally {
+      if (target !== source) disposeObject(target);
+      disposeObject(source);
+    }
+  },
+);
+
+it.each(["35_01", "82_14"])(
+  "preserves the actual %s capture across consecutive source cuts",
+  async (trial) => {
+    const asset = capturedMotionSources.find(
+      (a) => a.id === `cmu-capture-${trial.replace("_", "-")}`,
+    )!;
+    const { group, gltf } = await load(asset);
+    try {
+      const scene = starterScene(),
+        actor = scene.entities[0],
+        take = gltf.animations[0];
+      scene.entities = [actor];
+      actor.assetId = asset.id;
+      actor.position = [0, 0, 0];
+      actor.rotation = 0;
+      actor.scale = 1;
+      const motion = {
+        ...capturedMotions.find((m) => m.animationName === trial)!,
+        id: "performance",
+      };
+      scene.customMotions = [motion];
+      const cut = trial === "35_01" ? 1.5 : 1.7;
+      const whole = {
+        ...actor,
+        clips: [
+          {
+            id: "whole",
+            motionId: motion.id,
+            duration: take.duration,
+            playbackRate: 1,
+          },
+        ],
+      };
+      const split = {
+        ...actor,
+        clips: [
+          { id: "first", motionId: motion.id, duration: cut, playbackRate: 1 },
+          {
+            id: "second",
+            motionId: motion.id,
+            duration: take.duration - cut,
+            sourceStart: cut,
+            playbackRate: 1,
+            transition: "smooth" as const,
+          },
+        ],
+      };
+      const bones: T.Bone[] = [];
+      group.traverse((n) => {
+        if (n instanceof T.Bone) bones.push(n);
+      });
+      for (const time of [
+        cut - 0.01,
+        cut,
+        cut + 0.008,
+        cut + 0.08,
+        cut + 0.125,
+        cut + 0.249,
+        cut + 0.3,
+        cut + 0.04,
+      ]) {
+        applyAnimatedEntityPose(group, whole, scene, time);
+        const poses = bones.map((b) => ({
+          p: b.getWorldPosition(new T.Vector3()),
+          q: b.getWorldQuaternion(new T.Quaternion()),
+        }));
+        applyAnimatedEntityPose(group, split, scene, time);
+        bones.forEach((b, i) => {
+          expect(
+            b.getWorldPosition(new T.Vector3()).distanceTo(poses[i].p),
+          ).toBeLessThan(1e-6);
+          expect(
+            b.getWorldQuaternion(new T.Quaternion()).angleTo(poses[i].q),
+          ).toBeLessThan(1e-6);
+        });
+      }
+    } finally {
+      disposeObject(group);
+    }
+  },
+);
 
 it.each(["quaternius-pirate-male", "quaternius-pirate-female"])(
   "keeps the supported knee continuous near a curved captured repeat on %s",

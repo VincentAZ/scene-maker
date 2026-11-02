@@ -32,6 +32,7 @@ export function transitionAt(
         const progress = Math.min(1, (time - start) / seconds);
         return {
           boundary: start,
+          duration: seconds,
           weight: progress * progress * (3 - 2 * progress),
         };
       }

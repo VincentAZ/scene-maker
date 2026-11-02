@@ -4628,3 +4628,29 @@ matches app joints/skin within 0.044 mm across 457 samples. A rejected implement
 that inadvertently shared the correction budget across passes is isolated under
 `rejected-distance-budget/`; its reports are not final. This milestone fixes contact
 continuity; natural source quality and complete arrival/wait behavior remain open.
+
+### Preserve incoming performances through smooth joins (2026-11-01)
+
+Smooth joins now decay the boundary pose difference over the live incoming take,
+with a bounded transient velocity correction. They no longer blend each live
+frame toward a frozen outgoing pose. Consecutive same-source/same-rate native cuts
+preserve the original performance's own keyframe velocity changes. Root travel
+and source clocks remain governed by the timeline. Existing cuts and held endings
+remain explicit; this change does not make an unsuitable source performance human.
+
+A route handing off to a trimmed native stop now retains the full capture's
+vertical reference and supports the final deformed soles against the route floor.
+The offset survives subsequent cuts. Positive clearance remains source-authored.
+Three actual Party arrivals previously sank 46.6–57.6 mm; final sampled clearance
+is numerical noise, with identical horizontal travel/time. Residual joint velocity
+mismatch remains at these handoffs (.225–.466 m/s in the dense boundary probe), so
+perfect velocity continuity is not claimed for the composed contact system.
+
+Normal-speed comparisons, final export checks and reproduction details are in
+`docs/NATURAL_MOTION_CONTINUATION.md` and the ignored evidence archive
+`.data/natural-motion-investigation/transitions/`. The ActorCore-to-Party split
+comparison drops from 84.357 mm sampled-skin discrepancy to .0000215 mm. Casual
+Female retains a separate frame/attachment defect (up to 17.527 mm sampled skin)
+that still needs correction. Full suite: 1,126 tests across 97 files; tests support
+the fidelity claims but do not establish that the overall natural-motion goal is
+complete.

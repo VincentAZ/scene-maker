@@ -686,6 +686,9 @@ function applyUnblendedEntityPose(
     group.userData.seatBody = measureSeatBody(group);
   }
   let nativeStartY = 0;
+  let arrivalFloor = false;
+  let arrivalTravelY = 0;
+  let precedingArrivalTravelY = 0;
   const pose = entityPose(entity, scene, time, {
     routeEndHeading: (motion, clip, base) =>
       completedRouteHeading(group, entity, scene, motion, clip, base)?.heading,
@@ -711,52 +714,65 @@ function applyUnblendedEntityPose(
         "rightShin",
       ].every((name) => bones[name]),
     nativeRoot: (motion, scheduled) => {
-      if (motion.sourceAssetId !== entity.assetId) {
-        const source = motionSource(group, motion.sourceAssetId!);
-        const clip =
-          source &&
-          importedClip(source.userData.animations, motion.animationName!);
-        const root =
-          source && clip
-            ? transferredRootMotion(
-                source,
-                group,
-                clip,
-                clipSourceEnd(scheduled, clip.duration),
-                clipSourceStart(scheduled, clip.duration),
-              )
-            : undefined;
-        nativeStartY = root?.start[1] ?? 0;
-        return root;
-      }
-      if (!mixer) return;
-      const native = importedClip(
-        group.userData.animations,
-        motion.animationName || "",
-      );
-      const root =
-        native &&
-        nativeRootMotion(
-          group,
-          native,
-          clipSourceEnd(scheduled, native.duration),
-          clipSourceStart(scheduled, native.duration),
+      const source =
+        motion.sourceAssetId === entity.assetId
+          ? group
+          : motionSource(group, motion.sourceAssetId!);
+      const native =
+        source &&
+        importedClip(
+          source.userData.animations ?? [],
+          motion.animationName ?? "",
         );
-      nativeStartY = root?.start.y ?? 0;
-      return root
-        ? {
-            start: root.start
-              .clone()
-              .applyAxisAngle(new T.Vector3(0, 1, 0), -root.startHeading)
-              .toArray(),
-            delta: root.delta
-              .clone()
-              .applyAxisAngle(new T.Vector3(0, 1, 0), -root.startHeading)
-              .toArray(),
-            startHeading: root.startHeading,
-            heading: root.heading,
-          }
-        : undefined;
+      if (!source || !native) return;
+      const end = clipSourceEnd(scheduled, native.duration);
+      const start = clipSourceStart(scheduled, native.duration);
+      const original = nativeRootMotion(source, native, end, start);
+      if (!original) return;
+      const root =
+        source === group
+          ? {
+              start: original.start
+                .clone()
+                .applyAxisAngle(new T.Vector3(0, 1, 0), -original.startHeading)
+                .toArray(),
+              delta: original.delta
+                .clone()
+                .applyAxisAngle(new T.Vector3(0, 1, 0), -original.startHeading)
+                .toArray(),
+              startHeading: original.startHeading,
+              heading: original.heading,
+            }
+          : transferredRootMotion(source, group, native, end, start);
+      if (!root) return;
+      const index = entity.clips.findIndex((clip) => clip.id === scheduled.id);
+      const previous = allMotions(scene).find(
+        (m) => m.id === entity.clips[index - 1]?.motionId,
+      );
+      if (previous?.path && !scheduled.stationary) {
+        arrivalFloor = true;
+        arrivalTravelY = 0;
+        // A route establishes a floor. A selected stopping frame must retain
+        // the full capture's vertical origin, rather than rebase its foot
+        // height to zero. Carry that offset through completed clips as well.
+        const origin = nativeRootMotion(source, native, 0, 0)!;
+        const offset =
+          (original.start.y - origin.start.y) *
+          (source === group ? 1 : locomotionScale(source, group));
+        root.start[1] -= offset;
+        root.delta[1] += offset;
+      } else if (
+        previous?.kind !== "imported" ||
+        previous.path ||
+        scheduled.stationary
+      ) {
+        arrivalFloor = false;
+        arrivalTravelY = 0;
+      }
+      nativeStartY = root.start[1];
+      precedingArrivalTravelY = arrivalTravelY;
+      if (arrivalFloor) arrivalTravelY += root.delta[1];
+      return root;
     },
   });
   let start = 0;
@@ -766,6 +782,7 @@ function applyUnblendedEntityPose(
         time: number;
         sourceStart: number;
         stationary?: true;
+        arrivalFloor?: T.Vector3;
         source?: T.Group;
         route?: {
           profile: LocomotionProfile;
@@ -888,6 +905,10 @@ function applyUnblendedEntityPose(
               missing = true;
               current = undefined;
             }
+          } else if (arrivalFloor) {
+            current.arrivalFloor = new T.Vector3(...pose.root);
+            current.arrivalFloor.y +=
+              (nativeStartY - precedingArrivalTravelY) * entity.scale;
           }
         }
       } else if (time >= start && time < start + clip.duration) missing = true;
@@ -1048,13 +1069,15 @@ function applyUnblendedEntityPose(
     group.userData.motionWarning = `The original file or a measurable foot stride for ${entity.name}'s action is unavailable. Choose an imported walking/running cycle or reimport the source.`;
   if (
     ground &&
-    (current?.stationary ||
+    (current?.arrivalFloor ||
+      current?.stationary ||
       (current?.route && transitionAt(entity, scene, time, true)))
   ) {
-    const floor = new T.Vector3(...pose.root);
+    const floor = current.arrivalFloor?.clone() ?? new T.Vector3(...pose.root);
     // Standalone imported playback subtracts its source's starting root
     // displacement. The floor stays at the incoming timeline origin.
-    if (current.stationary) floor.y += nativeStartY * entity.scale;
+    if (current.stationary && !current.arrivalFloor)
+      floor.y += nativeStartY * entity.scale;
     ground(floor);
   }
   return current?.route

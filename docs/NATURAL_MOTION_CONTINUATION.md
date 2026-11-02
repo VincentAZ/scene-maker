@@ -33,7 +33,7 @@ numerical tests presented as visual proof.
   user project, not a disposable fixture. Do not overwrite it or its source data
   in `/tmp/scene-animation-review/astra-data`.
 - This worktree's disposable copy is `/tmp/scene-natural-motion/data`.
-  Private API is 4413, latest Vite 4581, owned headless Chrome 9451. Confirm availability
+  Private API is 4413, latest Vite 4589, owned headless Chrome 9451. Confirm availability
   before use. The API startup log incorrectly prints 4311 regardless of PORT;
   inspect the listening socket instead of trusting that message.
 - Vite uses `test-results/natural.config.ts`, with HMR disabled. Start a fresh
@@ -1275,3 +1275,133 @@ content is unchanged (opening/recovery can increment only the save revision).
 No JS/HTTP errors; software-WebGL advisory remains. The six-channel transfer
 warning is still visible and remains a real limitation. `actual-ui.json` and
 `actual-playback.png` record this check. No protected workspace/service changed.
+
+## Source-preserving joins and recorded-stop floor (2026-11-01)
+
+Previous turn classified **progress**. This is another bounded improvement; the
+natural-motion goal remains **unfinished**. Original performance suitability,
+Casual transfer, starts/stops across sources, running and complete provider
+coverage still need work. No new gait/default or looser arrival matcher shipped.
+
+The old smooth transition blended every incoming frame toward a frozen outgoing
+boundary pose. Even splitting one original performance at its own next frame
+therefore slowed/damped the next quarter-second. Real before/after evidence:
+
+- `src/transitions.ts` now decays the boundary pose difference over the live
+  incoming performance. Local translation, scale and morph differences use the
+  same approach. A bounded Hermite velocity correction retains compatible
+  outgoing body velocity and settles into the incoming take after the existing
+  transition duration (at most .25 seconds). World root travel is not velocity
+  extrapolated. Native timing, cuts and final holds keep their previous meaning.
+- Three samples on each side provide second-order one-sided velocity estimates.
+  Angular corrections operate in world space; only the transient correction is
+  bounded (extra rotation .35 rad, local translation 5% standing height, scale
+  5%, morph .1). Source curves and the boundary pose offset are untouched.
+- Consecutive same-source, same-rate native cuts bypass velocity correction and
+  contact replanting: original capture keyframe velocity changes are performance,
+  not defects to smooth. Stationary clips and stopped routes are excluded.
+- Synthetic regressions cover continuous source preservation, noncommuting
+  angular/local-position/scale/morph velocity, reverse seeking and extreme
+  transient bounds. Real shipped 35_01/82_14 tests cover all bone transforms.
+- Rejected intermediate world-root velocity extrapolation changed native travel
+  and damaged export. It is absent from the final code. First-order derivative
+  estimates and an earlier finite outgoing-time epsilon were also replaced.
+
+Final split audit covers 35_01, 69_06, 82_14 and private ActorCore Thoughtful walk,
+original/Party Woman/Casual Female/private Dummy, thirteen join-adjacent and reverse
+samples, all bones and twelve skinned vertices per mesh. Original/Party/Dummy
+sampled skin error is below .000073 mm. ActorCore-to-Party previously differed by
+84.357 mm on sampled skin (87.174 mm on a weighted joint); now .0000215 mm skin.
+**Casual Female still differs:** up to 17.526811 mm skin and 102.981295 mm weighted
+joint position for 69_06; other samples .445–1.087 mm skin. Weighted rotations are
+near numerical equality, but helper/frame/attachment translation is not. Do not
+call these merely harmless unweighted helpers or claim all receivers preserve
+split performances. This is a concrete next investigation.
+
+Recorded arrival checks exposed a separate existing floor bug: trimmed standalone
+stops rebased to their selected foot height, and their final deformed soles did
+not receive the route floor constraint. `src/world.ts` now retains the full take's
+vertical origin on a route-to-native handoff, carries the offset through completed
+native clips, and supports the final sole against the established floor. Native
+curves above that floor remain live. Regression tests use real native 82_14 and
+Casual Female at scale 1.3, elevated/rotated actors, an additional split within the
+arrival, and reverse seeking. The expected height is the uninterrupted capture
+plus necessary sole support; the raw capture itself sometimes penetrates its
+floor, so demanding identical uncorrected hip height was an invalid first test.
+
+Actual saved Party arrivals, final runtime vs frozen f8a467b:
+
+- Straight, detour and short paths: 3,204 total timestamps at 120 Hz plus join
+  neighbours. Old minimum sole clearance -46.581/-57.605/-48.773 mm becomes
+  numerical noise (worst -9.53e-10 m). Horizontal group positions and timestamps
+  are identical; reverse-pose error zero.
+- Maximum finite-h joint velocity residual at the boundary (h=.00001 seconds)
+  falls from 1.424/1.355/2.144 m/s to .225/.312/.466 m/s. These remaining residuals
+  are real: do not call the complete route/body/contact handoff perfectly C1.
+- Full straight arrival plus hold export: 1,232 reload comparisons, 102 bone/mesh
+  nodes, twelve vertices per mesh, 52,713,308-byte GLB; max joint .086558 mm and
+  sampled skin .086558 mm. No export/bake implementation changed.
+- Final full ActorCore split-plus-hold export: 4,155 reload comparisons across
+  34.3 seconds, 102 bone/mesh nodes, 47,306,956-byte GLB; max joint .099789 mm
+  and sampled skin .099444 mm. Worst error is away from the join at 27.04 s.
+- 70-second blocked standing wait: 4,309 timestamps, all 101 bone transforms,
+  maximum history component difference 3.345793e-8; resume at 71.7 seconds and
+  endpoint error 6.00545 mm, no recovery issues. This is numerical preservation,
+  not a bit-exact-zero claim. The new diagnostic tolerance is 1e-6, not a changed
+  production gate; its initial 1e-8 assertion correctly exposed this noise.
+
+Normal-speed evidence (frozen f8a467b left, final live code right):
+
+- `split-review/actorcore-join-before-after-1x.mp4`: original ActorCore timeline
+  8.5–12.5 seconds, 4 seconds at 30 fps. Same take, cut at 10.4, native pace.
+- `arrival-review/arrival-before-after-1x.mp4`: full 10-second walking/recorded-stop
+  scene at 30 fps, including the route handoff and held ending. Same scene/time.
+- Whole-body frames inspected, including the source gesture at 10.5 seconds and
+  arrival at 6/8.33 seconds. Floor correction is visible late in the arrival.
+  These are review artifacts, not a claim that every performance now looks human.
+- Real UI project `native-transition-performance-review`: Play/Pause succeeds,
+  saved content unchanged apart from permitted revision bookkeeping, no JS/HTTP
+  errors. Software-WebGL advisory remains. Private licensed source GLBs have not
+  been copied into evidence or committed.
+
+Additional source-cut investigation (experimental reports, not shipping presets):
+
+- After recent body/contact fixes, 82_14 range 1.2–2.375 closes across 35 receivers
+  on straight/curved routes: 70 cases, max joint .007438 mm, skin .006156 mm,
+  angle .000017175 rad, finite-h velocity residual .001643 m/s. The earlier
+  Casual 57 mm seam failure no longer reproduces on current code.
+- Existing planner finds Party 6 m straight/detour and 3 m arrivals with that
+  range; tight detour and tested Casual lengths reject. Hard gates unchanged.
+- Search found 77 body-compatible source ranges. A 616-proposal compatibility
+  screen (77 ranges × two receivers × four lengths, collisions disabled for the
+  screen) found no single cut covering all eight combinations. Best range
+  1.366667–2.608333 covers Party 3/4 m and Casual 4/8 m. Source phase matters;
+  automatic verified phase selection is not implemented.
+- Experimental cross-source 35_01→82_14 matching found no accepted 3–10 m
+  candidates with copied hard gates. Its normalization assumptions need review;
+  this is not proof that such transitions are universally impossible.
+
+Reproduction and checkpoint:
+
+- Work `/tmp/scene-natural-motion/cross-arrivals`; durable ignored archive
+  `.data/natural-motion-investigation/transitions/`. `final/` contains accepted
+  reports/videos, `experiments/` source searches, `intermediate/` discarded
+  versions. Large JSON compressed. Drivers and frozen/final code retained.
+- Final Vite **4589**, PID2773779, config `test-results/natural.config.ts`, HMR off.
+  Frozen f8a467b Vite4584 uses `transitions-before.config.ts` to replace all three
+  changed runtime files (world, transitions, shared/transitions). Intermediate
+  4583/4585–4588 must not be used as final evidence. Revalidate PID/cwd first.
+- API4413/private data unchanged. Owned Chrome9451 exited after the UI/video
+  checks; restarted with new private profile
+  `/tmp/scene-natural-motion/chrome-transition-final`. User Chrome untouched.
+- Drivers use `FABLE_APP=http://127.0.0.1:4589`; normal-speed renderer can reuse
+  saved frozen poses with `USE_SAVED_BEFORE=1`. Actual arrival export uses
+  `PROJECT_FILE=.../arrival-export-project.json REVIEW_CASE=arrival`.
+- **1,126 tests / 97 files passed**, TypeScript, isolated production build
+  `/tmp/scene-natural-motion/transitions-final-build`, formatting/diff checks.
+  Existing SDK schema-compatibility, dependency annotation and bundle advisories
+  remain. No protected project, workspace or service was modified.
+
+Next: resolve the measured Casual split-frame translation defect, then return to
+source/receiver normal-speed comparisons and compatible starts/stops. Preserve
+this transition fidelity while improving the remaining route/contact handoff.

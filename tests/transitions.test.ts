@@ -127,6 +127,131 @@ function nativeFixture() {
   };
 }
 describe("action transitions and endings", () => {
+  it("preserves a continuous original performance when adjacent cuts meet at the same source frame", () => {
+    const f = nativeFixture();
+    const whole = {
+      ...f.actor,
+      clips: [
+        { id: "whole", motionId: "original", duration: 2, playbackRate: 1 },
+      ],
+    };
+    const split = {
+      ...f.actor,
+      clips: [
+        { id: "first", motionId: "original", duration: 1, playbackRate: 1 },
+        {
+          id: "second",
+          motionId: "original",
+          duration: 1,
+          sourceStart: 1,
+          playbackRate: 1,
+          transition: "smooth" as const,
+        },
+      ],
+    };
+    for (const time of [0.99, 1, 1.001, 1.05, 1.125, 1.249, 1.3, 1.8, 1.05]) {
+      applyAnimatedEntityPose(f.group, whole, f.scene, time);
+      const expected = Object.values(f.bones).map((b) => ({
+        p: point(b),
+        q: rotation(b),
+      }));
+      applyAnimatedEntityPose(f.group, split, f.scene, time);
+      Object.values(f.bones).forEach((bone, i) => {
+        expect(point(bone).distanceTo(expected[i].p)).toBeLessThan(1e-5);
+        expect(rotation(bone).angleTo(expected[i].q)).toBeLessThan(1e-5);
+      });
+    }
+  });
+
+  it("retains outgoing body and expression velocity and settles into the moving incoming take", () => {
+    const f = fixture(),
+      bone = f.bones.rightArm;
+    const rest = bone.position.clone(),
+      face = new T.Mesh();
+    face.morphTargetInfluences = [0];
+    f.group.add(face);
+    const raw = (t: number) => {
+      const prior = t < 1,
+        elapsed = t - 1;
+      bone.quaternion.setFromAxisAngle(
+        new T.Vector3(prior ? 0 : 1, 0, prior ? 1 : 0),
+        prior ? 0.3 + 0.6 * t : -0.4 + 1.2 * elapsed,
+      );
+      bone.position.copy(rest);
+      bone.position.x += prior ? 0.02 * t : 0.07 + 0.1 * elapsed;
+      bone.scale.setScalar(prior ? 1 + 0.03 * t : 1.2 + 0.02 * elapsed);
+      face.morphTargetInfluences![0] = prior
+        ? 0.2 + 0.1 * t
+        : 0.7 - 0.2 * elapsed;
+      f.group.updateWorldMatrix(true, true);
+    };
+    const sample = (t: number) => {
+      sampleWithTransitions(f.group, f.actor, f.scene, t, raw);
+      return {
+        q: rotation(bone),
+        x: bone.position.x,
+        s: bone.scale.x,
+        m: face.morphTargetInfluences![0],
+      };
+    };
+    const angular = (a: T.Quaternion, b: T.Quaternion, dt: number) => {
+      const q = b.clone().multiply(a.clone().invert());
+      const angle = 2 * Math.atan2(Math.hypot(q.x, q.y, q.z), q.w);
+      return new T.Vector3(q.x, q.y, q.z)
+        .normalize()
+        .multiplyScalar(angle / dt);
+    };
+    const dt = 1e-5;
+    for (const boundary of [1, 1.25]) {
+      const a = sample(boundary - dt),
+        b = sample(boundary),
+        c = sample(boundary + dt);
+      expect(
+        angular(a.q, b.q, dt).distanceTo(angular(b.q, c.q, dt)),
+      ).toBeLessThan(0.002);
+      for (const key of ["x", "s", "m"] as const)
+        expect(
+          Math.abs((b[key] - a[key]) / dt - (c[key] - b[key]) / dt),
+        ).toBeLessThan(0.002);
+    }
+    const expected = sample(1.125);
+    sample(3.5);
+    sample(0.2);
+    const replay = sample(1.125);
+    expect(replay.x).toBeCloseTo(expected.x, 12);
+    expect(replay.q.angleTo(expected.q)).toBeLessThan(1e-7);
+    expect(replay.m).toBe(expected.m);
+    raw(1.25);
+    const final = rotation(bone),
+      expression = face.morphTargetInfluences![0];
+    const settled = sample(1.25);
+    expect(settled.q.angleTo(final)).toBeLessThan(1e-7);
+    expect(settled.m).toBe(expression);
+  });
+  it("bounds transient spins and stretching when a fast performance meets a still pose", () => {
+    const f = fixture(),
+      bone = f.bones.rightArm,
+      rest = bone.position.clone();
+    const sample = (time: number) =>
+      sampleWithTransitions(f.group, f.actor, f.scene, time, (t) => {
+        bone.quaternion.setFromAxisAngle(
+          new T.Vector3(0, 0, 1),
+          t < 1 ? 100 * (t - 1) : 0,
+        );
+        bone.position.copy(rest);
+        if (t < 1) bone.position.x += 100 * (t - 1);
+        bone.scale.setScalar(t < 1 ? 1 + 20 * (t - 1) : 1);
+      });
+    for (let i = 0; i <= 30; i++) {
+      sample(1 + i / 120);
+      expect(bone.quaternion.angleTo(new T.Quaternion())).toBeLessThanOrEqual(
+        0.350001,
+      );
+      expect(bone.position.distanceTo(rest)).toBeLessThan(0.1);
+      expect(bone.scale.x).toBeGreaterThan(0.94999);
+      expect(bone.scale.x).toBeLessThan(1.05001);
+    }
+  });
   it("keeps detached rig roots continuous when imported parent travel changes frames", () => {
     const f = nativeFixture(),
       root = new T.Bone();
@@ -272,10 +397,12 @@ describe("action transitions and endings", () => {
     f.sample(1.125, cut);
     const incoming = rotation(f.bones.rightArm),
       travel = f.group.position.clone();
+    f.sample(1, cut);
+    const initialGap = rotation(f.bones.rightArm).angleTo(previous);
     f.sample(1.125);
-    expect(
-      rotation(f.bones.rightArm).angleTo(previous.clone().slerp(incoming, 0.5)),
-    ).toBeLessThan(1e-6);
+    expect(rotation(f.bones.rightArm).angleTo(incoming)).toBeLessThan(
+      initialGap,
+    );
     expect(f.group.position.distanceTo(travel)).toBeLessThan(1e-8);
     expect(f.group.position.z).toBeCloseTo(2.125, 7);
     f.sample(1.25);
