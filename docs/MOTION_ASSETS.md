@@ -55,11 +55,12 @@ The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing A
 
 ## Captured performances
 
-Six CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+Seven CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
 2.975 s), **Captured walk and turns** (69_06, 43.433 s), **Captured run**
 (35_17, 1.383 s), **Captured walk and stop** (16_33, 2.367 s),
-**Captured run and stop** (16_57, 2.225 s), and **Captured standing**
-(77_02, 15.6 s). Standing retains its original 60 Hz samples; the other five
+**Captured run and stop** (16_57, 2.225 s), **Captured standing**
+(77_02, 15.6 s), and **Captured walking with a gradual stop**
+(82_14, 7.55 s). Standing retains its original 60 Hz samples; the other six
 retain their original 120 Hz samples. These are body performances; finger/thumb
 channels were not captured and are excluded. Facial animation is not included. Source skeletons are displayed as
 capsules for original-performance previews. That display is not a body scan
@@ -76,6 +77,7 @@ node scripts/prepare-cmu-motion.mjs <source-directory> 35_17
 node scripts/prepare-cmu-motion.mjs <source-directory> 16_33
 node scripts/prepare-cmu-motion.mjs <source-directory> 16_57
 node scripts/prepare-cmu-motion.mjs <source-directory> 77_02 60
+node scripts/prepare-cmu-motion.mjs <source-directory> 82_14
 ```
 
 Use separate directories for different subjects. Copy each resulting GLB to
@@ -115,17 +117,25 @@ Normal-speed walking/running route evidence exists for Party Woman and Casual Fe
 provider coverage, contact quality, arrival/wait visual verification, and other
 natural defaults remain unfinished; this is not a universal quality claim.
 
-The two recorded stops include the captured deceleration and standing finish.
+The three recorded stops include the captured deceleration and standing finish.
 Their catalogue role is `arrival`; they remain selectable performances but are
 excluded from automatic repeating-gait defaults, including renamed source
 copies. A stop is not a reusable steady walking/running cycle.
 
-Experimental review scenes reserve the final part of a route for a recorded
-stop and retain native timing, instead of freezing an airborne stride at the
-endpoint. This is not yet an automatic path-editor feature. General arrival
-assembly still needs phase/velocity matching and integration with replanning,
-point actions, dialogue timing, and arbitrary curved paths. Existing saved
-`ending: "hold"` semantics remain unchanged.
+Automatic navigation routes can reserve their ending for a captured stop when
+source and receiving pose, velocity, support and clearance checks pass. The
+stop search includes up to four seconds before sustained standing: the final
+two seconds alone can exclude the walking phase of a gradual slowdown. The
+longer search keeps the same compatibility and clearance gates and preserves
+native source timing. It does not stretch a stop into a fixed schedule.
+
+82_14 is a full, selectable one-shot performance. It is not a new default route
+gait. Candidate repeated intervals can match the feet while still jumping at
+the hands, and one interval that closes on Party Woman fails on Casual Female.
+Those experiments remain outside the shipped route presets. Original walking
+and running defaults and saved routes are unchanged. Automatic finishes for
+manually drawn paths, reliable running stops and broader receiver compatibility
+remain unfinished. Existing saved `ending: "hold"` semantics remain unchanged.
 
 Automatic imported routes can use **Captured standing** when their gait source
 has no suitable standing take. The eligibility check measures planted feet,

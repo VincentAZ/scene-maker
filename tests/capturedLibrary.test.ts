@@ -140,3 +140,51 @@ it("finds grounded stance in the shipped captured stride without altering the so
   expect(clip.tracks.map((t) => Array.from(t.values))).toEqual(before);
   disposeObject(group);
 });
+
+it("retains the earlier walking lead-in of a gradual recorded stop", async () => {
+  const { matchCapturedArrival } = await import("../src/arrivalMatching");
+  const motion = capturedMotions.find((m) => m.animationName === "82_14")!;
+  const asset = capturedMotionSources.find(
+    (a) => a.id === motion.sourceAssetId,
+  )!;
+  const { group, gltf } = await load(asset);
+  try {
+    const take = gltf.animations[0],
+      range = { start: 1.3, end: 2.5 };
+    // This interval exercises entry matching, not repeatability: matching
+    // source phase alone is not proof of a safe full-body gait loop.
+    const gait = locomotionProfile(group, take, range)!;
+    const full = locomotionProfile(group, take)!;
+    expect(full.stops).toHaveLength(1);
+    const stop = full.stops![0];
+    expect(stop.end - stop.settled).toBeGreaterThan(2);
+    expect(
+      stop.entries.some((e) => e.time < stop.settled - 2 && e.speed > 0.8),
+    ).toBe(true);
+    const result = matchCapturedArrival(
+      group,
+      take,
+      gait,
+      gait.distance * 4,
+      (start) => {
+        const time = start - range.start;
+        if (time < 0.1 || time > gait.duration - 0.1) return undefined;
+        const i = gait.frames.findIndex((f) => f.time >= time);
+        const a = gait.frames[i - 1],
+          b = gait.frames[i];
+        return (
+          gait.distance * 2 +
+          a.distance +
+          ((b.distance - a.distance) * (time - a.time)) / (b.time - a.time)
+        );
+      },
+      full,
+    );
+    expect(result.match).toBeDefined();
+    expect(result.match!.sourceStart).toBeLessThan(stop.settled - 2);
+    expect(result.match!.positionMax).toBeLessThan(0.08);
+    expect(result.match!.velocityRms).toBeLessThan(0.5);
+  } finally {
+    disposeObject(group);
+  }
+});

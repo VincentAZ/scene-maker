@@ -829,3 +829,102 @@ final movies, reports, screenshots, public CMU inputs/conversions, failure examp
 validation logs and reproduction drivers. Large frame directories and licensed
 character assets are omitted. The corrected recovery is the root-level
 `wait-recovery-1x.mp4`; the wrong-direction example is explicitly segregated.
+
+
+## Gradual slowdown capture and rejected route presets (2026-11-01, after 6e821bd)
+
+This goal turn made progress, not completion. The shipped result is deliberately
+narrower than the intermediate route experiments: CMU 82_14 as a full original
+performance, plus a four-second stop-entry search. No new repeating-gait preset
+or default-selection exception ships. The broad natural-animation goal remains
+active. Tests do not establish naturalness or universal retargeting quality.
+
+- Added **Captured walking with a gradual stop**, CMU 82_14: 7.55 s, 907 frames,
+  original 120 Hz, 26 tracks, 31 bones, 666,932 bytes. The original source keys
+  are retained. No fingers/thumbs or facial capture are invented. Provenance,
+  hashes, rig mapping, terms and production packaging follow the existing CMU
+  entries. Public source catalogue: https://mocap.cs.cmu.edu/search.php?subjectnumber=82.
+- `detectLocomotionStops` previously considered only two seconds before settled
+  standing. For 82_14, that excluded the walking lead-in of a gradual slowdown.
+  It now considers four seconds, retaining the existing sustained standing,
+  pose/velocity, support, morph/scale and clearance gates. Standing starts near
+  5.5045 s; the selected settled source end is near 6.1198 s. The full take
+  continues through 7.55 s. A real-asset regression proves that an earlier
+  compatible entry remains available; it does NOT certify a repeating stride.
+- Native 1× footage: `walk-slowdown-native-1x.mp4`, source capsules left and
+  Party Woman right, full 7.55-second take at 30 fps. Inspected slowdown and
+  final-pose frames. The original includes a backward lean and bent-knee
+  finish; do not relabel this as a neutral standing idle. Native capture and
+  transfer still need the user's visual judgment and broader receiver work.
+- Final library UI check on Vite4567: original/character switch preserves .63 s,
+  play/pause works, Add stays targeted at Party Woman, saved scene content is
+  unchanged, no browser errors. `library-ui-final.log` and two screenshots.
+  An earlier attempt used a navigation scene while it was replanning and did
+  not become ready; the final preview test uses an isolated empty-clip project.
+  Do not count the earlier timeout as a fixed navigation/UI issue.
+- Native bake/reload parity: 7.85 s including final hold, 947 timestamps at
+  120 Hz plus clip-boundary neighbours, 102 matched bone/mesh nodes and 12
+  sampled skin vertices per mesh. Max joint error 0.001310 mm, max sampled
+  skin error 0.001312 mm. 41,204,936-byte GLB round-tripped in memory.
+  `production-native-export.json` / `native-export.log`. This is numerical
+  parity, not a claim of perfect contact, transferred detail or naturalness.
+
+Rejected / experimental findings (retain these, do not re-promote by test count):
+
+- None of the previously shipped sources yielded a detected sustained stop.
+  Private ActorCore Thoughtful walk does have long standing regions, but full
+  and selected gait intervals failed arrival gates. `actorcore-audit.json`,
+  `actorcore-proposals.json`; no licensed source was added to Git.
+- CMU 131_01 is labelled Start Walk Stop but belongs to Michael Jackson styled
+  motions and ends theatrically with a raised arm. Rejected after native 1×
+  rendering. CMU 82_08 and 127_17 did not supply sustained stops. Public raw
+  inputs/conversions and audit reports remain private investigation evidence.
+- 82_14 interval 3–4.2 s matched some stops but was not a seamless gait. Its
+  `arrival-full-1x.mp4` is an unsuccessful experiment, not final evidence.
+- 82_14 interval 1.3–2.5 s passes the FOOT seam criterion and allows 3/4/6 m
+  arrivals after the four-second search change. Full-body sampling found an
+  approximately 11.4 cm hand jump at repeats on Party Woman; receiver loop
+  correction correctly refuses it. A coarse 120 Hz export audit initially
+  reported only 0.69 mm, but samples immediately before the wrap exposed the
+  true discontinuity. This is a concrete warning against relying on foot-only
+  or fixed-grid checks. `target-seams.json`, rejected-1.3-2.5-stride export
+  diagnostic and video retain the evidence. No bake change was appropriate.
+- Nearby interval 1.2–2.375 s closes on Party Woman using the existing bounded
+  route-loop correction (~0.007 mm change across a 2 microsecond seam sample).
+  Automatic arrivals reach 3/6 m endpoints; a detour around a crate at z=1.4
+  works, a tighter crate at z=2.5 rejects without weakening clearance gates.
+  Party Woman route bake/reload max errors: straight ~0.087 mm, detour ~0.098 mm.
+  However, the same interval jumps ~5.73 cm on Casual Female, and all 128 nearby
+  sampled intervals fail that receiver's seam test. Thus the optional curated
+  preset and its default-selection exception were REMOVED before final checks.
+  `casual-fine-seams.json`, `receiver-seam-test.log`, `production-projects.json`
+  and the Party-only movie are diagnostic evidence, not shipped route quality.
+- The source-level loop test and receiving loop test are distinct; a body can
+  pass one and fail the other. Both foot and complete receiving pose/velocity
+  matter. Do not loosen thresholds just to accept this capture as a gait.
+- Detailed-retarget notices still report unsupported helper channels on these
+  receivers (Party Woman: thorax, upperneck, wrists; Casual Female includes
+  toes). The original source preview retains them. Their exact composed
+  contribution needs audit; do not claim full channel parity or silence notices.
+
+Verification: 1,102 tests / 97 files passed, default timeouts and maxWorkers=2.
+TypeScript and isolated Vite build passed; existing SDK schema and chunk-size
+warnings remain. Final source runtime: Vite4567, API4413 restarted with private
+`/tmp/scene-natural-motion/data`, owned Chrome9451. Revalidate before use.
+Vite4566 still contains the rejected 1.2–2.375 preset;4565 contains rejected
+1.3–2.5;4564 has only the four-second search change and old catalogue. Do not
+use them as final runtimes. User services4311/4337 and original/dialogue
+worktrees were not changed. The API startup message misleadingly says4311;
+actual bound port is4413.
+
+Ignored durable archive: `.data/natural-motion-investigation/arrival-integration/`.
+`NOTES.txt` distinguishes the shipped original performance from rejected route
+experiments. It includes reports, public raw sources/conversions, validation
+logs, normal-speed movies and reproduction drivers; excludes frame directories
+and licensed character source files. Experimental drivers define their own
+unshipped stride and require the private review projects/character uploads.
+Next work: source/receiver detail audit and a gait/stop combination that closes
+on multiple receivers, then native starts, running stops and the broader
+provider/contact/history/export goal. No cross-source arrival matcher was
+implemented during this investigation. Existing manual drawn-path behavior
+and default walk/run sources remain unchanged.

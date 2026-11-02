@@ -272,5 +272,52 @@
       "https://mocap.cs.cmu.edu/subjects/77/77_02.amc"
     ],
     "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
+  },
+  {
+    "trial": "82_14",
+    "frames": 907,
+    "frequency": 120,
+    "duration": 7.55,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 666932,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "82.asf": "32f0f3a53099526ed4df3ef443d4ba65419e4952ab3fd6bdf89d901addda4a1f",
+      "82_14.amc": "ddb4e21f5585db8dea4021c8d9c301ec60198534ff31c811149d5e3a9a78c566",
+      "82_14.glb": "ad0a2bc84d58a134502fc77fd6b2a8befe22ea68839a0d9f69c1c030c2226f20"
+    },
+    "name": "Captured walking with a gradual stop",
+    "description": "An original walking performance that slows over several steps and settles into standing.",
+    "routeRole": "arrival",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/82/82.asf",
+      "https://mocap.cs.cmu.edu/subjects/82/82_14.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
   }
 ]

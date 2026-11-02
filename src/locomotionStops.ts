@@ -84,7 +84,10 @@ export function detectLocomotionStops(
     const entries: LocomotionStop["entries"] = [];
     for (let i = first - 1; i >= 0; i--) {
       const elapsed = settled - frames[i].time;
-      if (elapsed > 2) break;
+      // A gradual, multi-step slowdown can begin well before its last two
+      // seconds. Keep that captured lead-in available; pose, velocity and
+      // support matching still decide whether a route can enter it safely.
+      if (elapsed > 4) break;
       if (
         elapsed < 0.35 ||
         samples[i].speed < height * 0.18 ||
