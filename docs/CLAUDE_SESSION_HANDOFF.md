@@ -36,7 +36,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 1024ae7 | Characters lying along another axis stood up on import |
 | 96671b5 | Skeleton-only sources keep receivers on the ground |
 | 16e7ad2 | BVH imports go to Actions (verified through the real dialog) |
-| (next) | Long takes disclosed; unusable captures refused |
+| b030635 | Long takes disclosed; unusable captures refused |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D32). Summaries also appended to
