@@ -537,3 +537,31 @@ unchanged with no errors; tsc, prettier, diff-check, build OK; suite 1,196.
 One full-suite run made while the browser gates ran in parallel had a single
 failure that did not reproduce (re-run: 1,196/1,196, logged in
 `claude-session/gates-facing/suite.log`); treated as load-induced timing.
+
+## D20 — Unresolved hand clearance is disclosed in the motion notice (12:52–13:00)
+
+The receiving-body hand correction is bounded (15% of arm reach); beyond that it
+only reported `handClearance.unresolved` in userData, invisible to the user. The
+scope requires disclosing what cannot transfer. Decision
+(`src/handClearance.ts`): when a side is unresolved, append "The left hand
+reaches into this character's body here; it is moved out only as far as the arm
+allows." (or "Both hands …") to `motionNotice`, after the transfer's own notice,
+the same per-pose pattern as the foot-contact and route-loop notices; the
+viewport already lists motion notices. Pose output is unchanged.
+Not done: a hint for every (small) correction — it applies on most cross-rig
+frames and would be noise.
+
+Frequency (`test-results/claude-hand-notice.mjs`, every captured take + ActorCore
+Thoughtful walk/Relax on Party, Casual, Dummy M, Dummy F at 10 Hz, Vite 4666):
+0 hits on 38 of 44 pairs; 1–4 of 23–184 samples on CMU 16_57/91_34 → Party,
+91_34 → Dummy M/F; 53 of 340 on Thoughtful walk → Quaternius Casual, a
+genuinely visible hand-in-hip on that stylized body. Tests: unresolved case
+carries the notice, resolved case leaves `motionNotice` unset. Real UI gate
+unchanged, no errors; tsc, prettier, build OK.
+
+Suite note: on this machine another session's headless Chrome GPU process (PID
+1323435, started Oct 29, ≈12 cores) holds load at 16–18; with default workers two
+asset-heavy `motionLibrary` tests intermittently exceed the 5 s timeout (each
+≈2.6 s alone on this code, on cf994dc and on 7736423 alike). The file passes
+alone; the full suite passes 1,196/1,196 with `--maxWorkers=4`. Not touched (not
+ours); timeouts not raised.

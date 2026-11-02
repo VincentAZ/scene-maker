@@ -143,6 +143,7 @@ describe("receiving-body hand clearance", () => {
       const report = f.group.userData.handClearance;
       expect(report.left).toBeGreaterThan(0.02 * scale);
       expect(report.unresolved).toBeUndefined();
+      expect(f.group.userData.motionNotice).toBeUndefined();
       for (const [i, side] of ["left", "right"].entries()) {
         expect(
           f.bones[side + "Hand"]
@@ -301,6 +302,7 @@ describe("receiving-body hand clearance", () => {
     supportTransferredHands(f.group);
     const report = f.group.userData.handClearance;
     expect(report.unresolved).toEqual(["left", "right"]);
+    expect(f.group.userData.motionNotice).toMatch(/Both hands reach/);
     // Arm reach is 0.6; the cap is 15% of it.
     expect(position(f.bones.leftHand).distanceTo(before)).toBeLessThan(0.091);
     expect(position(f.bones.leftHand).distanceTo(before)).toBeGreaterThan(0.05);

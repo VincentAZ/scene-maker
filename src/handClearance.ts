@@ -606,4 +606,17 @@ export function supportTransferredHands(group: T.Group, source?: T.Group) {
   group.userData.handClearance = unresolved.length
     ? { ...changes, unresolved }
     : changes;
+  // Disclosed, not hidden: only the bounded part of the correction applies.
+  if (unresolved.length) {
+    const [hands, they] =
+      unresolved.length > 1
+        ? ["Both hands reach", "they are"]
+        : [`The ${unresolved[0]} hand reaches`, "it is"];
+    group.userData.motionNotice = [
+      group.userData.motionNotice,
+      `${hands} into this character's body here; ${they} moved out only as far as the arm allows.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
 }
