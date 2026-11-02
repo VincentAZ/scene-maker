@@ -514,3 +514,119 @@ before adding another correction. Other authored/procedural actions still need
 natural source replacements or appropriate behavior. The explicit original
 ActorCore-dummy/Party-Woman comparison and broader provider/extremity validation
 remain required; this turn's running take is CMU, not an ActorCore motion.
+
+## Continuation update — recorded arrivals and direct ActorCore evidence
+
+Prior turn was **progress**: captured running/default and animated-skin culling
+fix committed as 8d26811. This turn reproduces the saved-route ending defect,
+adds original stop performances, and materializes experimental recorded arrivals.
+It does **not** implement automatic path-editor arrival assembly yet.
+
+- Saved straight six-metre routes really do freeze mid-stride: walking ends at
+  4.987045 s, running at 2.012486 s with the trailing foot raised. Both entities
+  explicitly save `ending: "hold"`; `shared/transitions.ts` preserves the last
+  evaluated frame. Do not globally rewrite hold semantics. Evidence:
+  `/tmp/scene-natural-motion/arrivals/saved-routes-before-1x.mp4` (6.5 s,60 fps).
+  Driver `test-results/saved-route-review.mjs` loads the actual saved projects,
+  sources and normal `applyAnimatedEntityPose`, including after their endings.
+- The existing obstacle-wait machinery only searches for a measured standing
+  take on the gait's **own** source (`standingPerformance.ts`). Isolated CMU
+  gait files have no standing take. This explains the remaining held waits;
+  no general standing-performance fallback was implemented in this turn.
+- Obtained official CMU 16_33 **slow walk, stop** (285 frames/2.366667 s) and
+  16_57 **run/jog, sudden stop** (268 frames/2.225 s), both120Hz. Evaluated 16_08
+  too, not shipped. Raw files/provenance/catalogue in `arrivals/`. Same verified
+  CMU inclusion/redistribution terms. Added the first two as **Captured walk and
+  stop** / **Captured run and stop**, with original samples, hashes and mapping.
+- Added catalogue `routeRole: "arrival"`, exported `recordedArrivals` and
+  `isRecordedArrival`. Automatic gait defaults exclude those source identities,
+  even on renamed copies: a one-shot deceleration must not become a repeated
+  route cycle merely because its name contains walk/run. Explicit choices remain
+  available; saved scenes are not migrated. Two regression cases cover this.
+- Native stop comparison videos (original skeleton / Party Woman,60fps):
+  `arrivals/captured-walk-stop-native-1x.mp4` and
+  `arrivals/captured-run-stop-native-1x.mp4`. The running capture makes a recovery
+  step and lowers its arms into standing. It is not an invented crossfade to
+  the bind pose. Its source still lacks captured fingers/face.
+- Experimental private projects **recorded-walk-arrival-review** and
+  **recorded-run-arrival-review** reserve the final route distance for a recorded
+  stop and use two ordinary imported path clips. Their destination remains six
+  metres; final hips are within about1mm of it in these straight cases. Native
+  source timing makes the movement5.965955 s walking /3.159774 s running.
+  Current saved projects reference the shipped stop sources. Earlier render used
+  byte-identical private upload URLs, before catalogue integration.
+- Prototype driver `test-results/recorded-arrival-project.mjs` samples candidate
+  stop cuts and scores world rotations/hip-relative joint positions on Party
+  Woman. Selected source starts .025s walking, .75s running. The running handoff
+  remains weak: incoming stop speed≈1.79m/s versus steady gait≈2.98m/s. This
+  script does **not** score velocity; it hardcodes a straight six-metre layout.
+  Do not promote it directly as a universal arrival planner. Candidate metrics,
+  selected poses, durations/endpoints: `arrivals/recorded-arrival-plan.json`.
+  Initial validation failure was a missing revision in the new fixture, fixed
+  to revision0 before creation. No protected project was changed.
+- Normal-speed experimental arrival evidence:
+  `arrivals/recorded-arrivals-1x.mp4` (7.5s,60fps; walking left/running right),
+  including the final standing hold. Export baked/reloaded GLBs, then rendered
+  the exported hierarchies at the same speed:
+  `arrivals/recorded-arrivals-export-1x.mp4` (7.5s). Whole-duration120Hz joint/skin
+  comparisons through each end+1s: walking max<0.146mm, running max<0.083mm.
+  Report `recorded-arrivals-export-setup.json`. This is Three.js GLB reload,
+  not independent Blender verification. The camera follows live evaluated hips
+  but visible meshes in that movie are the reloaded exported models.
+- Both new library Actions previews pass source/receiver toggle at .63s,
+  Play/Pause, correct Add target and unchanged saved scene content. Logs:
+  `arrivals/library-{walk,run}-stop-ui.log`. Walk preview captured one404 with
+  its actual URL: `/favicon.ico`. Run preview has no errors. This identifies
+  this run's404 only, not the unlocated404s in previous turns.
+- Full suite **1084 tests/96 files**, TypeScript, diff check and isolated build
+  pass; logs in `arrivals/{full-suite,typescript,build}.log`. Existing chunk-size
+  and AI SDK schema warnings remain. No new route timing/collision algorithm or
+  TSX component was changed. The React review skill was read while considering
+  UI work but not applied; no UI arrival feature was implemented.
+- Latest Vite **4555**, handle94055, includes arrival-role filtering. API4413
+  handle31823 was restarted for new sources (it predates only role metadata,
+  irrelevant to its source identity/validation). Chrome9451 is still owned.
+  Revalidate service handles. The older4554 runtime served Action preview tests.
+
+Direct user-supplied ActorCore comparison (current runtime):
+
+- New ignored `test-results/current-actorcore-compare.mjs` adapts the comparison
+  harness for licensed Motion Dummy Male upload4fd5ba42-2c91-43c0-b113-0268a40f5f94
+  and Party Woman upload3120824b-4d15-4fea-8464-7a213b68a9fd. Private copies only;
+  no licensed source assets added to Git. Separate source instances, no CMU rig
+  mapping applied. Native take **Thoughtful walk** is34s; **Relax** is17.667s.
+- Six-second60fps side-view `arrivals/actorcore-original-party-native-1x.mp4`
+  uses the same native1x take on original dummy/receiver. Transfer report maps
+  **100 joints**, unsupported[], no playback warnings/GL errors. Reported mapping
+  is not by itself visual proof or a universal compatibility claim.
+- A raw-GLB key audit (`test-results/audit-actorcore-channels.mjs`) found303 source
+  channels,76 actively varying at the stated thresholds (.001rad rotations /
+  .00001position/scale), including30 active finger channels and22 twist/share
+  channels. No actively varying facial channel in this take: do not claim facial
+  motion coverage merely because facial bones are mapped. Report
+  `arrivals/actorcore-channel-audit.json`.
+
+Next: improve the experimental arrival handoff using **phase and velocity**
+evidence, then implement a reusable planner/editor flow rather than saving
+straight-only fixtures. Arrival distance/time must be budgeted inside the route;
+appending native root motion after the existing endpoint overshoots. Preserve
+explicit durations/speed choices, arbitrary curves, existing pose history,
+point actions/dialogue timing, collision checks and automatic replanning. Do not
+silently treat the hardcoded prototype as that implementation. Standing waits,
+starts, more natural actions, detailed receiver/sole views and wider provider
+coverage remain open. All original broad completion requirements still apply.
+
+The full **34-second** ActorCore comparison is complete at native1x/30fps,
+1021 sampled frames: `arrivals/actorcore-full-native-1x.mp4`. Both rigs remain
+visible through walking, folded arms, hand-to-chin gestures and hands behind
+back. Report `actorcore-full-native-summary.json`:100 mapped joints,
+unsupported[], warnings empty, GL0 throughout. This completes a full-duration
+current-runtime original/receiver video for that user-supplied take; close
+contact/finger/facial fidelity and cross-provider acceptance are still not
+proved by those report counts. No active facial animation exists in this take.
+
+A durable archive for this turn is
+`.data/natural-motion-investigation/recorded-arrivals/`, including the raw public
+CMU inputs, saved experimental project JSON, videos, reports and drivers. The
+licensed ActorCore input GLBs remain only in the private runtime uploads. The
+private review project exports do not become redistributable source assets.

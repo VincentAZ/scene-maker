@@ -37,6 +37,20 @@ export const capturedMotions: Motion[] = capturedCatalogue.map(
     poses: [],
   }),
 );
+/** Recorded deceleration/standing finishes are one-shot performances, not
+ * repeating gaits. Match source identity so renamed copies retain that role. */
+export const recordedArrivals = capturedMotions.filter(
+  (motion) =>
+    capturedCatalogue.find((entry) => entry.trial === motion.animationName)
+      ?.routeRole === "arrival",
+);
+export function isRecordedArrival(motion: Motion) {
+  return recordedArrivals.some(
+    (arrival) =>
+      arrival.sourceAssetId === motion.sourceAssetId &&
+      arrival.animationName === motion.animationName,
+  );
+}
 /** Route selector presets reference original takes and saved source intervals.
  * They are not extra animations or replacements for any saved scene action. */
 export const capturedRouteGaits: Motion[] = [

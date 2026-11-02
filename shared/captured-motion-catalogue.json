@@ -133,5 +133,97 @@
       "https://mocap.cs.cmu.edu/subjects/35/35_17.amc"
     ],
     "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
+  },
+  {
+    "trial": "16_33",
+    "frames": 285,
+    "duration": 2.3666666666666667,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 345756,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "16.asf": "2323f876564610f84bfbec9b90b8ebffb57515673b7f4a45b0fb0849af465bdb",
+      "16_33.amc": "03644f38e30d839a005334a6358f97093da05a65da53a73a51bd8136c5cd63ea",
+      "16_33.glb": "a085917ba96de2b28dee79910d0366f4c0867eaf6de80af86d8cf7f8c80d5c37"
+    },
+    "name": "Captured walk and stop",
+    "description": "A slow walking performance that decelerates and settles on both feet.",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/16/16.asf",
+      "https://mocap.cs.cmu.edu/subjects/16/16_33.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"],
+    "routeRole": "arrival"
+  },
+  {
+    "trial": "16_57",
+    "frames": 268,
+    "duration": 2.225,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 337092,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "16.asf": "2323f876564610f84bfbec9b90b8ebffb57515673b7f4a45b0fb0849af465bdb",
+      "16_57.amc": "ae00399e82615e63be9590e0e11c679a5f033111a656e9ffbbb0a3e3060a01cd",
+      "16_57.glb": "1598fdc3071f480be00576f43596c179cdec10e237b0192a9787f5fa0d47fd58"
+    },
+    "name": "Captured run and stop",
+    "description": "A running performance with a recorded recovery step and standing finish.",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/16/16.asf",
+      "https://mocap.cs.cmu.edu/subjects/16/16_57.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"],
+    "routeRole": "arrival"
   }
 ]

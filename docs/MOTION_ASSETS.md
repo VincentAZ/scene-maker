@@ -55,9 +55,10 @@ The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing A
 
 ## Captured performances
 
-Three CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+Five CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
 2.975 s), **Captured walk and turns** (69_06, 43.433 s), and **Captured run**
-(35_17, 1.383 s). These are original
+(35_17, 1.383 s), **Captured walk and stop** (16_33, 2.367 s), and
+**Captured run and stop** (16_57, 2.225 s). These are original
 120 Hz body performances; finger/thumb channels were not captured and are
 excluded. Facial animation is not included. Source skeletons are displayed as
 capsules for original-performance previews. That display is not a body scan
@@ -71,6 +72,8 @@ Download the listed ASF and AMC into a private source directory, then run:
 node scripts/prepare-cmu-motion.mjs <source-directory> 35_01
 node scripts/prepare-cmu-motion.mjs <source-directory> 69_06
 node scripts/prepare-cmu-motion.mjs <source-directory> 35_17
+node scripts/prepare-cmu-motion.mjs <source-directory> 16_33
+node scripts/prepare-cmu-motion.mjs <source-directory> 16_57
 ```
 
 Use separate directories for different subjects. Copy each resulting GLB to
@@ -109,3 +112,16 @@ every deformed vertex, at the cost of drawing off-screen imported skins.
 Normal-speed walking/running route evidence exists for Party Woman and Casual Female. Broader
 provider coverage, contact quality, arrival/wait visual verification, and other
 natural defaults remain unfinished; this is not a universal quality claim.
+
+
+The two recorded stops include the captured deceleration and standing finish.
+Their catalogue role is `arrival`; they remain selectable performances but are
+excluded from automatic repeating-gait defaults, including renamed source
+copies. A stop is not a reusable steady walking/running cycle.
+
+Experimental review scenes reserve the final part of a route for a recorded
+stop and retain native timing, instead of freezing an airborne stride at the
+endpoint. This is not yet an automatic path-editor feature. General arrival
+assembly still needs phase/velocity matching and integration with replanning,
+point actions, dialogue timing, and arbitrary curved paths. Existing saved
+`ending: "hold"` semantics remain unchanged.

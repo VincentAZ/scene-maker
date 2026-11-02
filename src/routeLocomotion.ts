@@ -5,7 +5,11 @@ import {
   type Motion,
   type Scene,
 } from "../shared/scene";
-import { motionSource, capturedRouteGaits } from "../shared/motionLibrary";
+import {
+  motionSource,
+  capturedRouteGaits,
+  isRecordedArrival,
+} from "../shared/motionLibrary";
 
 export type RouteMovement = "walk" | "run";
 /** Distance in actor-local units, before the placed entity scale is applied. */
@@ -143,7 +147,9 @@ export function defaultRouteLocomotion(
   const available = routeLocomotions(scene, actor);
   const matching = available.filter(
     (motion) =>
-      motion.kind === "imported" && namedRouteMovement(motion) === movement,
+      motion.kind === "imported" &&
+      namedRouteMovement(motion) === movement &&
+      !isRecordedArrival(motion),
   );
   const library = allMotions(scene);
   for (const clip of [...actor.clips].reverse()) {

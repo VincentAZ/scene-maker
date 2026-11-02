@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allMotions, starterScene, type Motion } from "../shared/scene";
-import { libraryMotions } from "../shared/motionLibrary";
+import { libraryMotions, recordedArrivals } from "../shared/motionLibrary";
 import {
   defaultRouteLocomotion,
   matchingRouteLocomotion,
@@ -236,3 +236,31 @@ describe("distance-driven original gait timing", () => {
     expect(() => routePace(walk, 0)).toThrow("pace");
   });
 });
+
+it.each(recordedArrivals)(
+  "does not repeat $name as the default gait after a recorded arrival",
+  (arrival) => {
+    const scene = starterScene();
+    const actor = scene.entities[0];
+    const movement = namedRouteMovement(arrival)!;
+    actor.clips = [
+      {
+        id: "arrived",
+        motionId: arrival.id,
+        duration: arrival.duration,
+        playbackRate: 1,
+      },
+    ];
+    const expected =
+      movement === "run"
+        ? "captured-running-stride"
+        : "captured-walking-stride";
+    expect(defaultRouteLocomotion(scene, actor, movement).id).toBe(expected);
+    // The source identity also survives a creator's renamed copy.
+    const copy = { ...arrival, id: "my-arrival", name: `${movement} finish` };
+    scene.customMotions.push(copy);
+    actor.clips[0].motionId = copy.id;
+    expect(defaultRouteLocomotion(scene, actor, movement).id).toBe(expected);
+    expect(routeLocomotions(scene, actor)).toContain(arrival);
+  },
+);
