@@ -26,7 +26,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | cf994dc | Animation-only (mesh-less) armature imports recognised |
 | 1816a0e | Characters authored facing −Z (or sideways) turned to face +Z on import |
 | 756737a | Unresolved hand clearance disclosed in the motion notice |
-| (next) | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
+| a69f256 | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D21). Summaries also appended to
