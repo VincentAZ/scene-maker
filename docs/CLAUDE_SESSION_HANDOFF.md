@@ -33,7 +33,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 50270b6 | Eyes paired across naming conventions |
 | 6648df0 | VRM declared humanoid map used |
 | ef6a76a | CMU ASF skeletons recognised |
-| (next) | Characters lying along another axis stood up on import |
+| 1024ae7 | Characters lying along another axis stood up on import |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D28). Summaries also appended to
