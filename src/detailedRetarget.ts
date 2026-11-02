@@ -39,6 +39,13 @@ function jointKey(bone: T.Bone, canonical: Record<string, T.Bone>) {
     ccbasertoebase: "righttoebase",
   };
   if (extra[name]) return extra[name];
+  // Eyes carry a side and "eye" in every convention (CC_Base_L_Eye, LeftEye,
+  // lEye, J_Adj_L_FaceEye, FACIAL_L_Eye, eye.L).
+  const eye = name
+    .replace(/\./g, "")
+    .replace(/^(ccbase|jadj|facial)/, "")
+    .match(/^(?:(l|r|left|right)(?:face)?eye|(?:face)?eye(l|r|left|right))$/);
+  if (eye) return `${(eye[1] ?? eye[2])[0] === "l" ? "left" : "right"}eye`;
   const finger = name.match(
     /^ccbase([lr])(thumb|index|mid|ring|pinky)([123])$/,
   );

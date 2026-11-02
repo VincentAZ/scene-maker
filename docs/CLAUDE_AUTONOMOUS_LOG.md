@@ -711,3 +711,21 @@ anatomical rest, D2) identical at both sampled times while the fingers move
 (`--maxWorkers=4`).
 Gates on Vite 4672 identical to D22 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI).
+
+## D25 — Eyes paired across naming conventions (13:40–13:50)
+
+The renamed-rig evidence kept one name-only gap: eyes (10.4°/5.5° on Thoughtful
+walk), because CC "CC_Base_L_Eye" keyed as "ccbaseleye" and never met another
+convention's eye. Every standard convention names eyes with a side and "eye".
+Decision (`detailedRetarget.ts` `jointKey`): CC_Base_/J_Adj_/FACIAL_ prefixes
+dropped, then side + (face)eye in either order → "lefteye"/"righteye"
+(CC_Base_L_Eye, LeftEye, lEye, J_Adj_L_FaceEye, FACIAL_L_Eye, eye.L,
+DEF-eye.L, Bip01 L Eye). Same-convention pairs still key identically.
+Not done: rib twist helpers (2.6°) — no shared naming across conventions; D14's
+generic position pairing stays rejected.
+Evidence: parametrised test (five eye conventions; all fail on the previous
+code); `names_<convention>` variants now carry convention eye names — eyes 0°
+on all six, worst bone 2.6° (rib twist) instead of 10.38°. Suite 1,229
+(`--maxWorkers=4`).
+Gates on Vite 4673 identical to D24 (route, cuts, native exact, all 19
+cross-rig deltas, wait, export, real UI).

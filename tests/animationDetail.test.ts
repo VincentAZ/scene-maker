@@ -433,6 +433,57 @@ describe("detailed imported animation runtime", () => {
     }
   });
 
+  it.each([
+    ["LeftEye", "RightEye"],
+    ["lEye", "rEye"],
+    ["J_Adj_L_FaceEye", "J_Adj_R_FaceEye"],
+    ["FACIAL_L_Eye", "FACIAL_R_Eye"],
+    ["eyeL", "eyeR"],
+  ])("moves eyes named %s/%s by the capture's eye motion", (left, right) => {
+    const source = fixture(),
+      same = fixture(),
+      renamed = fixture();
+    renamed.joints.CC_Base_L_Eye.name = left;
+    renamed.joints.CC_Base_R_Eye.name = right;
+    const clip = new T.AnimationClip(
+      "Glance",
+      duration,
+      ["CC_Base_L_Eye", "CC_Base_R_Eye"].map(
+        (name) =>
+          new T.QuaternionKeyframeTrack(
+            `${name}.quaternion`,
+            [0, duration],
+            [
+              ...source.bind[name].quaternion.toArray(),
+              ...source.bind[name].quaternion
+                .clone()
+                .multiply(rotation(0.05, 0.3, 0))
+                .toArray(),
+            ],
+          ),
+      ),
+    );
+    source.configure([clip]);
+    same.configure();
+    renamed.configure();
+    schedule(same, source, [clip], true);
+    schedule(renamed, source, [clip], true);
+    for (const time of [0.8, 2]) {
+      same.sample(time);
+      renamed.sample(time);
+      for (const name of ["CC_Base_L_Eye", "CC_Base_R_Eye"]) {
+        expect(
+          renamed.joints[name]
+            .getWorldQuaternion(new T.Quaternion())
+            .angleTo(same.joints[name].getWorldQuaternion(new T.Quaternion())),
+          name,
+        ).toBeLessThan(1e-6);
+        expect(
+          same.joints[name].quaternion.angleTo(same.bind[name].quaternion),
+        ).toBeGreaterThan(0.05);
+      }
+    }
+  });
   it("pairs fingers by place across the palm when the finger counts differ", () => {
     // The receiver has four fingers under another convention's names (no
     // ring finger): thumb, index, middle and little finger still follow the
