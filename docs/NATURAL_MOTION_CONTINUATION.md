@@ -2166,3 +2166,22 @@ a watertight collision test; no user visual acceptance yet.
 Runtime: final Vite 4630 (`test-results/natural.config.ts`), frozen 10d1d01 rig
 4614, API 4413, Chrome 9451. 4609–4629 are intermediate. Drivers:
 `test-results/claude-hand-*.mjs`.
+
+## Rig-authoring invariance and anatomical arm rest (Claude, 2026-11-02)
+
+For the clarified goal (any standard rig receives any standard animation), the
+transfer must not depend on how a receiver happens to be authored. New harness
+`test-results/claude-rig-variants.mjs` re-authors a real receiver, exports GLB,
+re-imports through the app loader and compares all bone transforms after transfer.
+Local bone axes and centimetre units were already invariant (0.00 mm). Bind pose
+was not: palms rolled 25° in an A-pose bind → 21° forearm/hand error; relaxed finger
+rest → 40°. `src/restNeutral.ts` now defines wrist, forearm twist (palm line across
+the finger bases), finger and thumb rest anatomically in the shared neutral pass;
+upper-arm twist uses the bind elbow hinge only when clearly bent. After: 0.8–4.7°
+(upper-arm twist helpers) and 2.4° for fingers. Visible palm agreement between native
+ActorCore source and Party improved (knuckle line p50 14.2°→8.4°). All gates rerun
+and passed; details, rejected variants and harness pitfalls in
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D8). Limits: hands without a palm (no finger chains
+or no thumb) keep the old twist; upper-arm twist of A-pose binds tilted forward
+still leaks ≈4.7° into twist helpers; thumb base rest is normalized to a fixed
+opening, not measured anatomy. Final runtime Vite 4637.

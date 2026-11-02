@@ -187,3 +187,55 @@ touched, gesture kept), `cmu-pirate-1x.mp4`. Left = no correction, right = curre
   clearance"). Committed locally on `fix/natural-motion-baseline` (no push):
   milestone commits are this branch's convention and the handoff's listed
   pre-commit checks were all run.
+
+## D8 — Rig-authoring invariance; anatomical arm/hand/finger rest (11:02–11:45)
+
+Goal-driven question: does transfer depend on how a standard receiver happens to
+be authored? Harness `test-results/claude-rig-variants.mjs` re-authors Party Woman
+(raw GLB), exports to GLB and re-imports through the app loader, then transfers CMU
+91_34, ActorCore Thoughtful walk and Quaternius Walk and compares every bone's world
+position/orientation (matched by name) with the identity round trip.
+
+Harness errors found and fixed before trusting results (recorded so nobody repeats
+them): glTF inverse bind matrices can define a bind pose different from node rest,
+so every variant must first re-bake skin at the shared rest; representation-only
+changes must then only recompute inverse binds, never re-bake (re-baking with old
+inverses deformed the mesh: 101–777 mm false errors); my first A-pose elbow bend was
+in a non-anatomical plane (87° false error); skin comparison is invalid for
+bind-pose variants (re-baked rest + re-skin double-blends weighted vertices), so the
+metric is bone transforms. Rest-shape check vs identity guards the harness.
+
+Findings on the committed 1987b07 runtime (max bone error after transfer):
+local axes 0.00 mm, centimetre units 0.00 mm (invariant); A-pose swing 0.8°,
++10° forward 4.7°, +25° palm roll 21°, finger rest curl 20°/joint 40°.
+
+Decision: add `src/restNeutral.ts`, applied in the existing neutral pass to every
+rig (source and receiver alike), name-free:
+- wrist straight (hand → mean non-thumb finger base along the forearm);
+- forearm twist from the palm line across the four finger bases (thumb, found as
+  the chain angled clearly furthest from the forearm, only fixes the sign);
+- upper-arm twist from the bind elbow hinge only for clearly bent binds (15–25°
+  fade-in). Measured binds are 0–4.4° bent, where the hinge is noise (Dummy M's
+  flipped ±175° at 0.8°); the first version used it from 2–6° and treated Party's
+  left/right arms differently. Palm roll is NOT put into the upper arm (pronation is
+  a forearm motion; doing so moved a forearm-only bind roll into the shoulder);
+- finger chains straight; thumb straight at a fixed opening toward the front.
+  First thumb version kept the bind thumb's azimuth (20° residual); fixed.
+- Hands without ≥3 non-thumb chains and a thumb (CMU, Quaternius) keep old twist.
+Thumb-base azimuth as palm reference was tried and rejected: it varies ≈±10°
+between Character Creator bodies with identical binds.
+
+After (Vite 4637): units 0.00 mm/0.03°; A-pose swing 0.8°, forward/elbow/palm-roll
+4.65° (upper-arm twist helpers only), finger curl 2.4° (ActorCore fingers; CMU has
+no finger data so the receiver's own authored finger rest correctly remains).
+Visible agreement, native ActorCore source vs Party over 680 hand samples:
+knuckle-line direction p50 14.2°→8.4°, max 18.1°→10.3°; hand pointing p90
+11.6°→8.8°. Effect on existing transfers (`claude-rest-impact.mjs`): forearm/hand
+2–9.6°, fingers 4–12.8°, upper arms ≈0, CMU→Casual Female exactly unchanged.
+
+Gates on 4637: full suite 1,181 tests (1,178 + 3 new); route 140 cases unchanged
+maxima; source cuts 140 unchanged; native preservation exact; 70 s wait history
+3.445e-8 / 6.005 mm; export 2,248 samples max 0.00098 mm; real UI unchanged/no
+errors; build OK. Hand clearance on 91_34→Party: residual ≤8.1 mm, correction 2nd
+difference max 16.0/8.8 mm (source 32.5/16.9). New `tests/restNeutral.test.ts`: two
+of three tests fail with the normalization stubbed out.

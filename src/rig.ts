@@ -13,6 +13,7 @@ import { boneNames } from "../shared/scene";
 import { configureRigContacts, type RigContacts } from "./ik";
 import { captureFootSurfaces, transferFootClearance } from "./footSurface";
 import { captureHandClearance, supportTransferredHands } from "./handClearance";
+import { captureArmRest, normalizeArmRest, type ArmRest } from "./restNeutral";
 
 type BoneName = (typeof boneNames)[number];
 type Transform = {
@@ -390,6 +391,22 @@ export function configureImportedRig(
   const down = new T.Vector3(0, -1, 0).applyQuaternion(
     group.getWorldQuaternion(new T.Quaternion()),
   );
+  const across = position(bones.leftArm).sub(position(bones.rightArm));
+  const forward = across
+    .addScaledVector(down, -across.dot(down))
+    .cross(down)
+    .negate()
+    .normalize();
+  const armRest: Partial<Record<"left" | "right", ArmRest>> = {};
+  for (const side of ["left", "right"] as const) {
+    const lower = bones[side + "Forearm"],
+      hand = side === "left" ? contacts.leftHand! : contacts.hand;
+    armRest[side] = captureArmRest(
+      bones[side + "Arm"],
+      lower,
+      lower.localToWorld(hand.clone()),
+    );
+  }
   for (const side of ["left", "right"] as const) {
     // Bind stances can splay or bend the legs just as arms can use A/T poses.
     // Compare animation against the same anatomical neutral on both rigs;
@@ -407,6 +424,15 @@ export function configureImportedRig(
     pointAtDirection(upper, position(lower), down);
     // The measured local contact follows the limb even for detached skin joints.
     pointAtDirection(lower, lower.localToWorld(hand.clone()), down);
+    if (forward.lengthSq() > 0.5)
+      normalizeArmRest(
+        upper,
+        lower,
+        bones[side + "Hand"],
+        armRest[side]!,
+        down,
+        forward,
+      );
   }
   followDetachedJoints(data);
   const inverse = group.getWorldQuaternion(new T.Quaternion()).invert();
