@@ -826,3 +826,10 @@ median: 35_17 0.2/0.3 mm (fixture source 1.3/2.1), 77_02 −5/−8 (fixture
 −1.9/−2.9) on Casual/Party — both sources now keep soles within about ±2.5 cm
 of the floor; neither is ground truth (the fixture's soles are capsules).
 Gates on Vite 4678 identical to D28; suite 1,239 (`--maxWorkers=4`).
+Visual check (`test-results/claude-bvh-stills.mjs`, Party, CMU 35_01, original
+GLB take left / BVH re-import with no mapping right, floor visible, side view
+on the lower legs at 0.4/1.0/1.6/2.2 s; `claude-session/bvh-stills/`): poses
+indistinguishable; the BVH-sourced feet sit about 1 cm lower (front toe tip
+touching into the floor plane at 1.6 s), in line with the measured medians —
+the fixture-sourced path also sinks ≈1.5 cm on this take, so this is the
+existing ground-contact accuracy, not a new regression.
