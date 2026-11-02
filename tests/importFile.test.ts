@@ -4,7 +4,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { characters, type Asset } from "../shared/scene";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { applyTransferredClip } from "../src/rig";
-import { bvhArmature, bvhToGlb } from "../src/bvhImport";
+import { bvhArmature, bvhToGlb, importableFile } from "../src/importFile";
 
 /** A small CMU-style capture in centimetres: hips travel forward (+Z) and
  * the left arm lifts from the T-pose bind. */
@@ -203,4 +203,16 @@ it("drives a skeleton of another naming convention from a BVH take", () => {
     mixer.setTime(time);
     expect(direction(t).angleTo(direction(s))).toBeLessThan(1e-3);
   }
+});
+
+it("uploads a VRM character unchanged as its binary glTF", async () => {
+  const bytes = new Uint8Array([
+    0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, 12, 0, 0, 0,
+  ]);
+  const vrm = new File([bytes], "Avatar.vrm");
+  const file = await importableFile(vrm);
+  expect(file.name).toBe("Avatar.glb");
+  expect(new Uint8Array(await file.arrayBuffer())).toEqual(bytes);
+  const glb = new File([bytes], "Prop.glb");
+  expect(await importableFile(glb)).toBe(glb);
 });

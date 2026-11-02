@@ -54,3 +54,15 @@ export async function bvhToGlb(text: string, fileName: string) {
     type: "model/gltf-binary",
   });
 }
+
+/** The file to upload for an asset import: BVH captures become an armature
+ * GLB; VRM/VRoid characters already are binary glTF 2.0 and go up unchanged
+ * under a .glb name. Everything else is uploaded as chosen. */
+export async function importableFile(file: File) {
+  if (/\.bvh$/i.test(file.name)) return bvhToGlb(await file.text(), file.name);
+  if (/\.vrm$/i.test(file.name))
+    return new File([file], file.name.replace(/\.vrm$/i, ".glb"), {
+      type: "model/gltf-binary",
+    });
+  return file;
+}

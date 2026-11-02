@@ -671,3 +671,21 @@ calls the same `bvhToGlb` and `api('/api/import')` the modal calls.
 Gates on Vite 4670 identical to D21 (route 140, cuts 140, native exact, all 19
 cross-rig deltas, wait, export, real UI); suite 1,222 (`--maxWorkers=4`), tsc,
 prettier, build OK.
+
+## D23 — VRM/VRoid characters import (13:30–13:40)
+
+`.vrm` (VRoid Studio and most VTuber avatars) is binary glTF 2.0 with the
+J_Bip names recognised since D21, but the picker and server refused the
+extension. Decision: one client helper (`importableFile`, `src/importFile.ts`,
+renamed from `bvhImport.ts`) prepares every import — BVH is converted (D22),
+VRM goes up byte-for-byte under a `.glb` name (the server's GLB 2.0 header and
+size check still applies), anything else unchanged. Picker and copy list VRM.
+VRM 0.x avatars face −Z in glTF space; the D19 facing turn covers them.
+Not done: VRM-specific extensions (MToon materials, spring bones, a VRM 1.0
+humanoid map without J_Bip names) are ignored by GLTFLoader; such an avatar
+falls back to standard materials and name recognition.
+Evidence: test (renamed, bytes identical; a .glb passes through as the same
+File); suite 1,223 (`--maxWorkers=4`), tsc, build OK; real UI gate on Vite 4671
+unchanged with no errors on the rerun — the first run on that new origin logged
+Chrome's automatic `/favicon.ico` 404 (the app has no favicon link; the probe
+happens once per origin), not an app request.

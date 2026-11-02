@@ -152,7 +152,7 @@ import {
   useImageAttachments,
 } from "./Attachments";
 import { api, download } from "./api";
-import { bvhToGlb } from "./bvhImport";
+import { importableFile } from "./importFile";
 type Tab = "characters" | "props" | "environments" | "motions";
 const characterFilters = [
   "All",
@@ -1378,9 +1378,8 @@ export default function App() {
   async function importAsset(file: File) {
     setBusy(true);
     try {
-      // Motion capture arrives as an animated armature GLB.
-      if (/\.bvh$/i.test(file.name))
-        file = await bvhToGlb(await file.text(), file.name);
+      // Motion capture arrives as an animated armature GLB; VRM as its GLB.
+      file = await importableFile(file);
       const data = new FormData();
       data.append("file", file);
       const result = await api<{
@@ -3299,7 +3298,7 @@ export default function App() {
         ref={assetInput}
         hidden
         type="file"
-        accept=".glb,.fbx,.bvh"
+        accept=".glb,.fbx,.bvh,.vrm"
         onChange={(e) => {
           if (e.target.files?.[0]) void importAsset(e.target.files[0]);
           e.target.value = "";
@@ -3770,8 +3769,8 @@ export default function App() {
           <div className="import-content">
             <p className="muted">
               Bring in your own characters and props, including characters from
-              Mixamo, and BVH motion capture. Choose a GLB, FBX or BVH file, up
-              to 100 MB.
+              Mixamo and VRoid, and BVH motion capture. Choose a GLB, FBX, VRM
+              or BVH file, up to 100 MB.
             </p>
             <label>
               This asset is a…
@@ -3798,7 +3797,9 @@ export default function App() {
               <strong>
                 {busy ? "Getting your asset ready…" : "Choose an asset"}
               </strong>
-              <span>GLB, FBX or BVH · Your files stay on your computer</span>
+              <span>
+                GLB, FBX, VRM or BVH · Your files stay on your computer
+              </span>
             </button>
             <p className="small muted">
               FBX imports need a connected Blender installation. Set it up in
