@@ -24,7 +24,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 34e18e4 | Structural tie-break for equally placed limb helpers |
 | 7736423 | Single-neck sources bend both receiving neck segments |
 | cf994dc | Animation-only (mesh-less) armature imports recognised |
-| (next) | Characters authored facing −Z (or sideways) turned to face +Z on import |
+| 1816a0e | Characters authored facing −Z (or sideways) turned to face +Z on import |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D19). Summaries also appended to
