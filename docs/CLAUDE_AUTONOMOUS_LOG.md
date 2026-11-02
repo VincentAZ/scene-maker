@@ -472,3 +472,24 @@ their redistribution terms were not established. Driver `claude-new-rigs.mjs`.
   in Xbot's very wide thigh shell without correction (only fingertips visible);
   with it the hand rests on the thigh surface (86 mm, capped → `unresolved`).
   `mixamo-eval/cmu-capture-91-34-xbot-{1,3}.png` (left = correction off).
+
+## D17 — Animation-only (mesh-less) imports recognised (12:33–12:50)
+
+An armature exported without a mesh (Mixamo "without skin", many motion packs)
+imported with ZERO recognised roles: glTF only marks nodes as bones when a skin
+references them, so the joints loaded as plain nodes; sharing was refused ("needs
+a recognizable humanoid body") and the report function crashed on missing hips.
+A second latent defect: with no mesh, the character bounds were empty and the
+height normalization factor became 1.85/−∞ = −0 (rig collapsed to zero scale).
+
+Decision (`src/importedAsset.ts`): for characters with no bones at all, promote
+the animated joint hierarchy — every plain (non-mesh/camera/light) node at or
+below the topmost animated nodes — to `T.Bone`, keeping UUIDs (tracks may bind by
+UUID), names, transforms and child order; files with bones are untouched. Empty
+bounds fall back to joint positions. `planFor` returns nothing without hips.
+
+Evidence: Xbot exported without its 2 meshes → 15 roles, no warnings, 55 matched
+joints; its walk drives Party within 12.3 mm of the skinned original (expected:
+no skin → bind foot pitch kept, no source contact allowance). New test (plain-node
+armature) fails on the previous code. Existing fixtures exactly unchanged; suite
+1,191; gates on Vite 4661 identical to D11.

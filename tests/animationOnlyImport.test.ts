@@ -1,0 +1,126 @@
+import { expect, it } from "vitest";
+import * as T from "three";
+import { characters, type Asset } from "../shared/scene";
+import { prepareImportedAsset } from "../src/importedAsset";
+
+/** An armature without any mesh, as an animation-only export loads: joints are
+ * plain nodes because no skin marks them as bones. */
+function armature() {
+  const scene = new T.Group();
+  const root = new T.Object3D();
+  root.name = "Armature";
+  scene.add(root);
+  const nodes: Record<string, T.Object3D> = {};
+  const add = (name: string, parent: T.Object3D, xyz: number[]) => {
+    const node = new T.Object3D();
+    node.name = name;
+    node.position.fromArray(xyz);
+    parent.add(node);
+    nodes[name] = node;
+    return node;
+  };
+  const hips = add("Hips", root, [0, 100, 0]);
+  const spine = add("Spine", hips, [0, 10, 0]);
+  const chest = add("Spine2", spine, [0, 25, 0]);
+  add(
+    "HeadTop_End",
+    add("Head", add("Neck", chest, [0, 20, 0]), [0, 10, 0]),
+    [0, 18, 0],
+  );
+  for (const [side, sign] of [
+    ["Left", 1],
+    ["Right", -1],
+  ] as const) {
+    const shoulder = add(`${side}Shoulder`, chest, [sign * 6, 15, 0]);
+    add(
+      `${side}Hand`,
+      add(`${side}ForeArm`, add(`${side}Arm`, shoulder, [sign * 12, 0, 0]), [
+        sign * 28,
+        0,
+        0,
+      ]),
+      [sign * 25, 0, 0],
+    );
+    add(
+      `${side}ToeBase`,
+      add(
+        `${side}Foot`,
+        add(
+          `${side}Leg`,
+          add(`${side}UpLeg`, hips, [sign * 9, -5, 0]),
+          [0, -42, 0],
+        ),
+        [0, -42, 0],
+      ),
+      [0, -8, 12],
+    );
+  }
+  const clip = new T.AnimationClip("walk", 1, [
+    new T.QuaternionKeyframeTrack(
+      "Hips.quaternion",
+      [0, 1],
+      [0, 0, 0, 1, 0, 0.1, 0, 0.995],
+    ),
+    new T.VectorKeyframeTrack("Hips.position", [0, 1], [0, 100, 0, 0, 100, 50]),
+    new T.QuaternionKeyframeTrack(
+      "LeftArm.quaternion",
+      [0, 1],
+      [0, 0, 0, 1, 0, 0, 0.2, 0.98],
+    ),
+  ]);
+  return { scene, nodes, clip };
+}
+
+it("recognises a humanoid rig in an animation-only (mesh-less) file", () => {
+  const { scene, nodes, clip } = armature();
+  const asset = {
+    ...characters[0],
+    id: "animation-only",
+    url: "/x.glb",
+  } as Asset;
+  const uuids = Object.fromEntries(
+    Object.entries(nodes).map(([k, n]) => [k, n.uuid]),
+  );
+  const group = prepareImportedAsset(asset, { scene, animations: [clip] });
+  const bones = group.userData.bones as Record<string, T.Object3D>;
+  for (const role of [
+    "hips",
+    "spine",
+    "head",
+    "leftArm",
+    "leftForearm",
+    "rightArm",
+    "rightForearm",
+    "leftLeg",
+    "leftShin",
+    "rightLeg",
+    "rightShin",
+  ])
+    expect(bones[role], role).toBeInstanceOf(T.Bone);
+  expect(group.userData.rigMappingReport.missing).toEqual([]);
+  // Identity, transforms and order survive the promotion; the armature node
+  // itself (not animated) stays a plain node.
+  expect(bones.hips.uuid).toBe(uuids.Hips);
+  expect(bones.leftForearm.name).toBe("LeftForeArm");
+  let armatureNode: T.Object3D | undefined;
+  group.traverse((n) => {
+    if (n.name === "Armature") armatureNode = n;
+  });
+  expect(armatureNode).toBeDefined();
+  expect(armatureNode).not.toBeInstanceOf(T.Bone);
+  // Size normalization comes from the joints when there is no mesh.
+  group.updateMatrixWorld(true);
+  const head = bones.head.getWorldPosition(new T.Vector3()),
+    toe = new T.Vector3();
+  group.traverse((n) => {
+    if (n.name === "LeftToeBase") n.getWorldPosition(toe);
+  });
+  expect(Number.isFinite(head.y)).toBe(true);
+  expect(head.y - toe.y).toBeGreaterThan(1);
+  expect(head.y - toe.y).toBeLessThan(2);
+  // The clip still drives the promoted joints.
+  const mixer = group.userData.mixer as T.AnimationMixer;
+  mixer.clipAction(clip).play();
+  mixer.setTime(0.5);
+  expect(bones.leftArm.quaternion.z).toBeGreaterThan(0.05);
+});

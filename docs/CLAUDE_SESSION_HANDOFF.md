@@ -22,10 +22,11 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 52204a9 | Sole-flat foot/toe rest |
 | 5362f66 | Fingers and toes matched by hand/foot layout |
 | 34e18e4 | Structural tie-break for equally placed limb helpers |
-| (next) | Single-neck sources bend both receiving neck segments |
+| 7736423 | Single-neck sources bend both receiving neck segments |
+| (next) | Animation-only (mesh-less) armature imports recognised |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D15). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D17). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -47,6 +48,12 @@ route repeats (140), source cuts (140), native preservation vs frozen 10d1d01
 (Vite 4614), 70 s blocked wait/recovery history, export bake/reload, real UI,
 full suite, typecheck, build.
 
+## Also verified this session
+
+- Genuinely new Mixamo rigs (three.js example Xbot/Soldier, private evaluation
+  copies only) import with all roles and transfer in both directions (D16).
+- Root motion carried on a separate root bone is invariant (D16).
+
 ## Known remaining gaps (measured)
 
 - Facial bones (eyes 5–10° on renamed rigs) and rib twist helpers (2.6°) still
@@ -64,8 +71,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4660 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4659 serve
+Final Vite 4661 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4660 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 

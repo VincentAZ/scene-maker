@@ -270,7 +270,8 @@ function planFor(
   if (!clips) targets.set(target, (clips = new Map()));
   const cached = clips.get(clip);
   if (cached) return cached;
-  const hips = source.userData.bones.hips as T.Bone;
+  const hips = source.userData.bones?.hips as T.Bone | undefined;
+  if (!hips || !target.userData.bones?.hips) return;
   const detachedSource = source.userData.detachedJointAnchors as
     Map<T.Bone, T.Bone> | undefined;
   const detachedTarget = target.userData.detachedJointAnchors as

@@ -48,6 +48,57 @@ export async function loadImportedAsset(asset: Asset): Promise<T.Group> {
   return prepareImportedAsset(asset, gltf);
 }
 
+/** Animation-only files (an armature without a mesh, e.g. a "without skin"
+ * export) load their joints as plain nodes, because only skins mark nodes as
+ * bones. Promote the animated joint hierarchy to bones so the rig can be
+ * recognised: every non-mesh node at or below the topmost animated nodes.
+ * Files that already have bones, and meshes/cameras/lights, are untouched.
+ * UUIDs, names, transforms and child order are kept. */
+function promoteAnimatedJoints(root: T.Object3D, clips: T.AnimationClip[]) {
+  let hasBones = false;
+  root.traverse((n) => {
+    if (n instanceof T.Bone) hasBones = true;
+  });
+  if (hasBones || !clips.length) return;
+  const plain = (n: T.Object3D) =>
+    n.constructor === T.Object3D || n.constructor === T.Group;
+  const animated = new Set<T.Object3D>();
+  for (const clip of clips)
+    for (const track of clip.tracks) {
+      const node = T.PropertyBinding.findNode(
+        root,
+        T.PropertyBinding.parseTrackName(track.name).nodeName,
+      );
+      if (node instanceof T.Object3D && node !== root && plain(node))
+        animated.add(node);
+    }
+  const tops = [...animated].filter((node) => {
+    for (let p = node.parent; p && p !== root; p = p.parent)
+      if (animated.has(p)) return false;
+    return true;
+  });
+  const joints: T.Object3D[] = [];
+  for (const top of tops)
+    top.traverse((n) => {
+      if (plain(n)) joints.push(n);
+    });
+  for (const node of joints) {
+    const bone = new T.Bone();
+    bone.uuid = node.uuid;
+    bone.name = node.name;
+    bone.position.copy(node.position);
+    bone.quaternion.copy(node.quaternion);
+    bone.scale.copy(node.scale);
+    bone.userData = node.userData;
+    const parent = node.parent!;
+    const index = parent.children.indexOf(node);
+    for (const child of [...node.children]) bone.add(child);
+    parent.children[index] = bone;
+    bone.parent = parent;
+    node.parent = null;
+  }
+}
+
 export function prepareImportedAsset(
   asset: Asset,
   gltf: Pick<GLTF, "scene" | "animations">,
@@ -55,6 +106,8 @@ export function prepareImportedAsset(
   const group = new T.Group(),
     imported = gltf.scene;
   repairOpaqueImportedMaterials(imported);
+  if (asset.category === "characters")
+    promoteAnimatedJoints(imported, gltf.animations);
   imported.traverse((object) => {
     // SkinnedMesh bounds are cached, but captured travel can move the entire
     // body through its bones without moving the mesh node. A bind/earlier-pose
@@ -68,6 +121,14 @@ export function prepareImportedAsset(
   // a whole interior when its foundation extends below the floor.
   if (asset.category !== "environments") {
     const bounds = new T.Box3().setFromObject(imported);
+    // An armature without a mesh has no geometric bounds: use its joints.
+    if (bounds.isEmpty()) {
+      imported.updateMatrixWorld(true);
+      imported.traverse((n) => {
+        if (n instanceof T.Bone)
+          bounds.expandByPoint(n.getWorldPosition(new T.Vector3()));
+      });
+    }
     const height = bounds.max.y - bounds.min.y;
     // Normalize outside the animation hierarchy. Provider-authored transforms
     // (and tracks targeting them) must retain their original units and values.
