@@ -40,7 +40,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 338feb1 | Full Rigify exports: DEF- deform bones win over same-named controls |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D33). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D34). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -124,10 +124,25 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4681 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4680 serve
+Final Vite 4682 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4681 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
 Evidence: `/tmp/scene-natural-motion/claude-session/` (durable copy in
 `.data/natural-motion-investigation/claude-session/`, incl. `drivers/`).
+
+## Final verification (HEAD b2b0444, Vite 4682, 14:10–14:14)
+
+Suite 1,240 (`--maxWorkers=4`), tsc, build; generality matrix (receiver and
+source) line-for-line identical to the D28 baseline; `names_<convention>`
+receivers: CMU 0.00 mm/0.03°, Thoughtful walk 3.15 mm/2.60° (rib twist), Walk
+0.00 mm/2.60° for all six conventions (Mixamo-renamed variant 10.38° — its
+eyes are renamed to generic names); sources 3.15 mm/0.75° (Waist), source
+joints 0.00 mm. BVH round trips: every body role 0 mm on Casual and Party;
+sole-clearance medians within ±2.5 cm of the floor for both sources. Real
+dialog: BVH → Actions → Sage → play, no refusal, no errors, throwaway project
+removed. Gates: route 140 (0.008496 mm), cuts 140, native exact, all 19
+cross-rig deltas unchanged, wait 3.448e-8 / 6.005 mm, export ≤0.0035 mm, real
+UI unchanged. Evidence: `.data/natural-motion-investigation/claude-session/final/`.
+Only Vite 4682 (and Codex's 4609–4614, API 4413, Chrome 9451) remain running.
