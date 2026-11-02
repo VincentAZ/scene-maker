@@ -98,8 +98,9 @@ mesh/material repair does not address any of these paths.
   retained for genuinely coarse procedural rigs.
 - Named morphs transfer by matching mesh/name or unambiguous source names, never
   by guessing numerical weight indices. Rest weights reset between takes/seeks.
-- `userData.retargetReport` separates transferred channels, unchanged bind
-  channels, and unsupported channels with reasons. Viewport notices disclose
+- `userData.retargetReport` separates directly transferred channels, chest
+  channels composed into one receiving joint, unchanged bind channels, and
+  unsupported channels with reasons. Viewport notices disclose
   losses even on procedural receivers. Constant **non-bind** poses/deformations
   count as meaningful channels, not harmless exporter noise. Non-bind scaling,
   unsupported anatomical length changes, ambiguous names, unavailable joints,

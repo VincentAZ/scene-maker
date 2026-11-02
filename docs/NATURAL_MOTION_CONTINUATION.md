@@ -33,7 +33,7 @@ numerical tests presented as visual proof.
   user project, not a disposable fixture. Do not overwrite it or its source data
   in `/tmp/scene-animation-review/astra-data`.
 - This worktree's disposable copy is `/tmp/scene-natural-motion/data`.
-  Private API is 4413, latest Vite 4563, owned headless Chrome 9451. Confirm availability
+  Private API is 4413, latest Vite 4571, owned headless Chrome 9451. Confirm availability
   before use. The API startup log incorrectly prints 4311 regardless of PORT;
   inspect the listening socket instead of trusting that message.
 - Vite uses `test-results/natural.config.ts`, with HMR disabled. Start a fresh
@@ -928,3 +928,131 @@ on multiple receivers, then native starts, running stops and the broader
 provider/contact/history/export goal. No cross-source arrival matcher was
 implemented during this investigation. Existing manual drawn-path behavior
 and default walk/run sources remain unchanged.
+
+
+## Complete chest transfer and full-body walking interval (after 8fecc12)
+
+This turn is progress, not completion. It fixes measured lost torso motion and
+replaces the walking preset's discontinuous interval. Running loops, natural
+starts/arrivals, unsupported detail and broad provider/visual acceptance remain
+open. The normal-speed clips include the remaining held route ending.
+
+Chest transfer defect and correction:
+
+- CMU has lower chest (`upperback`) and upper chest (`thorax`); Party Woman and
+  Casual Female have one chest at the common arm/head branch. The previous
+  semantic match sent only the lower chest to that joint. Arms/head received
+  composed world orientations, but the chest mesh missed the upper bend.
+- `chest-transfer-audit.mjs` measures the anatomical branch orientation against
+  source motion, compensating bind axes and source entry heading. At 60 Hz over
+  the FULL 35_01,69_06,82_14 takes, both receivers miss respectively ~7.115°,8.176°,
+  and7.765°. After correction max error is0.001124° on Party Woman and below
+  0.000004° on Casual Female. Reports: `before.json`, `after.json`.
+- `detailedRetarget.ts` now uses the upper source chest as the endpoint for a
+  single receiving chest only when both are the actual common arm/head branch,
+  the source lower/upper chain is valid, and there is no distinct, ambiguous or
+  explicitly disabled receiving upper chest. Separate upper/lower target joints
+  keep their existing independent transfer. No provider/clip-name condition.
+- `retargetReport.composed` identifies the lower channel represented through
+  that endpoint; the UI explains that both chest segments share one joint.
+  This is not identical independent skin deformation. Unsupported upper-neck,
+  wrist and toe detail remains disclosed, not silently marked preserved.
+- Synthetic runtime regression failed before the change by0.0856rad at its first
+  sample. It now passes with different bind axes and reverse seeks; explicit
+  upper-chest disabling and duplicate/ambiguous upper-chest names prevent the
+  fallback. The existing separate-upper-chest regression still passes.
+- Before/after preservation matrix: 23 native/receiver cases,39 timestamps each
+  (37 full-duration fractions plus reverse seeks), all bone positions/quaternions.
+  Seven native CMU takes and the native ActorCore Thoughtful walk are exactly
+  unchanged. ActorCore Thoughtful walk -> Party Woman is exactly unchanged.
+  Root placement and lower-body joint positions are exactly unchanged for ALL
+  cases (CMU -> Party Woman/Casual Female included). `preservation.json`.
+- `chest-transfer-before-after-1x.mp4`:7.55s capture at30fps, previous transfer left,
+  corrected transfer right. Before transforms are sampled from Vite4567 then
+  replayed on an independently loaded identical hierarchy beside live new poses;
+  source clock/camera/lighting agree. `before-native-poses.json` retains replay
+  evidence. Frame sequences inspected, including6.87s (peak chest difference).
+  The torso improvement is real; the clip does not settle overall naturalness.
+- Native slowdown bake/reload:7.85s including held tail,947timestamps,102nodes,
+  12sampled vertices/mesh. Max joint/skin error0.001550/0.001554mm,41,204,944bytes.
+  `production-native-export.json`. No export/bake algorithm was changed.
+
+The existing walking/running presets were not actually seamless full-body loops:
+
+- New complete-body seam sampling of the old defaults exposes~28.8mm native /
+  35.3mm Party Woman /29.4mm Casual Female walking jumps, and~59.4/68.8/49.9mm
+  running jumps. These existed BEFORE the torso fix. Earlier foot-only checks
+  and fixed-grid export tests did not establish full-body continuity.
+- A PRIVATE diagnostic Vite transform records why the existing loop gate rejects
+  them. Walk's left hand correction is~0.798rad, above the unchanged0.35rad bound;
+  the run's hands are~0.35085/0.35131rad. Finger descendants inherit the wrist
+  jump even though no finger capture was fabricated. Do not loosen these gates.
+  `loop-rejections.json` and `test-results/loop-diagnostic.config.ts` record the
+  diagnosis. That transform is not production code. Its root-position diagnostic
+  includes hips in the printed list although the actual gate handles hips
+  separately; do not treat that list entry as the reason for native rejection.
+- A search of950walking intervals finds two full-body candidates on native,
+  Party Woman and Casual Female. Selected **1.1–266/120s** of35_01, duration134/120s,
+  distance1.6394472422source metres. The existing bounded route-loop correction
+  closes this interval. Raw capture keys remain unchanged.
+- `captured-walking-stride` now references this interval for NEW routes. No saved
+  route migration. Browser matrix: original source + Party Woman + all32bundled
+  characters (34cases), largest all-joint change across the2microsecond seam
+  sample is0.133mm. Do not claim exact velocity continuity: residual submillimetre
+  contact/rotation differences remain. Automated regressions sample positions
+  AND rotations on both sides of two repeats, native and Casual Female; both
+  fail on the old preset and pass on the new one.
+- Actual PathEditor saved `captured-full-body-walk-review`:6m across,4.915413976s,
+  exact source/range, collisions=true. `walking-ui-final.log` has no errors.
+  Prior saved `captured-route-default-review` remains4.987045177s with .4–1.525s.
+  `walking-saved.json` and `walking-editor.png` retain new UI evidence. The first
+  UI run logged two unlocated404s; final repeat with URL logging has none.
+- `walking-review/walking-before-after-1x.mp4`:6s at30fps using the two actual
+  saved routes at natural pace; old interval left/new interval right. Their
+  source phase and stride period intentionally differ. Both explicit final
+  held poses remain visible. This is a loop improvement, NOT a natural arrival.
+- Walking bake/reload:5.215413976s (whole route+.3s),656timestamps including
+  neighbours within1microsecond of repeats,102nodes,12vertices/mesh. Max joint /
+  sampled-skin errors0.065147/0.063576mm;46,995,164byte GLB.
+- Running search:248coarse then930finer intervals,21foot-compatible fine
+  candidates, NO complete-body candidate across the three rigs. Running preset
+  is unchanged and its known discontinuity remains a priority. Prefer a longer,
+  suitable original running take over silently filtering wrists or weakening
+  body/velocity gates. Walking's candidate alone does not solve the full goal.
+
+Reproduction and current state:
+
+- Final production runtime4571;4570 includes both fixes before the final guard
+  against ambiguous upper-chest names (irrelevant to measured fixture mappings).
+  4568 has torso correction with the old walking preset;4567 is the pre-turn
+  baseline.4569 is the PRIVATE loop-diagnostic transform, not a final runtime.
+  API4413 was restarted with the same private data directory;Chrome9451 remains
+  owned. Revalidate processes before use; keep user4311/4337 untouched.
+- Rendering two separate browser surfaces alternately was very slow. The driver
+  was stopped only after confirming its live process and progress, then replaced
+  with single-viewport replay of the original recorded transforms. Final driver:
+  `chest-transfer-review-single.mjs`; walking counterpart `full-body-walking-review.mjs`.
+  The abandoned two-tab renderer and its partial frames are not final evidence.
+- Durable ignored archive: `.data/natural-motion-investigation/chest-transfer/`.
+  Include final videos, before/after reports, pose replay, search/rejection evidence,
+  UI screenshots/logs, exports' numerical reports and reproduction drivers; omit
+  frame directories and licensed input GLBs. Private fixture uploads are required
+  for Party Woman/ActorCore reproduction. Nothing publishes those assets.
+
+Next priorities: replace the remaining bad running loop; verify walking with
+curves, dynamic waits/recovery and native stops using the existing navigation
+planner, not straight-only prototypes; audit remaining neck/wrist/toe composition
+and source quality. All original provider/contact/timing/export requirements
+remain active. Do not infer completion from the improved chest metric or34body
+walking-seam matrix.
+
+
+Final checks for this milestone: **1,107tests/97files passed** with default
+limits and `--maxWorkers=2`, plus TypeScript, isolated production build and
+whitespace checks. The first full run found one stale default-range assertion;
+that expectation was updated and the full suite rerun successfully. Existing
+SDK schema and build chunk-size warnings remain. Final4571 Action Preview
+preserves0.63s across source/receiver views, plays/pauses, keeps the Add recipient
+and leaves saved content unchanged. Its only HTTP error is the recorded
+`/favicon.ico`404; there are no animation-load or JavaScript errors. Screenshots
+are `library-slowdown-{character,original}.png` in the new durable archive.

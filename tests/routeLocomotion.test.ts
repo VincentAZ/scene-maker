@@ -107,8 +107,8 @@ describe("route locomotion selection", () => {
       "captured-walking-stride",
     );
     expect(defaultRouteLocomotion(scene, actor).path?.sourceRange).toEqual({
-      start: 0.4,
-      end: 1.525,
+      start: 1.1,
+      end: 266 / 120,
     });
     expect(defaultRouteLocomotion(scene, actor, "run").id).toBe(
       "captured-running-stride",

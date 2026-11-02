@@ -462,19 +462,19 @@ describe("PathEditor production gait measurement", () => {
       true,
     );
     await act(async () => pending.resolve(source));
-    // 1.5 source metres * target/source ratio 2 over the selected 1.125-second stride.
+    // 1.5 source metres * target/source ratio 2 over the selected 134/120-second stride.
     expect(
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
-    ).toBe("2.25");
-    expect(container.textContent).toContain("Measured natural pace: 2.67 m/s");
+    ).toBe(String(134 / 60));
+    expect(container.textContent).toContain("Measured natural pace: 2.69 m/s");
     expect(locomotionProfile).toHaveBeenCalledWith(
       source,
       source.userData.animations[0],
-      { start: 0.4, end: 1.525 },
+      { start: 1.1, end: 266 / 120 },
     );
     expect(loadImportedAsset).toHaveBeenCalledTimes(1);
     await click("Add to sequence");
-    expect(onSave.mock.lastCall?.[0].duration).toBe(2.25);
+    expect(onSave.mock.lastCall?.[0].duration).toBeCloseTo(134 / 60, 10);
   });
 
   it("retains a manually chosen duration when asynchronous measurement finishes", async () => {

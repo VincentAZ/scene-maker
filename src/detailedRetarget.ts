@@ -122,6 +122,13 @@ function ancestor(child: T.Object3D, parent: T.Object3D) {
   for (let p = child.parent; p; p = p.parent) if (p === parent) return true;
   return false;
 }
+function chestBranch(group: T.Group, bone: T.Bone) {
+  const { leftArm, rightArm, head } = group.userData.bones;
+  if (!leftArm || !rightArm || !head) return false;
+  let branch = leftArm.parent;
+  while (branch && !ancestor(rightArm, branch)) branch = branch.parent;
+  return branch === bone && ancestor(head, bone);
+}
 type Pair = {
   source: Joint;
   target: Joint;
@@ -139,6 +146,7 @@ type MorphPair = {
 export type RetargetReport = {
   matchedJoints: number;
   transferred: string[];
+  composed: { channel: string; target: string }[];
   unchanged: string[];
   unsupported: { channel: string; reason: string }[];
 };
@@ -170,8 +178,25 @@ function planFor(
     Map<T.Bone, T.Bone> | undefined;
   const detachedTarget = target.userData.detachedJointAnchors as
     Map<T.Bone, T.Bone> | undefined;
+  const lowerChest = a.byKey.get("chest"),
+    upperChest = a.byKey.get("upperchest"),
+    targetChest = b.byKey.get("chest");
+  // Match the anatomical end of the torso when the receiving chest has no
+  // separate upper segment. Otherwise its skin loses the upper bend while
+  // the head and arms still receive that bend through their world rotations.
+  // Preserve distinct segments, explicit exclusions and ambiguous topology.
+  const combinedChest =
+    lowerChest &&
+    upperChest &&
+    targetChest &&
+    !b.joints.some((joint) => joint.key === "upperchest") &&
+    !target.userData.disabledRigRoles?.has("upperchest") &&
+    ancestor(upperChest.bone, lowerChest.bone) &&
+    chestBranch(source, upperChest.bone) &&
+    chestBranch(target, targetChest.bone);
   const pairs: Pair[] = b.joints.flatMap((t) => {
-    const s = a.byKey.get(t.key);
+    const s =
+      combinedChest && t === targetChest ? upperChest : a.byKey.get(t.key);
     return s &&
       b.byKey.has(t.key) &&
       (s.bone === hips ||
@@ -248,6 +273,7 @@ function planFor(
   const report: RetargetReport = {
     matchedJoints: pairs.length,
     transferred: [],
+    composed: [],
     unchanged: [],
     unsupported: [],
   };
@@ -326,6 +352,15 @@ function planFor(
           reason: "Unnamed morph weights cannot be safely matched",
         });
     } else if (
+      combinedChest &&
+      node === lowerChest.bone &&
+      ["position", "quaternion"].includes(path.propertyName)
+    ) {
+      report.composed.push({
+        channel: track.name,
+        target: targetChest.bone.name,
+      });
+    } else if (
       node instanceof T.Bone &&
       pairs.some((p) => p.source.bone === node) &&
       ["position", "quaternion", "scale"].includes(path.propertyName)
@@ -374,12 +409,20 @@ export function applyRetargetNotice(
 ) {
   const report = retargetReport(source, target, clip);
   target.userData.retargetReport = report;
-  target.userData.motionNotice = report?.unsupported.length
+  const unsupported = report?.unsupported.length
     ? `${report.unsupported.length} animation channels could not be transferred (${report.unsupported
         .slice(0, 3)
         .map((c) => c.channel)
         .join(", ")}). Use the original rig for these channels.`
     : "";
+  target.userData.motionNotice = [
+    unsupported,
+    report?.composed.length
+      ? "Upper and lower chest motion share one chest joint on this character."
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 /** Full hierarchy solver. World orientation deltas preserve different bind axes;
  * translations preserve target proportions rather than copying source lengths. */

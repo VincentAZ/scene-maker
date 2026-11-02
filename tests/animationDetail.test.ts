@@ -351,6 +351,89 @@ describe("detailed imported animation runtime", () => {
     }
   });
 
+  it.each(["combine", "disabled", "ambiguous"])(
+    "handles a single receiving chest without overriding unavailable or ambiguous anatomy (%s)",
+    (mode) => {
+      const disabled = mode !== "combine";
+      const source = fixture(),
+        native = fixture(),
+        target = fixture(0.7);
+      const upperBind = new T.Quaternion();
+      for (const f of [source, native]) {
+        const chest = f.joints.CC_Base_Spine02;
+        const children = [...chest.children];
+        const upper = new T.Bone();
+        upper.name = "SourceThorax";
+        upper.position.y = 0.05;
+        chest.add(upper);
+        f.group.updateWorldMatrix(true, true);
+        for (const child of children) upper.attach(child);
+        f.joints.UpperThorax = upper;
+        upperBind.copy(orientation(upper));
+      }
+      const lowerBind = source.bind.CC_Base_Spine02.quaternion;
+      const clip = new T.AnimationClip("Complete chest bend", duration, [
+        new T.QuaternionKeyframeTrack(
+          "CC_Base_Spine02.quaternion",
+          [0, duration],
+          [
+            ...lowerBind.toArray(),
+            ...lowerBind
+              .clone()
+              .multiply(rotation(-0.15, 0.1, 0.2))
+              .toArray(),
+          ],
+        ),
+        new T.QuaternionKeyframeTrack(
+          "SourceThorax.quaternion",
+          [0, duration],
+          [0, 0, 0, 1, ...rotation(0.4, -0.2, 0.3).toArray()],
+        ),
+      ]);
+      source.configure([clip]);
+      native.configure([clip]);
+      if (mode === "ambiguous") {
+        for (let i = 0; i < 2; i++) {
+          const helper = new T.Bone();
+          helper.name = "UpperChest";
+          target.joints.CC_Base_Spine02.add(helper);
+        }
+      }
+      target.configure(
+        [],
+        mode === "disabled" ? { upperChest: null } : undefined,
+      );
+      schedule(native, native, [clip], false);
+      schedule(target, source, [clip], true);
+      for (const time of [0.4, 1.2, 2.1, 0.4]) {
+        native.sample(time);
+        target.sample(time);
+        const expected = orientation(
+          disabled ? native.joints.CC_Base_Spine02 : native.joints.UpperThorax,
+        )
+          .multiply(upperBind.clone().invert())
+          .multiply(target.bind.CC_Base_Spine02.world);
+        expect(
+          orientation(target.joints.CC_Base_Spine02).angleTo(expected),
+        ).toBeLessThan(1e-6);
+      }
+      const report = retargetReport(source.group, target.group, clip)!;
+      expect(report.composed).toEqual(
+        disabled
+          ? []
+          : [
+              {
+                channel: "CC_Base_Spine02.quaternion",
+                target: "CC_Base_Spine02",
+              },
+            ],
+      );
+      expect(report.unsupported.map((entry) => entry.channel)).toEqual(
+        disabled ? ["SourceThorax.quaternion"] : [],
+      );
+    },
+  );
+
   it("preserves chest and shoulder motion between unrelated names using anatomical hierarchy", () => {
     const source = fixture(),
       native = fixture(),

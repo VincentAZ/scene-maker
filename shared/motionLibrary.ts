@@ -63,14 +63,14 @@ export const capturedRouteGaits: Motion[] = [
     ...capturedMotions.find((motion) => motion.animationName === "35_01")!,
     id: "captured-walking-stride",
     name: "Captured walking stride",
-    duration: 1.125,
+    duration: 134 / 120,
     path: {
       points: [
         [0, 0, 0],
-        [0, 0, 1.629091561409043],
+        [0, 0, 1.6394472422179711],
       ],
       smooth: false,
-      sourceRange: { start: 0.4, end: 1.525 },
+      sourceRange: { start: 1.1, end: 266 / 120 },
     },
   },
   {

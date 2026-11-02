@@ -95,18 +95,28 @@ these captures. These assets are not CC0.
 
 The complete walking take has unmatched endpoint foot poses. New walking routes
 without an established or native gait now select **Captured walking stride**,
-which references source seconds 0.4–1.525 of 35_01. The editor measures that
+which references source seconds 1.1–2.2166666667 of 35_01. The editor measures that
 interval and receiver proportions to offer the original pace. It saves the
 source identity and interval on the route; it does not alter the original take
 or migrate saved routes. New running routes use **Captured running stride**,
 source seconds 0.15–0.8833333333 of 35_17, unless the actor already has an
 established/native running gait. Authored and procedural choices remain available.
 
+The walking interval was selected using the complete body at repeats, including
+hands and joint rotations, on the original rig, Party Woman and all 32 bundled
+characters. It replaces the earlier 0.4–1.525-second preset, whose feet matched
+but whose hand motion did not. Existing saved intervals retain their values.
+The runtime's bounded loop correction closes the selected repeat without
+rewriting the original capture. These checks do not guarantee planted soles or
+naturalness on every imported body.
+
 Contact evidence is measured on the uninterrupted capture and trimmed to the
 selected walking stride, preserving support when a cut falls inside a planted
 step. The running take has no detected stance intervals: it retains captured
 foot motion without stance-lock correction. Its foot endpoints match across
-the selected repeat, but that is not a no-sliding guarantee.
+the selected repeat, but full-body inspection still finds hand discontinuities
+that the loop correction rejects. A better running interval/source remains
+required; neither matching feet nor a motion-capture label proves a good loop.
 
 Imported skins bypass cached frustum bounds, which can otherwise hide a body
 whose root motion moves its bones outside the bounds of an earlier pose.
@@ -164,3 +174,13 @@ converted from the original starting frame into the continuation's frame.
 Otherwise the same local vector would send the actor toward a different world
 position after a long wait. Both standing and frozen recovery have regressions
 for the actual destination as well as preservation of earlier playback.
+
+When the source has lower and upper chest joints but the receiver has only one
+chest at the common arm/head branch, detailed transfer now carries the composed
+upper-chest orientation and displacement into that joint. Previously its mesh
+missed the upper bend although the arms and head inherited it. Separate chest
+joints are retained when available; explicit exclusions and ambiguous mappings
+prevent automatic composition. The transfer report distinguishes composed
+channels from direct matches and unsupported channels. Combining two source
+segments cannot reproduce their independent skin deformation on a one-joint
+receiver. Neck, wrist, toe and other unsupported details remain disclosed.

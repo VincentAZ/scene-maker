@@ -1,4 +1,8 @@
 import { expect, it } from "vitest";
+import * as T from "three";
+import { libraryCharacters } from "../shared/characterLibrary";
+import { setMotionSources } from "../src/rig";
+import { locomotionScale } from "../src/locomotion";
 import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -188,3 +192,92 @@ it("retains the earlier walking lead-in of a gradual recorded stop", async () =>
     disposeObject(group);
   }
 });
+
+it.each([undefined, "quaternius-casual-female"])(
+  "keeps the complete captured walking body continuous at repeats on %s",
+  async (receiverId) => {
+    const { capturedRouteGaits } = await import("../shared/motionLibrary");
+    const gait = capturedRouteGaits.find((m) => m.animationName === "35_01")!;
+    const asset = capturedMotionSources.find(
+      (a) => a.id === gait.sourceAssetId,
+    )!;
+    const { group: source, gltf } = await load(asset);
+    const target = receiverId
+      ? (await load(libraryCharacters.find((a) => a.id === receiverId)!)).group
+      : source;
+    try {
+      const original = gltf.animations[0].tracks.map((t) =>
+        Array.from(t.values),
+      );
+      const profile = locomotionProfile(
+        source,
+        gltf.animations[0],
+        gait.path!.sourceRange,
+      )!;
+      const scene = starterScene(),
+        actor = scene.entities[0];
+      actor.assetId = receiverId ?? asset.id;
+      actor.position = [0, 0, 0];
+      actor.rotation = 0;
+      actor.scale = 1;
+      const route = {
+        ...gait,
+        id: "walking-route",
+        path: {
+          ...gait.path!,
+          points: [
+            [0, 0, 0],
+            [0, 0, profile.distance * locomotionScale(source, target) * 3],
+          ] as [number, number, number][],
+        },
+      };
+      scene.customMotions.push(route);
+      actor.clips = [
+        {
+          id: "walking-route",
+          motionId: route.id,
+          duration: profile.duration * 3,
+          playbackRate: 1,
+        },
+      ];
+      if (target !== source)
+        setMotionSources(target, new Map([[asset.id, source]]));
+      const sample = (time: number) => {
+        applyAnimatedEntityPose(target, actor, scene, time);
+        target.updateMatrixWorld(true);
+        const pose: { position: T.Vector3; rotation: T.Quaternion }[] = [];
+        target.traverse((n) => {
+          if (n instanceof T.Bone)
+            pose.push({
+              position: n.getWorldPosition(new T.Vector3()),
+              rotation: n.getWorldQuaternion(new T.Quaternion()).normalize(),
+            });
+        });
+        return pose;
+      };
+      for (const cycle of [1, 2]) {
+        const before = sample(cycle * profile.duration - 1e-6),
+          after = sample(cycle * profile.duration + 1e-6);
+        expect(
+          Math.max(
+            ...before.map((p, i) => p.position.distanceTo(after[i].position)),
+          ),
+        ).toBeLessThan(0.0005);
+        expect(
+          Math.max(
+            ...before.map((p, i) => p.rotation.angleTo(after[i].rotation)),
+          ),
+        ).toBeLessThan(0.001);
+        expect(target.userData.motionNotice || "").not.toContain(
+          "does not join smoothly",
+        );
+      }
+      expect(
+        gltf.animations[0].tracks.map((t) => Array.from(t.values)),
+      ).toEqual(original);
+    } finally {
+      if (target !== source) disposeObject(target);
+      disposeObject(source);
+    }
+  },
+);
