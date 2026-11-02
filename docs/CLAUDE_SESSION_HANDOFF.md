@@ -35,7 +35,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | ef6a76a | CMU ASF skeletons recognised |
 | 1024ae7 | Characters lying along another axis stood up on import |
 | 96671b5 | Skeleton-only sources keep receivers on the ground |
-| (next) | BVH imports go to Actions (verified through the real dialog) |
+| 16e7ad2 | BVH imports go to Actions (verified through the real dialog) |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D30). Summaries also appended to
