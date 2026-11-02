@@ -188,7 +188,7 @@ touched, gesture kept), `cmu-pirate-1x.mp4`. Left = no correction, right = curre
   milestone commits are this branch's convention and the handoff's listed
   pre-commit checks were all run.
 
-## D8 — Rig-authoring invariance; anatomical arm/hand/finger rest (11:02–11:45)
+## D8 — Rig-authoring invariance; anatomical arm/hand/finger rest (11:02–11:14)
 
 Goal-driven question: does transfer depend on how a standard receiver happens to
 be authored? Harness `test-results/claude-rig-variants.mjs` re-authors Party Woman
@@ -239,3 +239,54 @@ maxima; source cuts 140 unchanged; native preservation exact; 70 s wait history
 errors; build OK. Hand clearance on 91_34→Party: residual ≤8.1 mm, correction 2nd
 difference max 16.0/8.8 mm (source 32.5/16.9). New `tests/restNeutral.test.ts`: two
 of three tests fail with the normalization stubbed out.
+
+## D9 — Source-side invariance: unit-independent check, torso by topology (11:15–11:37)
+
+Harness `test-results/claude-source-variants.mjs` re-authors the SOURCE (ActorCore
+Dummy M with Thoughtful walk), keeping its visible motion (bind-only changes leave
+glTF tracks alone; unit/armature/name changes convert the tracks), re-imports it and
+transfers to unchanged Party Woman. Metric: every skin-weighted receiver bone (the
+unweighted `root` control follows the source frame and is invisible).
+
+Findings and decisions:
+- A centimetre source armature (bone translations ×100 under a 0.01-scaled node,
+  tracks converted) was REFUSED for sharing: "This action changes bone lengths or
+  scale". `transferWarning` compared bone-translation tracks with the bind in local
+  units against 1e-4, i.e. 1 µm in centimetres; ordinary capture jitter failed.
+  Fix (`src/rig.ts`): deviation in world units (parent world scale) relative to body
+  height, tolerance 6e-5 × height (= the old 0.1 mm for a 1.7 m body). Scale tracks
+  keep the dimensionless 1e-4. Now 0.02° and accepted.
+- Z-up (Blender-style) rotated armature: 0.02° (already invariant).
+- Source A-pose bind with rolled palms: 0.24°; source finger-rest curl: 2.3°.
+- Mixamo-convention names on the same body: torso driven one segment off (the
+  name table calls Mixamo "Spine" the spine, which sits where Character Creator has
+  "Waist"; Mixamo Spine2 = chest). New in `src/detailedRetarget.ts`: torso chains
+  (hips → arm/head branch) mapped by normalized height, slerping between source
+  joints; the branch always maps to the source branch. Exact raw-name anchors only
+  within one convention (at least one non-canonical torso bone shares its exact
+  name); canonical role labels and prefix-stripped names never anchor. Disabled
+  (listed AND unassigned) or ambiguous torso roles keep the old named matching.
+  Pitfalls hit on the way, all fixed: `disabledRigRoles` also lists valid explicit
+  assignments (blocked CMU sources); `normalized()` strips `mixamorig` so
+  "mixamorigSpine" falsely anchored to Party's "spine"; a Python replace with an
+  empty match mangled the file once (restored from backup, re-applied with
+  occurrence assertions).
+- Remaining (not fixed): twist/share helper bones match only by exact name, so a
+  renamed source loses their data (upper-arm twist 55°, elbow share 53°, forearm
+  twist 18°, thigh/calf twist ≤8° on that variant). Geometric helper matching like
+  `forearmRoll.ts` would generalize it. Logged as next work.
+
+Torso effect on existing fixtures (`claude-torso-shape.mjs`, bend away from each
+rig's own rest along normalized height): CMU 91_34 → Casual Female p50 2.53°→1.28°,
+p90 7.02°→3.99°, max 10.81°→5.87°; 91_34 → Party p50 2.24°→2.69° (p90/max equal);
+69_06 → Party unchanged. ActorCore → Party / Dummy F exactly unchanged (same
+convention, exact anchors). CMU → Party upper body moves ≤14.6 mm (legs 0.000 mm).
+My first impact readout mislabelled toe bones as fingers (regex), briefly suggesting
+a whole-body shift; a direct per-bone comparison and a sampling-history test (fresh
+vs prior samples: 0.000 mm on 4614/4630/4637/4643) ruled that out.
+
+Gates on Vite 4644: suite 1,184 tests (3 new: torso naming convention, centimetre
+armature ×2 — each fails on the previous code); route 140 unchanged maxima;
+source cuts 140 (≤3.58e-8 m); native preservation exact, transferred lower body/
+root ≤1.4e-15; 70 s wait 3.445e-8 / 6.005 mm; export 2,248 samples ≤0.0035 mm;
+real UI unchanged/no errors; typecheck, Prettier, diff, build OK.

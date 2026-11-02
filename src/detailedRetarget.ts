@@ -130,6 +130,63 @@ function chestBranch(group: T.Group, bone: T.Bone) {
   while (branch && !ancestor(rightArm, branch)) branch = branch.parent;
   return branch === bone && ancestor(head, bone);
 }
+/** Bones from just above the hips up to the common arm/head branch, or
+ * undefined when that branch is not a simple descendant chain of the hips, a
+ * chain bone is excluded, or a torso role is disabled or ambiguous (the user's
+ * choice and conservative matching win). Explicit role assignments only say
+ * which bone is which, so they do not prevent following the chain. */
+function torsoChain(group: T.Group, rig: DetailRig) {
+  const { hips, leftArm, rightArm, head } = group.userData.bones ?? {};
+  if (!hips || !leftArm || !rightArm || !head) return;
+  let branch = leftArm.parent;
+  while (branch && !ancestor(rightArm, branch)) branch = branch.parent;
+  if (!(branch instanceof T.Bone) || !ancestor(head, branch)) return;
+  const chain: Joint[] = [];
+  for (
+    let node: T.Object3D | null = branch;
+    node !== hips;
+    node = node.parent
+  ) {
+    if (!node) return;
+    if (!(node instanceof T.Bone)) continue;
+    const joint = rig.joints.find((j) => j.bone === node);
+    if (!joint || joint.key.startsWith("unmapped:")) return;
+    chain.unshift(joint);
+  }
+  const base = rig.joints.find((j) => j.bone === hips);
+  if (!base || !chain.length) return;
+  // A role listed without an assigned bone is disabled (the listed set also
+  // holds valid explicit assignments, which are constraints, not opt-outs).
+  const assigned = new Set(
+    (
+      group.userData.rigSemanticKeys as Map<T.Bone, string> | undefined
+    )?.values(),
+  );
+  if (
+    ["waist", "spine", "chest", "upperchest"].some(
+      (role) =>
+        ((group.userData.disabledRigRoles as Set<string> | undefined)?.has(
+          role,
+        ) &&
+          !assigned.has(role)) ||
+        rig.joints.filter((j) => j.key === role).length > 1,
+    )
+  )
+    return;
+  // Normalized height of each joint origin along the bind chain from the hips.
+  const points = [base, ...chain].map((j) => j.bindPoint);
+  const lengths = points.slice(1).map((p, i) => p.distanceTo(points[i]));
+  const total = lengths.reduce((s, l) => s + l, 0);
+  if (!(total > 0)) return;
+  let run = 0;
+  return {
+    base,
+    chain: chain.map((joint, i) => ({
+      joint,
+      at: (run += lengths[i]) / total,
+    })),
+  };
+}
 type Pair = {
   source: Joint;
   target: Joint;
@@ -137,6 +194,8 @@ type Pair = {
   attachment?: T.Vector3;
   targetAnchor?: Joint;
   targetAttachment?: T.Vector3;
+  /** Torso chains of different layout: rotation interpolated toward `other`. */
+  blend?: { other: Joint; t: number };
 };
 type MorphPair = {
   source: T.Mesh;
@@ -179,6 +238,8 @@ function planFor(
     Map<T.Bone, T.Bone> | undefined;
   const detachedTarget = target.userData.detachedJointAnchors as
     Map<T.Bone, T.Bone> | undefined;
+  const sourceTorso = torsoChain(source, a),
+    targetTorso = torsoChain(target, b);
   const lowerChest = a.byKey.get("chest"),
     upperChest = a.byKey.get("upperchest"),
     targetChest = b.byKey.get("chest");
@@ -187,6 +248,7 @@ function planFor(
   // the head and arms still receive that bend through their world rotations.
   // Preserve distinct segments, explicit exclusions and ambiguous topology.
   const combinedChest =
+    !(sourceTorso && targetTorso) &&
     lowerChest &&
     upperChest &&
     targetChest &&
@@ -233,6 +295,76 @@ function planFor(
       : [];
   });
   pairs.push(...forearmRollPairs(source, target, clip, a, b, pairs));
+  // Torso chains differ between conventions (Waist/Spine01/Spine02,
+  // Spine/Spine1/Spine2, lowerback/upperback/thorax) and names disagree on
+  // which segment is "spine". Identically named torso bones (same convention)
+  // stay exact anchors; every other receiving torso joint follows the source
+  // chain at the same normalized height between anchors. The arm/head branch
+  // always maps to the source branch.
+  const exactTorso = new Set<T.Bone>();
+  if (sourceTorso && targetTorso) {
+    const knots = [{ joint: sourceTorso.base, at: 0 }, ...sourceTorso.chain];
+    // Exact names anchor only within one convention: at least one torso bone
+    // that is not a canonical role label must match by its raw name. Role
+    // labels ("spine") and prefix-stripped names do not prove the segments
+    // agree (Mixamo "Spine" sits where Character Creator has "Waist").
+    const canonicalSource = new Set(Object.values(source.userData.bones)),
+      canonicalTarget = new Set(Object.values(target.userData.bones));
+    const sameName = targetTorso.chain.map(({ joint: t, at }) => ({
+      at,
+      t,
+      match: sourceTorso.chain.find(
+        ({ joint }) => joint.bone.name === t.bone.name,
+      ),
+    }));
+    const sameConvention = sameName.some(
+      ({ t, match }) =>
+        match &&
+        !canonicalTarget.has(t.bone) &&
+        !canonicalSource.has(match.joint.bone),
+    );
+    const anchors: [number, number][] = [[0, 0]];
+    if (sameConvention)
+      for (const { at, match } of sameName)
+        // The branch carries arms and head: it always maps to the source branch.
+        if (
+          match &&
+          at < 1 &&
+          match.at < 1 &&
+          match.at > anchors.at(-1)![0] &&
+          at > anchors.at(-1)![1]
+        )
+          anchors.push([match.at, at]);
+    anchors.push([1, 1]);
+    const sourceAt = (at: number) => {
+      let i = 0;
+      while (i + 2 < anchors.length && anchors[i + 1][1] < at) i++;
+      const [u0, v0] = anchors[i],
+        [u1, v1] = anchors[i + 1];
+      return v1 > v0 ? u0 + ((u1 - u0) * (at - v0)) / (v1 - v0) : u1;
+    };
+    const inChain = new Set(targetTorso.chain.map(({ joint }) => joint.bone));
+    for (let i = pairs.length - 1; i >= 0; i--)
+      if (inChain.has(pairs[i].target.bone)) pairs.splice(i, 1);
+    for (const { joint: t, at: height } of targetTorso.chain) {
+      const at = sourceAt(height);
+      let i = 0;
+      while (i + 2 < knots.length && knots[i + 1].at < at) i++;
+      const lo = knots[i],
+        hi = knots[i + 1];
+      const f = T.MathUtils.clamp((at - lo.at) / (hi.at - lo.at), 0, 1);
+      const near = f < 0.5 ? lo : hi;
+      if (Math.abs(near.at - at) < 1e-3) {
+        exactTorso.add(near.joint.bone);
+        pairs.push({ source: near.joint, target: t });
+      } else
+        pairs.push({
+          source: lo.joint,
+          target: t,
+          blend: { other: hi.joint, t: f },
+        });
+    }
+  }
   for (const pair of pairs) {
     if (
       detachedSource?.has(pair.source.bone) ||
@@ -388,6 +520,23 @@ function planFor(
           .name,
       });
     } else if (
+      sourceTorso &&
+      targetTorso &&
+      node instanceof T.Bone &&
+      sourceTorso.chain.some(({ joint }) => joint.bone === node) &&
+      !exactTorso.has(node) &&
+      ["position", "quaternion"].includes(path.propertyName)
+    ) {
+      // Represented by interpolation onto a receiving torso of another layout.
+      const at = sourceTorso.chain.find(({ joint }) => joint.bone === node)!.at;
+      const nearest = targetTorso.chain.reduce((best, c) =>
+        Math.abs(c.at - at) < Math.abs(best.at - at) ? c : best,
+      );
+      report.composed.push({
+        channel: track.name,
+        target: nearest.joint.bone.name,
+      });
+    } else if (
       node instanceof T.Bone &&
       pairs.some((p) => p.source.bone === node) &&
       ["position", "quaternion", "scale"].includes(path.propertyName)
@@ -470,6 +619,10 @@ export function applyDetailedTransfer(
   const inverse = source.getWorldQuaternion(new T.Quaternion()).invert();
   const heading = target.getWorldQuaternion(new T.Quaternion());
   const targetScale = target.getWorldScale(new T.Vector3()).x;
+  const motion = (joint: Joint) =>
+    joint.bone
+      .getWorldQuaternion(new T.Quaternion())
+      .multiply(joint.neutral.clone().invert());
   for (const {
     source: a,
     target: b,
@@ -477,13 +630,16 @@ export function applyDetailedTransfer(
     attachment,
     targetAnchor,
     targetAttachment,
+    blend,
   } of plan.pairs) {
+    const rotation = blend
+      ? motion(a).slerp(motion(blend.other), blend.t)
+      : motion(a);
     const desired = heading
       .clone()
       .multiply(initialTurn)
       .multiply(inverse)
-      .multiply(a.bone.getWorldQuaternion(new T.Quaternion()))
-      .multiply(a.neutral.clone().invert())
+      .multiply(rotation)
       .multiply(b.neutral);
     // Local translation deltas only: never copy the source's bind proportions.
     // Hip translation has already been extracted onto the character group.

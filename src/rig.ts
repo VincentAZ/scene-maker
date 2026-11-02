@@ -865,11 +865,22 @@ export function transferWarning(
                 !hasAncestor(hips, node)
               ? bind.position
               : undefined;
+        // Translations compare in world units relative to body height, so a
+        // centimetre armature (x100 local values under a 0.01 scale) is judged
+        // like the same rig in metres. Scale is dimensionless.
+        const unit =
+          path.propertyName === "position"
+            ? Math.max(
+                ...node.parent!.getWorldScale(new T.Vector3()).toArray(),
+              ) / standingHeight(source)
+            : 1;
+        const tolerance = path.propertyName === "position" ? 6e-5 : 1e-4;
         return (
           baseline &&
           Array.from(track.values).some(
             (value, index) =>
-              Math.abs(value - baseline.getComponent(index % 3)) > 1e-4,
+              Math.abs(value - baseline.getComponent(index % 3)) * unit >
+              tolerance,
           )
         );
       });

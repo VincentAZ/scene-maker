@@ -2185,3 +2185,18 @@ and passed; details, rejected variants and harness pitfalls in
 or no thumb) keep the old twist; upper-arm twist of A-pose binds tilted forward
 still leaks ≈4.7° into twist helpers; thumb base rest is normalized to a fixed
 opening, not measured anatomy. Final runtime Vite 4637.
+
+## Source-side invariance: units and torso topology (Claude, 2026-11-02)
+
+`test-results/claude-source-variants.mjs` re-authors a source rig with its motion
+kept and re-imports it. Two generality defects fixed: (1) centimetre armatures
+were refused as "changing bone lengths" because translation tracks were compared in
+local units; the check is now in world units relative to body height (`src/rig.ts`);
+(2) torso joints were matched by convention-dependent names, so a Mixamo-named
+source drove a Character Creator torso one segment off; torso chains (hips → arm/
+head branch) are now mapped by normalized height, with exact-name anchors only
+within one convention (`src/detailedRetarget.ts`). Z-up armatures and source bind/
+finger rest changes were already invariant (≤2.3°). CMU → Casual Female torso bend
+error p90 7.0°→4.0°; CC → CC exactly unchanged. Not yet fixed: twist/share helper
+bones still match only by exact name (renamed source loses their data). Full
+details: `docs/CLAUDE_AUTONOMOUS_LOG.md` D9. Runtime Vite 4644.

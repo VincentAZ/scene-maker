@@ -307,6 +307,84 @@ function expectSnapshot(f: Fixture, expected: ReturnType<typeof snapshot>) {
 }
 
 describe("detailed imported animation runtime", () => {
+  it.each([
+    [0.004, ""],
+    [2, "bone lengths"],
+  ])(
+    "judges bone translation in world units for a centimetre armature (offset %s)",
+    (offset, warning) => {
+      // Exporters often keep the armature in centimetres under a 0.01 scale.
+      // Sub-millimetre capture jitter (0.04 mm) must stay shareable; a real
+      // 2 cm length change must still be refused, as for a metre armature.
+      const source = fixture(),
+        target = fixture();
+      source.joints.root.parent!.scale.setScalar(0.01);
+      for (const bone of Object.values(source.joints))
+        bone.position.multiplyScalar(100);
+      source.group.updateWorldMatrix(true, true);
+      const neck = source.joints.CC_Base_NeckTwist01;
+      const rest = neck.position.toArray();
+      const clip = new T.AnimationClip("Centimetre neck", duration, [
+        new T.VectorKeyframeTrack(
+          `${neck.name}.position`,
+          [0, duration],
+          [...rest, rest[0] + offset, rest[1], rest[2]],
+        ),
+      ]);
+      source.configure([clip]);
+      target.configure();
+      const result = transferWarning(source.group, target.group, clip);
+      if (warning) expect(result).toContain(warning);
+      else expect(result).toBe("");
+    },
+  );
+
+  it("follows the torso by anatomy when the source spine uses another naming convention", () => {
+    // Same body; the source's torso renamed to Mixamo's convention, where
+    // "Spine" is the waist-level segment rather than Character Creator's
+    // Spine01. Matching by name would drive the receiver's torso one segment
+    // off; following the chain must give the same pose as the original names.
+    const renames: Record<string, string> = {
+      CC_Base_Waist: "mixamorigSpine",
+      CC_Base_Spine01: "mixamorigSpine1",
+      CC_Base_Spine02: "mixamorigSpine2",
+    };
+    const original = fixture(),
+      renamed = fixture(),
+      direct = fixture(),
+      viaRenamed = fixture();
+    for (const [from, to] of Object.entries(renames))
+      renamed.joints[from].name = to;
+    const bend = (name: string, f: Fixture, q: T.Quaternion) =>
+      new T.QuaternionKeyframeTrack(
+        `${f.joints[name].name}.quaternion`,
+        [0, duration],
+        [
+          ...f.bind[name].quaternion.toArray(),
+          ...f.bind[name].quaternion.clone().multiply(q).toArray(),
+        ],
+      );
+    const clip = (f: Fixture) =>
+      new T.AnimationClip("Torso bend", duration, [
+        bend("CC_Base_Waist", f, rotation(0.25, 0.05, -0.1)),
+        bend("CC_Base_Spine01", f, rotation(-0.15, 0.2, 0.1)),
+        bend("CC_Base_Spine02", f, rotation(0.3, -0.1, 0.2)),
+      ]);
+    const a = clip(original),
+      b = clip(renamed);
+    original.configure([a]);
+    renamed.configure([b]);
+    direct.configure();
+    viaRenamed.configure();
+    schedule(direct, original, [a], true);
+    schedule(viaRenamed, renamed, [b], true);
+    for (const time of [0.4, 1.2, 2.1, 0.4]) {
+      direct.sample(time);
+      viaRenamed.sample(time);
+      expectPoseEqual(viaRenamed, direct);
+    }
+  });
+
   it("preserves an additional upper chest without collapsing it into the lower chest", () => {
     const source = fixture(),
       native = fixture(),
