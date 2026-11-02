@@ -916,3 +916,17 @@ DEF-spine / DEF-spine.006 with no ambiguity (fails without the rule); two plain
 (`--maxWorkers=4`). No fixture on disk has DEF- names (D21 scan).
 Gates on Vite 4681 identical to D32 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI).
+
+## D34 — Rejected: thumb-and-one-finger (mitten) hands (14:09–14:16)
+
+Tried letting `fingerOrder` accept two chains (the clearly more off-axis one is
+the thumb; the other finger at place 0, so D24 pairs it with the capture's
+finger nearest the thumb). Pairing then worked, but on a receiver with only a
+thumb and one finger the thumb came out with a constant 173° offset from the
+five-finger receiver: the anatomical hand rest (D2, palm line fitted to the
+finger bases) is not defined by a single finger base. Fixing that means
+changing the hand rest for reduced hands — a sensitive, shared step — for a
+rare layout. Reverted; such hands keep receiving no finger motion (wrist and
+hand still transfer), as before. Test-design pitfall recorded: the detail
+fixture places the thumb on the little-finger side of the palm (+z), so any
+"place from the thumb" test must move the thumb to the index side first.
