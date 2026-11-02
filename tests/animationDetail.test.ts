@@ -433,6 +433,85 @@ describe("detailed imported animation runtime", () => {
     }
   });
 
+  it("pairs fingers by place across the palm when the finger counts differ", () => {
+    // The receiver has four fingers under another convention's names (no
+    // ring finger): thumb, index, middle and little finger still follow the
+    // capture; the source's ring finger has nowhere to go.
+    const fingers = ["Thumb", "Index", "Mid", "Ring", "Pinky"];
+    const source = fixture(),
+      five = fixture(),
+      four = fixture();
+    for (const f of [source, five, four]) {
+      const hand = point(f.joints.CC_Base_L_Hand);
+      [1, 2, 3].forEach((segment) => {
+        const bone = f.joints[`CC_Base_L_Thumb${segment}`];
+        bone.position.copy(
+          bone.parent!.worldToLocal(
+            hand
+              .clone()
+              .add(new T.Vector3(0.015, -0.02, 0.03).multiplyScalar(segment)),
+          ),
+        );
+        f.group.updateWorldMatrix(true, true);
+      });
+    }
+    four.joints.CC_Base_L_Ring1.removeFromParent();
+    for (const [i, finger] of fingers.entries())
+      for (const segment of [1, 2, 3])
+        four.joints[`CC_Base_L_${finger}${segment}`].name =
+          `digit_${i}_0${segment}_l`;
+    const animated = fingers.flatMap((finger) =>
+      [1, 2, 3].map((segment) => `CC_Base_L_${finger}${segment}`),
+    );
+    const clip = new T.AnimationClip(
+      "Fingers",
+      duration,
+      animated.map(
+        (name, i) =>
+          new T.QuaternionKeyframeTrack(
+            `${name}.quaternion`,
+            [0, duration],
+            [
+              ...source.bind[name].quaternion.toArray(),
+              ...source.bind[name].quaternion
+                .clone()
+                .multiply(rotation(0.35, 0.03 * i, -0.12))
+                .toArray(),
+            ],
+          ),
+      ),
+    );
+    source.configure([clip]);
+    five.configure();
+    four.configure();
+    schedule(five, source, [clip], true);
+    schedule(four, source, [clip], true);
+    const angle = (name: string) =>
+      four.joints[name]
+        .getWorldQuaternion(new T.Quaternion())
+        .angleTo(five.joints[name].getWorldQuaternion(new T.Quaternion()));
+    // The four-finger palm has its own anatomical rest (its palm line is
+    // fitted to four finger bases), a constant offset under 0.5 degrees; the
+    // transferred motion on top of it is the same at every time.
+    const offsets: Record<string, number> = {};
+    for (const time of [0.6, 1.8]) {
+      five.sample(time);
+      four.sample(time);
+      for (const finger of ["Thumb", "Index", "Mid", "Pinky"])
+        for (const segment of [1, 2, 3]) {
+          const name = `CC_Base_L_${finger}${segment}`;
+          expect(angle(name), name).toBeLessThan((0.5 * Math.PI) / 180);
+          offsets[name] ??= angle(name);
+          expect(angle(name), name).toBeCloseTo(offsets[name], 6);
+        }
+      // The fingers actually move: not left at the receiver's rest.
+      expect(
+        four.joints.CC_Base_L_Index2.quaternion.angleTo(
+          four.bind.CC_Base_L_Index2.quaternion,
+        ),
+      ).toBeGreaterThan(0.05);
+    }
+  });
   it("matches renamed fingers and toes by hand and foot layout", () => {
     // Same body; the source's fingers and toe carry another convention's
     // names (UE-style). Their animation must still reach the receiver.

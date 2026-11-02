@@ -689,3 +689,25 @@ File); suite 1,223 (`--maxWorkers=4`), tsc, build OK; real UI gate on Vite 4671
 unchanged with no errors on the rerun — the first run on that new origin logged
 Chrome's automatic `/favicon.ico` 404 (the app has no favicon link; the probe
 happens once per origin), not an app request.
+
+## D24 — Fingers paired across different finger counts (13:28–13:35)
+
+Finger chains of differently named rigs are paired by hand layout (D6), but only
+when both hands have the same number of fingers. A four-finger hand (common on
+stylized characters; Mixamo's auto-rigger also offers reduced-finger
+skeletons) therefore received no finger motion at all from a five-finger
+capture, although four of its fingers can represent it.
+
+Decision (`src/extremityChains.ts`): `fingerOrder` also reports each finger's
+place across the palm (0 at the thumb side, 1 at the far side). With different
+counts, thumbs pair and the other fingers pair by mutual nearest place; an exact
+tie pairs nothing, a finger without a counterpart keeps its rest (no motion is
+invented), equal counts behave exactly as before.
+Evidence: new test (five-finger CC capture → four-finger receiver under another
+convention's names, ring finger removed): thumb, index, middle and little finger
+follow the capture with a constant offset ≤0.33° (the four-finger palm's own
+anatomical rest, D2) identical at both sampled times while the fingers move
+5–23°; without the change the thumb is 7.8° off and nothing moves. Suite 1,224
+(`--maxWorkers=4`).
+Gates on Vite 4672 identical to D22 (route, cuts, native exact, all 19
+cross-rig deltas, wait, export, real UI).

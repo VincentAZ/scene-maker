@@ -21,8 +21,9 @@ function chains(root: T.Bone) {
 }
 
 /** Fingers in anatomical order (thumb, then across the palm from the thumb
- * side), from bind positions only. Undefined unless a thumb stands out
- * clearly from at least two other fingers. */
+ * side) with each finger's place across the palm (0 at the thumb side, 1 at
+ * the far side), from bind positions only. Undefined unless a thumb stands
+ * out clearly from at least two other fingers. */
 function fingerOrder(
   hand: T.Bone,
   elbow: T.Vector3,
@@ -59,7 +60,15 @@ function fingerOrder(
   for (let i = 1; i < fingers.length; i++)
     if (fingers[i - 1].offset.dot(side) - fingers[i].offset.dot(side) < 1e-6)
       return;
-  return [thumb.chain, ...fingers.map((f) => f.chain)];
+  const near = fingers[0].offset.dot(side),
+    span = near - fingers.at(-1)!.offset.dot(side);
+  return [
+    { chain: thumb.chain, at: 0 },
+    ...fingers.map((f) => ({
+      chain: f.chain,
+      at: (near - f.offset.dot(side)) / span,
+    })),
+  ];
 }
 
 /** The toe chain: the foot's forward child carrying the most bones (a toe
@@ -165,7 +174,27 @@ export function extremityPairs<J extends Joint>(
       const from = fingerOrder(sHand, sElbow, s.at),
         to = fingerOrder(tHand, tElbow, t.at);
       if (from && to && from.length === to.length)
-        from.forEach((chain, i) => pairChains(chain, to[i]));
+        from.forEach((finger, i) => pairChains(finger.chain, to[i].chain));
+      else if (from && to) {
+        // Different finger counts (a four-finger or reduced Mixamo hand):
+        // thumbs pair, the others by mutual nearest place across the palm.
+        // A finger without a counterpart keeps its rest; none is invented.
+        pairChains(from[0].chain, to[0].chain);
+        const a = from.slice(1),
+          b = to.slice(1);
+        const nearest = <F extends { at: number }>(at: number, list: F[]) => {
+          const [best, next] = [...list].sort(
+            (p, q) => Math.abs(p.at - at) - Math.abs(q.at - at),
+          );
+          return next && Math.abs(next.at - at) - Math.abs(best.at - at) < 1e-6
+            ? undefined
+            : best;
+        };
+        for (const t of b) {
+          const s = nearest(t.at, a);
+          if (s && nearest(s.at, b) === t) pairChains(s.chain, t.chain);
+        }
+      }
     }
     const sFoot = sb[side + "Foot"],
       tFoot = tb[side + "Foot"];

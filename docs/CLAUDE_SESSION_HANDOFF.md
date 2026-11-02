@@ -29,9 +29,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | a69f256 | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
 | 21b8bd0 | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures |
 | 5c1987d | VRM/VRoid characters import |
+| (next) | Fingers paired across different finger counts |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D23). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D24). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -98,8 +99,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4671 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4670 serve
+Final Vite 4672 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4671 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
