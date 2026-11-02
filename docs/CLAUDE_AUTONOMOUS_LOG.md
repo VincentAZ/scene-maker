@@ -473,7 +473,7 @@ their redistribution terms were not established. Driver `claude-new-rigs.mjs`.
   with it the hand rests on the thigh surface (86 mm, capped → `unresolved`).
   `mixamo-eval/cmu-capture-91-34-xbot-{1,3}.png` (left = correction off).
 
-## D17 — Animation-only (mesh-less) imports recognised (12:33–12:50)
+## D17 — Animation-only (mesh-less) imports recognised (12:33–12:36)
 
 An armature exported without a mesh (Mixamo "without skin", many motion packs)
 imported with ZERO recognised roles: glTF only marks nodes as bones when a skin
