@@ -32,9 +32,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | c039dca | Fingers paired across different finger counts |
 | 50270b6 | Eyes paired across naming conventions |
 | 6648df0 | VRM declared humanoid map used |
+| (next) | CMU ASF skeletons recognised |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D26). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D27). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -72,7 +73,7 @@ full suite, typecheck, build.
 - BVH files import (converted in the browser to an animation-only GLB) and play
   on any recognised rig; a BVH authored from ActorCore Dummy M's 34 s take
   reproduces every body role exactly on Casual and Party (D22,
-  `claude-bvh-roundtrip.mjs`). Raw CMU ASF joint names need the mapping editor.
+  `claude-bvh-roundtrip.mjs`). Raw CMU ASF joint names are recognised too (D27).
 - VRM/VRoid `.vrm` characters import as their GLB (D23) and their declared
   humanoid joints are used whatever the bones are named (D26).
 
@@ -102,8 +103,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4674 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4673 serve
+Final Vite 4676 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4675 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 

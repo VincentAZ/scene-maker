@@ -730,7 +730,7 @@ on all six, worst bone 2.6° (rib twist) instead of 10.38°. Suite 1,229
 Gates on Vite 4673 identical to D24 (route, cuts, native exact, all 19
 cross-rig deltas, wait, export, real UI).
 
-## D26 — VRM files' declared humanoid map is used (13:36–13:45)
+## D26 — VRM files' declared humanoid map is used (13:35–13:39)
 
 VRM 1.0 (`VRMC_vrm.humanoid.humanBones`) and VRM 0.x (`VRM.humanoid.humanBones`)
 files declare which node is which human bone. D21/D23 recognised VRoid avatars
@@ -754,3 +754,26 @@ declared head). Suite 1,233 (`--maxWorkers=4`), tsc, build OK.
 Gates on Vite 4674 identical to D25 (route rerun after a fresh-port
 module-resolution cold start; cuts, native exact, all 19 cross-rig deltas,
 wait, export, real UI).
+
+## D27 — CMU ASF skeletons recognised (13:39–13:48)
+
+D22 left raw CMU ASF names (`root`, `lfemur`, `ltibia`, `lhumerus`, `lradius`,
+`lowerback`, `lowerneck`) to the mapping editor because `root` cannot mean
+hips in general (Unreal's `root` is a ground bone above `pelvis`). ASF has its
+own unambiguous signature: the hips joint carries `lhipjoint` and `rhipjoint`.
+Decision (`rig.ts`): when no name gives hips and no explicit mapping covers it,
+the common parent of exactly those two joints is the hips; femur/tibia/
+humerus/radius are limb parts; `lowerback` is a spine alias (topmost-on-chain
+keeps it the first spine where cgspeed-style BVH also has "Spine");
+`detailedRetarget` keys `lowerneck` as neck (with `upperneck` already the
+upper neck). A bone named root without the ASF hip joints is never hips
+(tested).
+Evidence: `rigConventions` ASF case (fails on the previous code) and the root
+guard; BVH round trip of CMU 35_01 (`claude-bvh-roundtrip.mjs`, no rig
+mapping on the BVH): the automatic roles equal the fixture's hand-made mapping;
+native 3.8e-6; on Quaternius Casual and Party every body role and the head are
+0 mm from the hand-mapped original (head was 4.2/44.7 mm before the
+`lowerneck` key); root height 45–51 mm (skin-less BVH has no soles; the GLB
+fixture has capsule meshes). Standing height identical (1.73704).
+Gates on Vite 4676 identical to D26 (route, cuts, native exact, all 19
+cross-rig deltas, wait, export, real UI); suite 1,235 (`--maxWorkers=4`).

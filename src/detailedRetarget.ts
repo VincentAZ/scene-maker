@@ -28,9 +28,11 @@ function jointKey(bone: T.Bone, canonical: Record<string, T.Bone>) {
     spine1: "chest",
     ccbasenecktwist01: "neck",
     neck: "neck",
-    // Unreal (neck_01/neck_02) and Daz (neckLower/neckUpper) neck segments.
+    // Unreal (neck_01/neck_02), Daz (neckLower/neckUpper) and CMU ASF
+    // (lowerneck/upperneck) neck segments.
     neck01: "neck",
     necklower: "neck",
+    lowerneck: "neck",
     neck02: "upperneck",
     neckupper: "upperneck",
     ccbaselclavicle: "leftshoulder",

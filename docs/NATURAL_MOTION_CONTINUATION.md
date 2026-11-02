@@ -2229,3 +2229,14 @@ Characters authored facing −Z or sideways (e.g. three.js Soldier) are turned b
 the nearest quarter turn above the animation hierarchy so the body faces +Z; their
 own gaits now follow routes (Walk 1.54 m/s, stance slide p50 0.20 m/s) instead of
 moonwalking. Small artistic yaw is kept; existing fixtures are unaffected.
+
+### Import generality (Claude session, D20–D27)
+
+Disclosed unresolved hand clearance; recognised the standard skeleton naming
+conventions (Unreal, Rigify, Daz Genesis, VRM/VRoid, Blender, 3ds Max Biped,
+NVIDIA SOMA, CMU ASF, including three.js's sanitized load-time names); BVH and
+VRM files import; VRM's declared humanoid map is used; fingers pair across
+different finger counts; eyes pair across conventions; skin-less armatures keep
+detached IK feet. Party re-authored in each convention transfers like the
+original; BVH round trips of ActorCore Dummy M and CMU 35_01 reproduce every
+body role exactly. Details and rejected variants: `docs/CLAUDE_AUTONOMOUS_LOG.md`.

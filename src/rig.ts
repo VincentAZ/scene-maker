@@ -73,6 +73,8 @@ const aliases: Record<string, string> = {
   // Genesis 1/2 (abdomen).
   spine01: "spine",
   spine1: "spine",
+  // CMU ASF / Acclaim.
+  lowerback: "spine",
   abdomenlower: "spine",
   abdomen: "spine",
   head: "head",
@@ -121,7 +123,7 @@ const aliases: Record<string, string> = {
   ccbaserfoot: "rightFoot",
 };
 const LIMB_PART =
-  "upperarm|arm|shldrbend|shldr|forearmbend|forearm|lowerarm|hand|thighbend|thigh|upperleg|upleg|calf|shin|lowerleg|foot";
+  "upperarm|arm|humerus|shldrbend|shldr|forearmbend|forearm|lowerarm|radius|hand|thighbend|thigh|femur|upperleg|upleg|calf|shin|tibia|lowerleg|foot";
 /** Exact anatomical tokens only. Suffix helpers (twist/IK/end) never match. */
 function canonicalBoneName(name: string): string | undefined {
   const short = withoutConventionPrefix(
@@ -145,16 +147,20 @@ function canonicalBoneName(name: string): string | undefined {
     arm: "Arm",
     upperarm: "Arm",
     shldr: "Arm",
+    humerus: "Arm",
     shldrbend: "Arm",
     forearm: "Forearm",
     forearmbend: "Forearm",
+    radius: "Forearm",
     lowerarm: "Forearm",
     hand: "Hand",
     thigh: "Leg",
     thighbend: "Leg",
+    femur: "Leg",
     upperleg: "Leg",
     upleg: "Leg",
     calf: "Shin",
+    tibia: "Shin",
     shin: "Shin",
     lowerleg: "Shin",
     foot: "Foot",
@@ -307,6 +313,23 @@ export function configureImportedRig(
     leftHand: "leftForearm",
     rightHand: "rightForearm",
   };
+  // CMU ASF calls its hips "root", a name that elsewhere means a ground bone
+  // (Unreal). ASF's own signature decides: the joint carrying both lhipjoint
+  // and rhipjoint is the hips.
+  if (!candidates.has("hips") && !explicit.roles.has("hips")) {
+    const hipJoints: T.Object3D[] = [];
+    imported.traverse((n) => {
+      if (/^[lr]hipjoint$/i.test(n.name)) hipJoints.push(n);
+    });
+    const parent = hipJoints[0]?.parent;
+    if (
+      hipJoints.length === 2 &&
+      parent instanceof T.Bone &&
+      hipJoints[1].parent === parent &&
+      !explicit.semanticKeys.has(parent)
+    )
+      candidates.set("hips", [parent]);
+  }
   // "Leg" names the thigh on some skeletons (SOMA: LeftLeg > LeftShin) and
   // the shin on others (Mixamo: LeftUpLeg > LeftLeg). With no thigh name on
   // that side, the upper of two chained shin names is the thigh.

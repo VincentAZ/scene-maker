@@ -358,3 +358,42 @@ it("reports a named control bone beside the deform skeleton as ambiguous", () =>
     { joint: "hips", candidates: ["DEF-spine", "hips"] },
   ]);
 });
+
+const asf = {
+  hips: "root",
+  spine: "lowerback",
+  chest: "upperback",
+  upperChest: "thorax",
+  neck: "lowerneck",
+  head: "head",
+  lShoulder: "lclavicle",
+  lArm: "lhumerus",
+  lForearm: "lradius",
+  lHand: "lhand",
+  rShoulder: "rclavicle",
+  rArm: "rhumerus",
+  rForearm: "rradius",
+  rHand: "rhand",
+  lThigh: "lfemur",
+  lShin: "ltibia",
+  lFoot: "lfoot",
+  rThigh: "rfemur",
+  rShin: "rtibia",
+  rFoot: "rfoot",
+};
+
+it("recognises a CMU ASF skeleton, whose hips joint carries both hip joints", () => {
+  const { group, joints, roles } = body(asf, [
+    ["lhipjoint", "hips"],
+    ["rhipjoint", "hips"],
+  ]);
+  for (const [key, role] of Object.entries(ROLES))
+    expect(roles[role], role).toBe(joints[key]);
+  expect(group.userData.rigMappingReport.missing).toEqual([]);
+});
+
+it("never takes a bone called root for the hips without the ASF hip joints", () => {
+  // Unreal's root is a ground bone above the pelvis; plain "root" means nothing.
+  const { roles } = body({ ...asf });
+  expect(roles.hips).toBeUndefined();
+});
