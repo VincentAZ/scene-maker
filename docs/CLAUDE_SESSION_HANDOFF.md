@@ -28,7 +28,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 756737a | Unresolved hand clearance disclosed in the motion notice |
 | a69f256 | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
 | 21b8bd0 | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures |
-| (next) | VRM/VRoid characters import |
+| 5c1987d | VRM/VRoid characters import |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D23). Summaries also appended to
