@@ -32,7 +32,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | c039dca | Fingers paired across different finger counts |
 | 50270b6 | Eyes paired across naming conventions |
 | 6648df0 | VRM declared humanoid map used |
-| (next) | CMU ASF skeletons recognised |
+| ef6a76a | CMU ASF skeletons recognised |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D27). Summaries also appended to
