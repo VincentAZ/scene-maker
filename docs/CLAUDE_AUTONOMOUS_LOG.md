@@ -834,7 +834,7 @@ touching into the floor plane at 1.6 s), in line with the measured medians —
 the fixture-sourced path also sinks ≈1.5 cm on this take, so this is the
 existing ground-contact accuracy, not a new regression.
 
-## D30 — BVH import through the real dialog; captures go to Actions (13:56–14:08)
+## D30 — BVH import through the real dialog; captures go to Actions (13:56–14:00)
 
 D22 exercised `bvhToGlb` and `/api/import` from a driver, not the dialog. New
 `test-results/claude-bvh-ui.mjs` seeds a fresh private throwaway project (the
@@ -859,3 +859,11 @@ listed in Actions, no entities, no console errors (the first run on that new
 origin logged Chrome's one-time `/favicon.ico` 404 again; rerun clean); real
 UI gate unchanged; suite 1,239, build OK. Screenshot
 `claude-session/bvh-ui-imported.png`.
+End-to-end user flow (driver extended, Vite 4679): after the import, add the
+bundled "Sage" (Quaternius Casual) from Characters, then Actions → My actions →
+"+" on "CMU 35_01 walk" ("Adapt to Sage"), play: the clip is on Sage, it walks,
+no refusal (cannot use shared / unmapped / upright), no console errors. The
+only notice is the channel disclosure ("4 animation channels could not be
+transferred (ltoes, rtoes, lwrist…)… neck motion share one neck joint") —
+character-for-character the notice the original GLB fixture take gives on the
+same body (checked separately). Screenshot `claude-session/bvh-ui-playing.png`.
