@@ -4707,3 +4707,18 @@ ActorCore-to-Party playback are unchanged. Normal-speed close-up evidence and
 full route/split/export preservation results are in the continuation brief and
 ignored `detail-chains` archive. Wrist/toe detail and natural starts/stops remain
 open; this does not establish universal naturalness.
+
+### Captured axial forearm motion (2026-11-01)
+
+Detailed transfer now recognizes a measured axial segment between forearm and
+hand when a uniquely compatible weighted forearm helper is available. It checks
+actual rotation keys, topology, skin weights and bind geometry; existing matches
+and explicit exclusions take priority. Main forearm, hand and finger poses stay
+unchanged. Unsupported swing, translation or ambiguous geometry remains reported.
+
+Eight full CMU takes previously lost11–47° of roll on Party Woman's distal skin
+helper. The new transfer preserves that rotation; native and ActorCore-to-Party
+performances are unchanged. Normal-speed close-up, route/split/history and export
+evidence live in the `forearm-roll` archive and continuation brief. Rigs without
+suitable helpers or toe joints retain their limitations. The broader natural
+starts/stops and all-action quality requirement remains open.

@@ -1688,3 +1688,102 @@ Reproduction:
 Final70-second standing-wait/recovery:4,309timestamps, maximum history component
 difference3.445464e-8, endpoint error6.00545mm, no recovery issues. Saved only as
 private `neck-standing-wait-review`. Full goal remains active.
+
+## Measured forearm roll reaches receiving skin (2026-11-01, after833fcef)
+
+Previous turn: **progress**. This turn restores another measured transfer loss;
+the complete natural-animation goal remains OPEN. Native starts/arrivals, running
+stops, other action sources and broader acceptance are still unfinished.
+
+Evidence and implementation:
+
+- CMU forearm chain is radius → wrist → hand. Original ASF records wrist axial
+  rotation separately from hand flexion. The wrist lies about2/3 along the forearm;
+  all eight shipped wrist quaternion tracks pass a pure-axis audit. The hand
+  already received the composed world rotation, but forearm skin did not.
+- Party Woman has weighted side-chain forearm helpers, with the distal helper
+  around1/2 forearm length. Left/right distal helpers affect169/163skin vertices;
+  their transverse bind offsets are below1% of forearm length. Direct transferred
+  helper orientations were static relative to the forearm, missing11–47° of roll
+  across the eight captures (largest47.199° on82_14).
+- New `forearmRoll.ts` finds an intermediate source segment and an available
+  weighted auxiliary leaf using measured geometry/topology. It requires axial
+  quaternion keys, bind position/scale, finite compatible track data, an isolated
+  receiving chain near the forearm axis, and a unique nearest usable helper.
+  Location gates: source/target20–90% along the forearm, transverse error≤1%,
+  source/target location difference≤25%, nearest-candidate margin≥5%.
+- The existing detailed solver transfers the measured source world rotation to
+  that helper. It does not infer roll from hand flexion, distribute invented
+  rotations across bones, alter main forearm/hand poses, or use provider names.
+  Existing joint matches, explicit mappings/exclusions and disabled roles win.
+  `leftForearmRoll`/`rightForearmRoll` are available as explicit detail roles.
+- Synthetic tests use unrelated helper names and different bind axes. They cover
+  accepted axial motion, reverse seeking, unchanged hand orientation, and rejection
+  of swing, moving segment origins, disabled roles, ambiguous/off-axis/unweighted
+  helpers and branched chains. The positive test fails frozen833fcef by.05rad at
+  its first sample. The translated fixture also triggers the existing global
+  bone-length rejection, so it checks the report rather than assuming playback.
+  An initial fixture retained an already-matched source helper; corrected the
+  fixture to represent the intended intermediate-only source before comparisons.
+- Final actual-source audit:9,264side/timestamp samples over all eight FULL takes,
+  max helper-orientation discrepancy .000002415°. Reports now transfer the two
+  wrist tracks on this compatible receiver. This is not a claim of identical
+  skin deformation or automatic support for arbitrary twist rigs.
+- Toe audit: Casual Female has detached foot bones and NO toe joints. Its toe
+  limitation remains genuine and disclosed. It also lacks the weighted forearm
+  branch used here; its wrist warning remains. No new bones or uncaptured finger/
+  facial motion were fabricated to silence reports.
+
+Visual and preservation evidence:
+
+- `forearm-roll-before-after-1x.mp4`: source0–3s of82_14 on Party Woman,30fps,
+  frozen833fcef left/current code right, matched phase/rate/camera. Close view
+  retains both forearms and hands; inspected around1.60s near the largest roll.
+  The raw baseline poses replay on an independent identical target. Final crop
+  omits the same blank lower-edge compositor strip noted in the neck renderer.
+-26one-shot cases×39timestamps: every native capture and ActorCore→Party is
+  unchanged. Across all cases maximum bone-position change9.23e-16m; root and
+  lower-body positions identical. ONLY left/right distal forearm helper rotations
+  change on Party for CMU sources. Hand, finger and other bone rotations unchanged.
+-140walking/running straight/curved cases: no loop failures; max joint/skin repeat
+  differences .008496/.008104mm, angle .000028998rad, velocity residual .027001m/s.
+ 140source-cut cases remain checked; reports retain exact values. No source, gait,
+  navigation/collision rule, clock, transition bound or export algorithm changed.
+- Actual3.3-second captured passage plus held ending exports/reloads across413
+  timestamps/102nodes/12vertices per mesh,37,076,260-byte GLB: max joint .001133mm,
+  skin .001158mm. This is numerical parity; the close movie supplies visual evidence.
+- Actual final4604 preview preserves .63s across Original/Party, plays/pauses,
+  retains Add recipient and leaves saved scene content unchanged. No JS/HTTP
+  errors; software-WebGL advisory remains.
+
+Reproduction and next work:
+
+- Final Vite4604 PID2819856; frozen833fcef Vite4601 PID2813818. Vite4600 serves
+  the matching visual comparison before finite-data guards;4602 adds those guards,
+ 4603 is an intermediate explicit-mapping revision. Final4604 audit/UI include
+  both guards and explicit-role handling; the export uses4602 (same fixture poses). PrivateAPI4413,
+  ownedChrome9451 and `/tmp/scene-natural-motion/data` remain isolated. Revalidate
+  services before use. Main/dialogue workspaces and protected astra data untouched.
+- Work `/tmp/scene-natural-motion/forearm-roll`; durable ignored archive
+  `.data/natural-motion-investigation/forearm-roll`. Drivers `forearm-*`, snapshots,
+  full reports, videos and logs retained; no licensed input/export GLBs or large
+  frame directories. Frozen snapshots must match833fcef when reproducing.
+- Next priority: return to native starts and compatible gait-to-stop assembly in
+  the real route flow. Default routes still must not freeze in a moving pose.
+  Prior82_14 per-receiver/length phase searches are evidence for adaptive selection,
+  not a reason to weaken receiver pose/velocity/contact gates or promote one
+  universal gait cut. Keep detailed transfer and existing history/export fixes.
+
+Final mapping check caught that `disabledRigRoles` contains ALL explicit roles,
+not just null entries. Valid explicit source/target forearm-roll assignments now
+constrain the geometric match; nulls, invalid assignments and other explicitly
+assigned roles block it. Three additional synthetic cases verify this behavior.
+Final70-second wait/recovery preserves4,309historical samples within3.445464e-8,
+reaches within6.00545mm of the destination, no recovery issues. Disposable saved
+project is `forearm-standing-wait-review`. Split matrix maxima: .000035802mm joint,
+.000025803mm sampled skin,5.961e-8rad. Natural-animation goal remains active.
+Final validation: **1,158tests/99files passed**, unchanged timeouts/maxWorkers=2,
+TypeScript, formatting/diff checks and isolated build at
+`/tmp/scene-natural-motion/forearm-roll-build`. Existing SDK-schema, dependency
+annotation, software-WebGL and bundle-size advisories remain. All9,264final
+real-source audit samples exactly match the pre-explicit-mapping results.

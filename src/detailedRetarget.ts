@@ -1,4 +1,5 @@
 import * as T from "three";
+import { forearmRollPairs } from "./forearmRoll";
 import { inferDetailRoles } from "./rigDetailRoles";
 
 const normalized = (name: string) =>
@@ -231,6 +232,7 @@ function planFor(
       ? [{ source: s, target: t }]
       : [];
   });
+  pairs.push(...forearmRollPairs(source, target, clip, a, b, pairs));
   for (const pair of pairs) {
     if (
       detachedSource?.has(pair.source.bone) ||

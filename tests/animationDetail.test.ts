@@ -520,6 +520,194 @@ describe("detailed imported animation runtime", () => {
     },
   );
 
+  it.each([
+    "axial",
+    "swing",
+    "disabled",
+    "ambiguous",
+    "unweighted",
+    "translated",
+    "off-axis",
+    "branched",
+    "explicit-source",
+    "explicit-target",
+    "explicit-other",
+  ])(
+    "transfers captured forearm roll only to an unambiguous weighted axial branch (%s)",
+    (mode) => {
+      const source = fixture(),
+        native = fixture(),
+        target = fixture(0.7);
+      const fore = "CC_Base_L_Forearm",
+        hand = "CC_Base_L_Hand",
+        helper = "CC_Base_L_ForearmTwist01";
+      let sourceAxis!: T.Vector3;
+      for (const f of [source, native]) {
+        f.joints[helper].removeFromParent();
+        const bone = new T.Bone();
+        bone.name = "SourceAxialSegment";
+        const p = point(f.joints[fore]).lerp(point(f.joints[hand]), 2 / 3);
+        f.joints[fore].add(bone);
+        bone.position.copy(f.joints[fore].worldToLocal(p));
+        bone.quaternion.copy(rotation(0.3, -0.5, 0.2));
+        f.group.updateMatrixWorld(true);
+        bone.attach(f.joints[hand]);
+        f.group.updateMatrixWorld(true);
+        f.joints.Roll = bone;
+        f.bind.Roll = {
+          position: bone.position.clone(),
+          quaternion: bone.quaternion.clone(),
+          world: orientation(bone),
+        };
+        sourceAxis = point(f.joints[hand])
+          .sub(point(f.joints[fore]))
+          .applyQuaternion(orientation(f.joints[fore]).invert())
+          .normalize();
+      }
+      target.joints[helper].name = "OpaqueWeightedSegment";
+      const helpers = [target.joints[helper]];
+      if (mode === "branched") target.joints[helper].add(new T.Bone());
+      // The receiving bind segment is straight even with unrelated bone axes.
+      const helperPoint = point(target.joints[fore]).lerp(
+        point(target.joints[hand]),
+        0.5,
+      );
+      if (mode === "off-axis") helperPoint.z += 0.03;
+      target.joints[helper].position.copy(
+        target.joints[fore].worldToLocal(helperPoint),
+      );
+      if (mode === "ambiguous") {
+        const extra = target.joints[helper].clone(false);
+        extra.name = "AnotherWeightedBranch";
+        target.joints[fore].add(extra);
+        helpers.push(extra);
+      }
+      if (mode !== "unweighted")
+        for (const bone of helpers) {
+          const geometry = new T.BufferGeometry();
+          geometry.setAttribute(
+            "position",
+            new T.Float32BufferAttribute([0, 0, 0, 0.01, 0, 0, 0, 0.01, 0], 3),
+          );
+          geometry.setAttribute(
+            "skinIndex",
+            new T.Uint16BufferAttribute(Array(12).fill(0), 4),
+          );
+          geometry.setAttribute(
+            "skinWeight",
+            new T.Float32BufferAttribute(
+              [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+              4,
+            ),
+          );
+          const mesh = new T.SkinnedMesh(geometry, new T.MeshBasicMaterial());
+          target.group.children[0].add(mesh);
+          mesh.bind(new T.Skeleton([bone]));
+        }
+      const axis =
+        mode === "swing"
+          ? new T.Vector3()
+              .crossVectors(sourceAxis, new T.Vector3(0, 0, 1))
+              .normalize()
+          : sourceAxis;
+      const bind = source.bind.Roll.quaternion;
+      const clip = new T.AnimationClip("Measured forearm roll", duration, [
+        new T.QuaternionKeyframeTrack(
+          "SourceAxialSegment.quaternion",
+          [0, duration],
+          [
+            ...bind.toArray(),
+            ...new T.Quaternion()
+              .setFromAxisAngle(axis, 0.3)
+              .multiply(bind)
+              .toArray(),
+          ],
+        ),
+      ]);
+      if (mode === "translated")
+        clip.tracks.push(
+          new T.VectorKeyframeTrack(
+            "SourceAxialSegment.position",
+            [0, duration],
+            [
+              ...source.bind.Roll.position.toArray(),
+              ...source.bind.Roll.position
+                .clone()
+                .add(new T.Vector3(0.01, 0, 0))
+                .toArray(),
+            ],
+          ),
+        );
+      const accepted = ["axial", "explicit-source", "explicit-target"].includes(
+        mode,
+      );
+      const path = (f: Fixture, bone: T.Bone) => {
+        const indices: number[] = [];
+        for (
+          let node: T.Object3D = bone;
+          node !== f.group.children[0];
+          node = node.parent!
+        )
+          indices.unshift(node.parent!.children.indexOf(node));
+        return indices;
+      };
+      source.configure(
+        [clip],
+        mode === "explicit-source"
+          ? { leftForearmRoll: path(source, source.joints.Roll) }
+          : undefined,
+      );
+      native.configure([clip]);
+      target.configure(
+        [],
+        mode === "disabled"
+          ? { leftForearmRoll: null }
+          : mode === "explicit-target"
+            ? { leftForearmRoll: path(target, target.joints[helper]) }
+            : mode === "explicit-other"
+              ? { otherDetail: path(target, target.joints[helper]) }
+              : undefined,
+      );
+      schedule(native, native, [clip], false);
+      schedule(target, source, [clip], true);
+      if (mode === "translated")
+        expect(transferWarning(source.group, target.group, clip)).toContain(
+          "bone lengths",
+        );
+      for (const time of mode === "translated" ? [] : [0.4, 1.2, 2.1, 0.4]) {
+        native.sample(time);
+        target.sample(time);
+        const reference = accepted ? native.joints.Roll : native.joints[fore];
+        const referenceBind = accepted
+          ? source.bind.Roll.world
+          : source.bind[fore].world;
+        const expected = orientation(reference)
+          .multiply(referenceBind.clone().invert())
+          .multiply(target.bind[helper].world);
+        expect(
+          orientation(target.joints[helper]).angleTo(expected),
+        ).toBeLessThan(1e-6);
+        const expectedHand = orientation(native.joints[hand])
+          .multiply(source.bind[hand].world.clone().invert())
+          .multiply(target.bind[hand].world);
+        expect(
+          orientation(target.joints[hand]).angleTo(expectedHand),
+        ).toBeLessThan(1e-6);
+      }
+      expect(
+        retargetReport(source.group, target.group, clip)!.unsupported.map(
+          (c) => c.channel,
+        ),
+      ).toEqual(
+        accepted
+          ? []
+          : mode === "translated"
+            ? ["SourceAxialSegment.quaternion", "SourceAxialSegment.position"]
+            : ["SourceAxialSegment.quaternion"],
+      );
+    },
+  );
+
   it("preserves chest and shoulder motion between unrelated names using anatomical hierarchy", () => {
     const source = fixture(),
       native = fixture(),

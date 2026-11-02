@@ -58,6 +58,8 @@ export const detailJointRoles = [
   "upperNeck",
   "leftShoulder",
   "rightShoulder",
+  "leftForearmRoll",
+  "rightForearmRoll",
   "leftToeBase",
   "rightToeBase",
   ...["left", "right"].flatMap((side) =>
