@@ -508,3 +508,32 @@ arm about its own length (85–175° errors). The single shortest rotation is re
 everywhere; with a nearly straight bind elbow there is no anatomical reference for
 upper-arm twist. Reverted; the 4.7° (upper-arm twist helpers only) stays a
 documented limit. Nothing committed for this attempt.
+
+## D19 — Characters authored facing another way are turned to face +Z (12:40–12:55)
+
+Imported-gait evaluation of genuinely new rigs found Soldier.glb (three.js
+example, private evaluation copy) authored facing −Z. The app assumes the glTF
+convention (+Z forward), so every route played it backwards: its own Walk/Run
+were refused for distance or moonwalked with stance slide 3–9 m/s.
+
+Decision (`src/importedAsset.ts`, characters only): after the rig is configured,
+measure the body's facing from the recognised legs (else arms) — forward =
+left→right-across × up — and, if it is more than 45° off +Z, turn the content
+node by the nearest quarter turn and reconfigure. Small artistic yaw (≤45°) is
+kept. The turn sits above the animation hierarchy, so track values, clocks,
+root motion and transfer are untouched; nothing is keyed on names.
+Rejected: patching the locomotion "ahead" direction per character (tried and
+reverted earlier; it fixed one consumer and left facing, seating and gaze wrong).
+
+Evidence (Vite 4665): Soldier now faces +Z (−1°); every existing fixture
+measures 0° and takes the identical single-configure path. Soldier Walk on a
+route 1.538 m/s, stance slide p50 0.199 m/s; Run 2.613 m/s, p50 0.26 m/s
+(before: refused or 3–9 m/s); seams 0.006–0.02 mm; CMU 35_01 on Party
+unchanged (p50 0.211). New parametrised test (yaw 0, π, ±π/2, 0.3) — the three
+quarter-turn cases fail on the previous code; tracks verified unchanged.
+Gates on Vite 4665 identical to D17: route 140 (maxJump 0.008496 mm), cuts 140
+(≤3.6e-5 mm), native exact, wait 3.448e-8 / 6.005 mm, export ≤0.0035 mm, real UI
+unchanged with no errors; tsc, prettier, diff-check, build OK; suite 1,196.
+One full-suite run made while the browser gates ran in parallel had a single
+failure that did not reproduce (re-run: 1,196/1,196, logged in
+`claude-session/gates-facing/suite.log`); treated as load-induced timing.

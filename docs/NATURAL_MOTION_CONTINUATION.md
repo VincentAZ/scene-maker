@@ -2222,3 +2222,10 @@ a receiver renamed to Mixamo/UE-style conventions with 0.02° difference; ActorC
 finger animation reaches UE-style receiver fingers. Still name-only: facial bones
 (eyes 5–10° on that variant); elbow/knee share bones are declined when their place
 is ambiguous. Details: `docs/CLAUDE_AUTONOMOUS_LOG.md` D12. Runtime Vite 4657.
+
+### Import facing normalization (Claude session, D19)
+
+Characters authored facing −Z or sideways (e.g. three.js Soldier) are turned by
+the nearest quarter turn above the animation hierarchy so the body faces +Z; their
+own gaits now follow routes (Walk 1.54 m/s, stance slide p50 0.20 m/s) instead of
+moonwalking. Small artistic yaw is kept; existing fixtures are unaffected.

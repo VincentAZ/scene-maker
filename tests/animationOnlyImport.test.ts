@@ -124,3 +124,39 @@ it("recognises a humanoid rig in an animation-only (mesh-less) file", () => {
   mixer.setTime(0.5);
   expect(bones.leftArm.quaternion.z).toBeGreaterThan(0.05);
 });
+
+const forwardOf = (group: T.Group) => {
+  const bones = group.userData.bones as Record<string, T.Object3D>;
+  group.updateMatrixWorld(true);
+  const across = group
+    .worldToLocal(bones.leftLeg.getWorldPosition(new T.Vector3()))
+    .sub(group.worldToLocal(bones.rightLeg.getWorldPosition(new T.Vector3())));
+  across.y = 0;
+  return new T.Vector3().crossVectors(
+    across.normalize(),
+    new T.Vector3(0, 1, 0),
+  );
+};
+
+it.each([0, Math.PI, Math.PI / 2, -Math.PI / 2, 0.3])(
+  "turns a character authored facing another way (yaw %s) to face +Z",
+  (yaw) => {
+    const { scene, clip } = armature();
+    scene.children[0].rotation.y = yaw;
+    const asset = { ...characters[0], id: "facing", url: "/x.glb" } as Asset;
+    const group = prepareImportedAsset(asset, { scene, animations: [clip] });
+    const forward = forwardOf(group);
+    // Quarter-turn conventions are corrected; small artistic yaw is kept.
+    const expected = new T.Vector3(0, 0, 1).applyAxisAngle(
+      new T.Vector3(0, 1, 0),
+      Math.abs(yaw) > Math.PI / 4 ? 0 : yaw,
+    );
+    expect(forward.distanceTo(expected)).toBeLessThan(1e-6);
+    // Track values are untouched: the turn is outside the animation hierarchy.
+    const hips = (group.userData.bones as Record<string, T.Object3D>).hips;
+    const mixer = group.userData.mixer as T.AnimationMixer;
+    mixer.clipAction(clip).play();
+    mixer.setTime(0.5);
+    expect(hips.position.toArray()).toEqual([0, 100, 25]);
+  },
+);

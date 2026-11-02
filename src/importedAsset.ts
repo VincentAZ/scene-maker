@@ -99,6 +99,29 @@ function promoteAnimatedJoints(root: T.Object3D, clips: T.AnimationClip[]) {
   }
 }
 
+/** Quarter turns that bring a character's anatomical forward (left-to-right
+ * across the hips, crossed with up) to +Z, or 0 within 45 degrees of it. */
+function facingCorrection(group: T.Group) {
+  const bones = group.userData.bones as Record<string, T.Object3D> | undefined;
+  const left = bones?.leftLeg ?? bones?.leftArm,
+    right = bones?.rightLeg ?? bones?.rightArm;
+  if (!left || !right) return 0;
+  group.updateMatrixWorld(true);
+  const across = group
+    .worldToLocal(left.getWorldPosition(new T.Vector3()))
+    .sub(group.worldToLocal(right.getWorldPosition(new T.Vector3())));
+  across.y = 0;
+  if (across.lengthSq() < 1e-12) return 0;
+  const forward = new T.Vector3().crossVectors(
+    across.normalize(),
+    new T.Vector3(0, 1, 0),
+  );
+  const yaw = Math.atan2(forward.x, forward.z);
+  return Math.abs(yaw) <= Math.PI / 4
+    ? 0
+    : -Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2);
+}
+
 export function prepareImportedAsset(
   asset: Asset,
   gltf: Pick<GLTF, "scene" | "animations">,
@@ -140,15 +163,28 @@ export function prepareImportedAsset(
     content = normalization;
   }
   group.add(content);
-  if (asset.category === "characters")
-    configureImportedRig(
-      group,
-      content,
-      gltf.animations,
-      imported,
-      asset.rigMapping,
-    );
-  else {
+  if (asset.category === "characters") {
+    const configure = () =>
+      configureImportedRig(
+        group,
+        content,
+        gltf.animations,
+        imported,
+        asset.rigMapping,
+      );
+    configure();
+    // glTF assets face +Z, and placement, routes and in-place stride
+    // measurement rely on it. A character authored in another convention
+    // (facing -Z or sideways) is turned by the nearest quarter turn outside the
+    // animation hierarchy, so its tracks keep their values, then configured
+    // again. Small artistic yaw in a bind pose is left alone.
+    const turn = facingCorrection(group);
+    if (turn) {
+      content.rotation.y += turn;
+      content.updateMatrixWorld(true);
+      configure();
+    }
+  } else {
     group.userData.mixer = new T.AnimationMixer(imported);
     group.userData.animations = gltf.animations;
   }
