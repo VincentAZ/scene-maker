@@ -124,6 +124,8 @@ const aliases: Record<string, string> = {
 };
 const LIMB_PART =
   "upperarm|arm|humerus|shldrbend|shldr|forearmbend|forearm|lowerarm|radius|hand|thighbend|thigh|femur|upperleg|upleg|calf|shin|tibia|lowerleg|foot";
+const SIDE_LAST = new RegExp(`^(${LIMB_PART})(l|r|left|right)$`),
+  SIDE_FIRST = new RegExp(`^(l|r|left|right)(${LIMB_PART})$`);
 /** Exact anatomical tokens only. Suffix helpers (twist/IK/end) never match. */
 function canonicalBoneName(name: string): string | undefined {
   const short = withoutConventionPrefix(
@@ -138,8 +140,8 @@ function canonicalBoneName(name: string): string | undefined {
   if (direct) return direct;
   // Side and part in either order, separators ignored ("upper_arm.L",
   // "L UpperArm", "lShldrBend", "hand_r").
-  const suffix = compact.match(new RegExp(`^(${LIMB_PART})(l|r|left|right)$`));
-  const prefix = compact.match(new RegExp(`^(l|r|left|right)(${LIMB_PART})$`));
+  const suffix = compact.match(SIDE_LAST);
+  const prefix = compact.match(SIDE_FIRST);
   const sided = suffix || (prefix && [compact, prefix[2], prefix[1]]);
   if (!sided) return;
   const side = /^(l|left)$/i.test(sided[2]) ? "left" : "right";
