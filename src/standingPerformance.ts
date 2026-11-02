@@ -1,6 +1,12 @@
 import * as T from "three";
 import { allMotions, type Motion, type Scene } from "../shared/scene";
-import { importedClip, measureOnRig, standingHeight } from "./rig";
+import { recordedStanding } from "../shared/motionLibrary";
+import {
+  importedClip,
+  measureOnRig,
+  motionSource,
+  standingHeight,
+} from "./rig";
 
 /** Measured evidence that an imported take is a standing performance: the
  * body stays in place, both feet stay at floor level and the take returns to
@@ -10,6 +16,8 @@ export type StandingMeasure = {
   clip: T.AnimationClip;
   travel: number;
   footLift: number;
+  footTravel: number;
+  hipHeight: number;
   loopGap: number;
   energy: number;
 };
@@ -33,10 +41,16 @@ export function measureStanding(
   if (!bones?.hips || !bones.leftFoot || !bones.rightFoot) return;
   const height = standingHeight(source);
   if (!(height > 0)) return;
-  const samples = Math.max(8, Math.min(60, Math.round(clip.duration * 12)));
-  const world = (bone: T.Object3D) => bone.getWorldPosition(new T.Vector3());
+  if (!(clip.duration > 0) || clip.duration > 60) return;
+  // A long standing take must not hide a short step between sparse samples.
+  // Use the playback sampling density, with a bounded one-minute take size.
+  const samples = Math.max(8, Math.ceil(clip.duration * 60));
+  const world = (bone: T.Object3D) =>
+    source.worldToLocal(bone.getWorldPosition(new T.Vector3()));
   const rotations: T.Quaternion[][] = [];
   const hips: T.Vector3[] = [];
+  const feet: T.Vector3[][] = [];
+  let hipHeight = Infinity;
   let footMin = Infinity,
     footMax = -Infinity;
   const tracked = Object.values(bones);
@@ -44,6 +58,12 @@ export function measureStanding(
     for (let i = 0; i <= samples; i++) {
       sample(clip, (clip.duration * i) / samples);
       hips.push(world(bones.hips));
+      const soles = [bones.leftFoot, bones.rightFoot].map(world);
+      feet.push(soles);
+      hipHeight = Math.min(
+        hipHeight,
+        hips.at(-1)!.y - Math.max(...soles.map((p) => p.y)),
+      );
       for (const foot of [bones.leftFoot, bones.rightFoot]) {
         const y = world(foot).y;
         footMin = Math.min(footMin, y);
@@ -74,6 +94,15 @@ export function measureStanding(
     clip,
     travel: travel / height,
     footLift: (footMax - footMin) / height,
+    footTravel:
+      Math.max(
+        ...feet.flatMap((sample) =>
+          sample.map((p, side) =>
+            Math.hypot(p.x - feet[0][side].x, p.z - feet[0][side].z),
+          ),
+        ),
+      ) / height,
+    hipHeight: hipHeight / height,
     loopGap,
     energy,
   };
@@ -81,14 +110,23 @@ export function measureStanding(
   return result;
 }
 
-/** The calmest standing loop the gait's own source provides, if any: a body
- * that has to wait before an obstacle stands and breathes with it instead of
- * freezing mid-stride. Without one, the caller keeps the stopped pose and
- * says so. */
+export function isStandingPerformance(measure: StandingMeasure) {
+  return (
+    measure.travel <= 0.25 &&
+    measure.footTravel <= 0.035 &&
+    measure.hipHeight >= 0.65 &&
+    measure.footLift <= 0.04 &&
+    measure.loopGap <= 0.35
+  );
+}
+
+/** Prefer the gait's own measured standing performance, then a loaded recorded
+ * fallback. Without a suitable take, retain the stopped pose and report why. */
 export function standingPerformance(
   scene: Scene,
   source: T.Group,
   gait: Motion,
+  target?: T.Group,
 ): StandingMeasure | undefined {
   const animations = (source.userData.animations ?? []) as T.AnimationClip[];
   const candidates = allMotions(scene).filter(
@@ -104,14 +142,22 @@ export function standingPerformance(
     const clip = importedClip(animations, motion.animationName);
     if (!clip) continue;
     const measure = measureStanding(source, motion, clip);
-    if (
-      !measure ||
-      measure.travel > 0.15 ||
-      measure.footLift > 0.04 ||
-      measure.loopGap > 0.35
-    )
-      continue;
+    if (!measure || !isStandingPerformance(measure)) continue;
     if (!best || measure.energy < best.energy) best = measure;
   }
+  if (!best && target)
+    for (const motion of recordedStanding) {
+      const source = motionSource(target, motion.sourceAssetId!);
+      const clip =
+        source &&
+        importedClip(source.userData.animations ?? [], motion.animationName);
+      const measure = source && clip && measureStanding(source, motion, clip);
+      if (
+        measure &&
+        isStandingPerformance(measure) &&
+        (!best || measure.energy < best.energy)
+      )
+        best = measure;
+    }
   return best;
 }

@@ -192,7 +192,15 @@ export function entityPose(
       addRoot(path.point);
       if (time >= end) {
         const offset = options.routeEndOffset?.(m, clip, p.heading!);
-        if (offset) p.root = p.root.map((n, i) => n + offset[i]) as Point;
+        if (offset) {
+          // A standing take supplies its own floor calibration. Carry the
+          // stopped body's horizontal location, but do not turn its gait's
+          // vertical calibration into a new floor for every following wait.
+          const standing = e.clips[e.clips.indexOf(clip) + 1]?.stationary;
+          p.root = p.root.map((n, i) =>
+            standing && i === 1 ? n : n + offset[i],
+          ) as Point;
+        }
       }
       p.heading! +=
         time >= end
@@ -300,8 +308,8 @@ export function entityPose(
         : undefined;
     if (time >= end) {
       const last = motionPose(m, 1);
-      if (!seated) addRoot(native?.delta || last.root);
-      p.heading! += native?.heading || 0;
+      if (!seated && !clip.stationary) addRoot(native?.delta || last.root);
+      if (!clip.stationary) p.heading! += native?.heading || 0;
       start = end;
       continue;
     }

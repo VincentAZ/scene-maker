@@ -9,6 +9,7 @@ import {
 } from "../shared/scene";
 import { configureImportedRig } from "./rig";
 import { repairOpaqueImportedMaterials } from "./importedMaterials";
+import { recordedStanding } from "../shared/motionLibrary";
 
 // Imported files are immutable per URL, so the bytes are downloaded once and
 // kept for the session. Each use is parsed separately: original animation
@@ -109,4 +110,53 @@ export function requiredMotionSources(scene: Scene, entity: Entity): Asset[] {
     const asset = resolveMotionSource(scene, id);
     return asset ? [asset] : [];
   });
+}
+
+/** Preload measured standing candidates for automatic routes. Export dependency
+ * collection still includes only performances actually used by saved clips. */
+export function planningMotionSources(scene: Scene, entity: Entity): Asset[] {
+  const required = requiredMotionSources(scene, entity);
+  const motions = allMotions(scene);
+  if (
+    !entity.clips.some(
+      (clip) =>
+        clip.navigation &&
+        motions.some(
+          (motion) => motion.id === clip.motionId && motion.kind === "imported",
+        ),
+    )
+  )
+    return required;
+  const ids = new Set(required.map((asset) => asset.id));
+  for (const motion of recordedStanding) {
+    const asset = resolveMotionSource(scene, motion.sourceAssetId);
+    if (asset && asset.id !== entity.assetId && !ids.has(asset.id)) {
+      required.push(asset);
+      ids.add(asset.id);
+    }
+  }
+  return required;
+}
+
+export async function loadPlanningMotionSources(
+  scene: Scene,
+  entity: Entity,
+  load: (asset: Asset) => Promise<T.Group>,
+): Promise<Map<string, T.Group>> {
+  const required = new Set(
+    requiredMotionSources(scene, entity).map((asset) => asset.id),
+  );
+  const loaded = await Promise.all(
+    planningMotionSources(scene, entity).map(async (asset) => {
+      try {
+        return [asset.id, await load(asset)] as const;
+      } catch (error) {
+        // Optional standing is an improvement to a playable gait, not permission
+        // to hide the character when its extra source cannot be downloaded.
+        if (required.has(asset.id)) throw error;
+        return undefined;
+      }
+    }),
+  );
+  return new Map(loaded.filter((entry) => entry !== undefined));
 }

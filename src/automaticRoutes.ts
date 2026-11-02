@@ -22,6 +22,8 @@ import { retimeDialogueAfterChange } from "../shared/dialogueSchedule";
 import {
   compilePath,
   retainedPathPrefix,
+  pathToWorld,
+  worldToPath,
   type RetainedPrefix,
 } from "../shared/path";
 import {
@@ -33,7 +35,7 @@ import {
   sampleRouteLocomotion,
 } from "./locomotion";
 import { importedClip, motionSource } from "./rig";
-import { planObjectRoute, planPointRoute } from "./routePlanner";
+import { planObjectRoute, planPointRoute, routeContext } from "./routePlanner";
 import {
   expandArrivalRequests,
   installArrivalRoutes,
@@ -76,6 +78,7 @@ export function standingHoldClips(
     motionId: idle.id,
     duration,
     playbackRate: 1,
+    stationary: true,
     transition: "smooth",
   }));
 }
@@ -319,7 +322,11 @@ function stoppedHold(
     : clip.navigation?.native
       ? importedTake(actor, motion, objects.get(actorId))
       : undefined;
-  return loaded && standingPerformance(scene, loaded.source, motion)?.motion;
+  return (
+    loaded &&
+    standingPerformance(scene, loaded.source, motion, objects.get(actorId))
+      ?.motion
+  );
 }
 
 /** The held playback scene, with every stopped route that has a standing
@@ -378,10 +385,10 @@ function* naturalStop(
     ? clipEffectiveEnd(clip, native.take.duration)
     : routeActiveDuration(clip);
   const hold =
-    loaded && standingPerformance(scene, loaded.source, motion)?.motion;
+    loaded && standingPerformance(scene, loaded.source, motion, group)?.motion;
   const frozen = hold
     ? ""
-    : " No measured standing performance is available from this gait's source, so the body holds its stopped pose.";
+    : " No measured standing performance is available, so the body holds its stopped pose.";
   const candidates = gait
     ? routeStopCandidates(
         gait.source,
@@ -562,7 +569,7 @@ function* planAutomaticPass(
       if (!originalClip.navigation || originalClip.navigation.arrival) continue;
       let actor = scene.entities.find((e) => e.id === originalActor.id)!;
       let clip = actor.clips.find((c) => c.id === originalClip.id)!;
-      const intent = clip.navigation!;
+      let intent = clip.navigation!;
       const motion = allMotions(scene).find((m) => m.id === clip.motionId);
       const group = objects.get(actor.id);
       // A route stopped before an obstacle keeps its travelled prefix as a
@@ -607,6 +614,20 @@ function* planAutomaticPass(
             .reduce((sum, c) => sum + c.duration, 0);
           const stopAt = clipStart + clip.routeStop;
           const waited = Math.max(0, (at ?? stopAt) - stopAt);
+          const originalFrame = intent.point
+            ? routeContext(scene, objects, actor.id, clip.id, environment).frame
+            : undefined;
+          const destination =
+            originalFrame && intent.point
+              ? pathToWorld(intent.point, originalFrame)
+              : undefined;
+          const destinationHeading =
+            originalFrame && intent.point
+              ? originalFrame.heading +
+                (intent.endHeading ??
+                  Math.atan2(intent.point[0], intent.point[2]) -
+                    (motion?.path?.backward ? Math.PI : 0))
+              : undefined;
           const split = intent.native
             ? nativeStopSplit(
                 actor,
@@ -646,6 +667,41 @@ function* planAutomaticPass(
           actor = scene.entities.find((e) => e.id === originalActor.id)!;
           if (!split.continuation) continue;
           clip = actor.clips.find((c) => c.id === split.continuation!.id)!;
+          if (destination && destinationHeading !== undefined) {
+            // Coordinate goals belong to the stopped clip's starting frame.
+            // The continuation starts elsewhere, often facing another way;
+            // preserve the world destination instead of repeating that vector.
+            const { frame } = routeContext(
+              scene,
+              objects,
+              actor.id,
+              clip.id,
+              environment,
+            );
+            const point = worldToPath(destination, frame);
+            point[1] = 0; // Navigation destinations remain on the current floor.
+            const heading = destinationHeading - frame.heading;
+            intent = {
+              ...intent,
+              point,
+              endHeading: Math.atan2(Math.sin(heading), Math.cos(heading)),
+            };
+            scene = validateScene({
+              ...scene,
+              entities: scene.entities.map((e) =>
+                e.id !== actor.id
+                  ? e
+                  : {
+                      ...e,
+                      clips: e.clips.map((c) =>
+                        c.id !== clip.id ? c : { ...c, navigation: intent },
+                      ),
+                    },
+              ),
+            });
+            actor = scene.entities.find((e) => e.id === originalActor.id)!;
+            clip = actor.clips.find((c) => c.id === split.continuation!.id)!;
+          }
         }
         if (intent.native) {
           scene = yield* planNativeNavigationSteps(

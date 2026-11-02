@@ -307,6 +307,9 @@ export const clipSchema = z.object({
   duration: z.number().min(0.2).max(60),
   playbackRate: playbackRateSchema.optional(),
   sourceStart: z.number().finite().min(0).optional(),
+  // A standing wait retains sway within the take without accumulating its
+  // small root displacement/facing into subsequent repeats or the next route.
+  stationary: z.literal(true).optional(),
   // A routed imported take may retain an explicitly scheduled terminal hold.
   routeHold: z.number().finite().positive().max(60).optional(),
   // A route blocked while it was being played holds the pose it had this many
@@ -712,13 +715,19 @@ export function applyCommands(
             delete clip.playbackRate;
             delete clip.legacyFit;
             delete clip.sourceStart;
+            delete clip.stationary;
             return clip;
           }
           const previous = entity.clips.find(
             (old) => old.id === clip.id && old.motionId === clip.motionId,
           );
-          if (motion.path) delete clip.sourceStart;
-          else clip.sourceStart ??= previous?.sourceStart;
+          if (motion.path) {
+            delete clip.sourceStart;
+            delete clip.stationary;
+          } else {
+            clip.sourceStart ??= previous?.sourceStart;
+            clip.stationary ??= previous?.stationary;
+          }
           // Old callers may send only id/motionId/duration. Preserve a rate
           // already materialized on the matching imported clip, never refit it.
           return clip.playbackRate === undefined
@@ -856,11 +865,15 @@ export function applyCommands(
               delete clip.playbackRate;
               delete clip.legacyFit;
               delete clip.sourceStart;
+              delete clip.stationary;
             }
       if (cmd.motion.path)
         for (const entity of s.entities)
           for (const clip of entity.clips)
-            if (clip.motionId === cmd.motion.id) delete clip.sourceStart;
+            if (clip.motionId === cmd.motion.id) {
+              delete clip.sourceStart;
+              delete clip.stationary;
+            }
       s.customMotions[index] = cmd.motion;
     }
     if (cmd.type === "clear") {
@@ -1005,6 +1018,13 @@ export function validateScene(
       if (!allMotions(s).some((m) => m.id === c.motionId))
         throw Error("Unknown action in scene.");
       const motion = allMotions(s).find((m) => m.id === c.motionId)!;
+      if (
+        c.stationary &&
+        (motion.kind !== "imported" || motion.path || c.navigation)
+      )
+        throw Error(
+          "A stationary wait requires a standalone imported performance without navigation.",
+        );
       if (c.routeWait !== undefined) {
         const index = e.clips.indexOf(c);
         const stopped = e.clips

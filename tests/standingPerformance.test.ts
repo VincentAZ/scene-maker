@@ -1,10 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { expect, it } from "vitest";
-import { libraryMotions, motionSource } from "../shared/motionLibrary";
+import {
+  libraryMotions,
+  motionSource,
+  recordedStanding,
+  capturedMotionSources,
+  capturedRouteGaits,
+} from "../shared/motionLibrary";
 import { starterScene } from "../shared/scene";
 import { prepareImportedAsset } from "../src/importedAsset";
-import { standingPerformance } from "../src/standingPerformance";
+import {
+  standingPerformance,
+  measureStanding,
+  isStandingPerformance,
+} from "../src/standingPerformance";
+import { setMotionSources } from "../src/rig";
+import * as T from "three";
 import { disposeObject } from "../src/world";
 
 it("finds the calm standing loop of the bundled source by measurement, not by name", async () => {
@@ -53,5 +65,102 @@ it("finds the calm standing loop of the bundled source by measurement, not by na
     }
   } finally {
     disposeObject(source);
+  }
+});
+
+it("uses the original 60 Hz standing performance as a measured fallback with planted feet", async () => {
+  const motion = recordedStanding[0];
+  const asset = capturedMotionSources.find(
+    (a) => a.id === motion.sourceAssetId,
+  )!;
+  const bytes = await readFile("public" + asset.url);
+  const gltf = await new GLTFLoader().parseAsync(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    "",
+  );
+  const source = prepareImportedAsset(asset, gltf);
+  try {
+    source.position.set(3, 2, -4);
+    source.rotation.y = 0.8;
+    source.scale.setScalar(2.3);
+    const clip = gltf.animations[0];
+    expect(clip.duration).toBeCloseTo(936 / 60, 5);
+    expect(clip.tracks[0].times[1] - clip.tracks[0].times[0]).toBeCloseTo(
+      1 / 60,
+      7,
+    );
+    const measured = measureStanding(source, motion, clip)!;
+    expect(measured.travel).toBeGreaterThan(0.15); // real weight shift, not stepping
+    expect(measured.footTravel).toBeLessThan(0.035);
+    expect(measured.hipHeight).toBeGreaterThan(0.65);
+    expect(isStandingPerformance(measured)).toBe(true);
+    expect(isStandingPerformance({ ...measured, footTravel: 0.1 })).toBe(false);
+    expect(isStandingPerformance({ ...measured, hipHeight: 0.4 })).toBe(false);
+    const target = new T.Group(),
+      gait = capturedRouteGaits[0];
+    expect(
+      standingPerformance(starterScene(), target, gait, target),
+    ).toBeUndefined();
+    setMotionSources(target, new Map([[asset.id, source]]));
+    expect(
+      standingPerformance(starterScene(), target, gait, target)?.motion,
+    ).toEqual(motion);
+  } finally {
+    disposeObject(source);
+  }
+});
+
+it("hands a stopped capture to standing at the same floor height as standalone playback", async () => {
+  const { applyAnimatedEntityPose } = await import("../src/world");
+  const { standingHoldClips } = await import("../src/automaticRoutes");
+  const { sampleFootSurfaces } = await import("../src/footSurface");
+  const gait = capturedRouteGaits[0];
+  const assets = [gait, recordedStanding[0]].map((m) =>
+    capturedMotionSources.find((a) => a.id === m.sourceAssetId)!,
+  );
+  const groups = await Promise.all(
+    assets.map(async (asset) => {
+      const bytes = await readFile("public" + asset.url);
+      const gltf = await new GLTFLoader().parseAsync(
+        bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ),
+        "",
+      );
+      return prepareImportedAsset(asset, gltf);
+    }),
+  );
+  const [target, standing] = groups;
+  try {
+    const scene = starterScene(),
+      actor = scene.entities[0];
+    scene.customMotions.push(gait);
+    actor.assetId = assets[0].id;
+    actor.position = [2, 0.6, -3];
+    actor.rotation = 0.7;
+    actor.scale = 1.4;
+    actor.clips = [
+      { id: "route", motionId: gait.id, duration: 1, routeStop: 1 },
+      ...standingHoldClips(recordedStanding[0], "wait", 40),
+      { id: "resume", motionId: gait.id, duration: 1, transition: "smooth" },
+    ];
+    setMotionSources(target, new Map([[assets[1].id, standing]]));
+    const solo = { ...actor, clips: actor.clips.slice(1) };
+    const height = (entity: typeof actor, time: number) => {
+      applyAnimatedEntityPose(target, entity, scene, time);
+      const surface = sampleFootSurfaces(target)!;
+      return surface.lowest * target.scale.y + target.position.y;
+    };
+    for (const time of [2, 17.3, 33.2, 3]) {
+      expect(height(actor, time)).toBeCloseTo(height(solo, time - 1), 6);
+    }
+    for (const start of [1, 16.6, 32.2, 41])
+      for (let frame = 0; frame <= 30; frame++)
+        expect(height(actor, start + frame / 120)).toBeGreaterThanOrEqual(
+          actor.position[1] - 1e-6,
+        );
+  } finally {
+    groups.forEach((group) => disposeObject(group));
   }
 });

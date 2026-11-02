@@ -55,12 +55,13 @@ The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing A
 
 ## Captured performances
 
-Five CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
-2.975 s), **Captured walk and turns** (69_06, 43.433 s), and **Captured run**
-(35_17, 1.383 s), **Captured walk and stop** (16_33, 2.367 s), and
-**Captured run and stop** (16_57, 2.225 s). These are original
-120 Hz body performances; finger/thumb channels were not captured and are
-excluded. Facial animation is not included. Source skeletons are displayed as
+Six CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+2.975 s), **Captured walk and turns** (69_06, 43.433 s), **Captured run**
+(35_17, 1.383 s), **Captured walk and stop** (16_33, 2.367 s),
+**Captured run and stop** (16_57, 2.225 s), and **Captured standing**
+(77_02, 15.6 s). Standing retains its original 60 Hz samples; the other five
+retain their original 120 Hz samples. These are body performances; finger/thumb
+channels were not captured and are excluded. Facial animation is not included. Source skeletons are displayed as
 capsules for original-performance previews. That display is not a body scan
 or a measured shoe surface. These entries do not replace saved authored clips.
 
@@ -74,6 +75,7 @@ node scripts/prepare-cmu-motion.mjs <source-directory> 69_06
 node scripts/prepare-cmu-motion.mjs <source-directory> 35_17
 node scripts/prepare-cmu-motion.mjs <source-directory> 16_33
 node scripts/prepare-cmu-motion.mjs <source-directory> 16_57
+node scripts/prepare-cmu-motion.mjs <source-directory> 77_02 60
 ```
 
 Use separate directories for different subjects. Copy each resulting GLB to
@@ -113,7 +115,6 @@ Normal-speed walking/running route evidence exists for Party Woman and Casual Fe
 provider coverage, contact quality, arrival/wait visual verification, and other
 natural defaults remain unfinished; this is not a universal quality claim.
 
-
 The two recorded stops include the captured deceleration and standing finish.
 Their catalogue role is `arrival`; they remain selectable performances but are
 excluded from automatic repeating-gait defaults, including renamed source
@@ -125,3 +126,31 @@ endpoint. This is not yet an automatic path-editor feature. General arrival
 assembly still needs phase/velocity matching and integration with replanning,
 point actions, dialogue timing, and arbitrary curved paths. Existing saved
 `ending: "hold"` semantics remain unchanged.
+
+Automatic imported routes can use **Captured standing** when their gait source
+has no suitable standing take. The eligibility check measures planted feet,
+hip height, body travel and endpoint pose at 60 samples per second. Source-local
+measurement keeps placement and character scale out of this decision. The
+optional source is preloaded for navigation; a failed optional download retains
+the existing stopped-pose fallback. Saved waits make the source a required
+export dependency.
+
+Generated standing waits preserve native timing and body sway, with smooth
+transitions between takes. Their explicit `stationary` marker prevents the
+capture's small net root displacement and facing change from accumulating over
+repeats. Other imported performances and explicit ending holds retain their
+existing behavior. A 70-second blocked-route fixture checks repeated standing
+and subsequent recovery without altering earlier playback. This does not yet
+resolve natural gait-to-standing joins for every source or running stops.
+
+Standing waits inherit the stopped body's horizontal position and the route's
+floor, without retaining the gait's vertical calibration as a new floor. A final
+sole check after blending prevents supported route/standing poses from crossing
+the floor during a join. This removes penetration; it does not assert perfect
+contact or eliminate the capture skeleton's small positive clearance.
+
+When a blocked coordinate route resumes, its destination and facing are
+converted from the original starting frame into the continuation's frame.
+Otherwise the same local vector would send the actor toward a different world
+position after a long wait. Both standing and frozen recovery have regressions
+for the actual destination as well as preservation of earlier playback.

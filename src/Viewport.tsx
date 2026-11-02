@@ -27,7 +27,11 @@ import {
 import { configureRigContacts } from "./ik";
 import { movingObstacleIds } from "./routeClearance";
 import { setMotionSources } from "./rig";
-import { loadImportedAsset, requiredMotionSources } from "./importedAsset";
+import {
+  loadImportedAsset,
+  planningMotionSources,
+  loadPlanningMotionSources,
+} from "./importedAsset";
 import { EnvironmentModel, environmentModelKey } from "./environmentModel";
 import { libraryEntry } from "../shared/characterLibrary";
 import type { SeatBody } from "../shared/seating";
@@ -121,7 +125,7 @@ const entityModelKey = (
     entity.assetId,
     asset?.url ? null : entity.color,
     asset,
-    requiredMotionSources(scene, entity),
+    planningMotionSources(scene, entity),
   ]);
 };
 const assetIndex = (scene: Scene) =>
@@ -865,12 +869,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       const setup = async (obj: T.Group, entity: Entity, job: PendingModel) => {
         const stale = () => ctx.pending.get(entity.id) !== job;
         try {
-          const loaded = await Promise.all(
-            requiredMotionSources(scene, entity).map(
-              async (asset) => [asset.id, await original(asset)] as const,
-            ),
+          setMotionSources(
+            obj,
+            await loadPlanningMotionSources(scene, entity, original),
           );
-          setMotionSources(obj, new Map(loaded));
         } catch (error) {
           disposeObject(obj);
           if (!stale()) {

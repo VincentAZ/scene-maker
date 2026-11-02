@@ -1,7 +1,7 @@
 // Offline CMU ASF/AMC evaluation converter. Not a general application importer.
 // CMU wrist nodes partition the forearm: the anatomical hand begins at lhand/rhand.
 // Mapping the upstream wrist node drops captured hand flexion.
-// Input captures must be 120 Hz; no filtering, looping, or time scaling is applied.
+// Supply the catalogue's frame rate (default 120 Hz). No filtering or looping.
 import fs from "node:fs";
 import crypto from "node:crypto";
 import * as T from "three";
@@ -9,9 +9,14 @@ import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 const out = process.argv[2];
 const trial = process.argv[3];
-if (!out || !/^\d{2,3}_\d{2}$/.test(trial || ""))
+const frequency = Number(process.argv[4] ?? 120);
+if (
+  !out ||
+  !/^\d{2,3}_\d{2}$/.test(trial || "") ||
+  ![60, 120].includes(frequency)
+)
   throw Error(
-    "Usage: node scripts/prepare-cmu-motion.mjs <directory> <subject_trial>",
+    "Usage: node scripts/prepare-cmu-motion.mjs <directory> <subject_trial> [60|120 Hz]",
   );
 const subject = trial.split("_")[0];
 const asf = fs.readFileSync(out + "/" + subject + ".asf", "utf8");
@@ -219,7 +224,7 @@ const summary = [];
   mesh.name = "CapturedSkeleton";
   root.add(mesh);
   mesh.bind(new T.Skeleton(boneArray));
-  const times = frames.map((_, i) => i / 120),
+  const times = frames.map((_, i) => i / frequency),
     tracks = [
       new T.VectorKeyframeTrack(
         "root.position",
@@ -262,7 +267,7 @@ const summary = [];
     provider: "CMU Graphics Lab",
     subject: Number(subject),
     trial,
-    frequency: 120,
+    frequency,
     excludedUncapturedChannels: ["lfingers", "rfingers", "lthumb", "rthumb"],
   };
   const buffer = await new GLTFExporter().parseAsync(root, {
@@ -277,6 +282,7 @@ const summary = [];
   summary.push({
     trial,
     frames: frames.length,
+    frequency,
     duration: clip.duration,
     tracks: tracks.length,
     bones: boneArray.length,

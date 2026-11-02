@@ -225,5 +225,52 @@
     ],
     "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"],
     "routeRole": "arrival"
+  },
+  {
+    "trial": "77_02",
+    "frames": 937,
+    "frequency": 60,
+    "duration": 15.6,
+    "tracks": 26,
+    "bones": 31,
+    "bytes": 682428,
+    "scale": 0.05644444444444444,
+    "sha256": {
+      "77.asf": "c72f244092c214c2c4fd496d214a20ec7bb58dbb626458dda2a2b953a465ae85",
+      "77_02.amc": "110a27cb2c1d1c5b051b10b3a7db204db3699e27302e23cf444205dccc41634a",
+      "77_02.glb": "7d30d250e8b00cd5240342deabf538aa4cfd5cda81047f8048e54af24ba72723"
+    },
+    "name": "Captured standing",
+    "description": "A quiet recorded standing performance with small shifts of weight, at its original 60 Hz pace.",
+    "routeRole": "standing",
+    "rigMapping": {
+      "hips": [0, 0],
+      "spine": [0, 0, 2],
+      "chest": [0, 0, 2, 0],
+      "upperChest": [0, 0, 2, 0, 0],
+      "neck": [0, 0, 2, 0, 0, 0],
+      "head": [0, 0, 2, 0, 0, 0, 0, 0],
+      "leftShoulder": [0, 0, 2, 0, 0, 1],
+      "rightShoulder": [0, 0, 2, 0, 0, 2],
+      "leftArm": [0, 0, 2, 0, 0, 1, 0],
+      "rightArm": [0, 0, 2, 0, 0, 2, 0],
+      "leftForearm": [0, 0, 2, 0, 0, 1, 0, 0],
+      "rightForearm": [0, 0, 2, 0, 0, 2, 0, 0],
+      "leftHand": [0, 0, 2, 0, 0, 1, 0, 0, 0, 0],
+      "rightHand": [0, 0, 2, 0, 0, 2, 0, 0, 0, 0],
+      "leftLeg": [0, 0, 0, 0],
+      "rightLeg": [0, 0, 1, 0],
+      "leftShin": [0, 0, 0, 0, 0],
+      "rightShin": [0, 0, 1, 0, 0],
+      "leftFoot": [0, 0, 0, 0, 0, 0],
+      "rightFoot": [0, 0, 1, 0, 0, 0],
+      "leftToeBase": [0, 0, 0, 0, 0, 0, 0],
+      "rightToeBase": [0, 0, 1, 0, 0, 0, 0]
+    },
+    "sourceURLs": [
+      "https://mocap.cs.cmu.edu/subjects/77/77.asf",
+      "https://mocap.cs.cmu.edu/subjects/77/77_02.amc"
+    ],
+    "excludedUncapturedChannels": ["lfingers", "rfingers", "lthumb", "rthumb"]
   }
 ]

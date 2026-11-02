@@ -50,6 +50,7 @@ import { entityPose, type Pose } from "../shared/animation";
 import { defaultLadder, type Point } from "../shared/ladder";
 import { measureSeatBody, applySeatSupport } from "./seating";
 import { sampleWithTransitions } from "./transitions";
+import { transitionAt } from "../shared/transitions";
 const material = (color: string) =>
   new T.MeshStandardMaterial({ color, roughness: 0.85 });
 export function box(
@@ -469,9 +470,24 @@ export function applyAnimatedEntityPose(
   scene: Scene,
   time: number,
 ) {
-  sampleWithTransitions(group, entity, scene, time, (sampleTime) =>
-    applyUnblendedEntityPose(group, entity, scene, sampleTime),
-  );
+  let floor: T.Vector3 | undefined;
+  sampleWithTransitions(group, entity, scene, time, (sampleTime) => {
+    floor = undefined;
+    applyUnblendedEntityPose(
+      group,
+      entity,
+      scene,
+      sampleTime,
+      true,
+      true,
+      (position) => {
+        floor = position;
+      },
+    );
+  });
+  // Blended ankle rotations and contact corrections can lower the shoe below
+  // two individually supported source poses. Recheck the final deformed sole.
+  if (floor && !group.userData.motionWarning) supportRouteGround(group, floor);
   applySeatSupport(group, entity);
 }
 const routeEndHeadings = new WeakMap<
@@ -620,6 +636,7 @@ function applyUnblendedEntityPose(
   time: number,
   plantFeet = true,
   closeLoop = true,
+  ground?: (floor: T.Vector3) => void,
 ):
   | {
       root: T.Vector3;
@@ -668,6 +685,7 @@ function applyUnblendedEntityPose(
     });
     group.userData.seatBody = measureSeatBody(group);
   }
+  let nativeStartY = 0;
   const pose = entityPose(entity, scene, time, {
     routeEndHeading: (motion, clip, base) =>
       completedRouteHeading(group, entity, scene, motion, clip, base)?.heading,
@@ -698,15 +716,18 @@ function applyUnblendedEntityPose(
         const clip =
           source &&
           importedClip(source.userData.animations, motion.animationName!);
-        return source && clip
-          ? transferredRootMotion(
-              source,
-              group,
-              clip,
-              clipSourceEnd(scheduled, clip.duration),
-              clipSourceStart(scheduled, clip.duration),
-            )
-          : undefined;
+        const root =
+          source && clip
+            ? transferredRootMotion(
+                source,
+                group,
+                clip,
+                clipSourceEnd(scheduled, clip.duration),
+                clipSourceStart(scheduled, clip.duration),
+              )
+            : undefined;
+        nativeStartY = root?.start[1] ?? 0;
+        return root;
       }
       if (!mixer) return;
       const native = importedClip(
@@ -721,6 +742,7 @@ function applyUnblendedEntityPose(
           clipSourceEnd(scheduled, native.duration),
           clipSourceStart(scheduled, native.duration),
         );
+      nativeStartY = root?.start.y ?? 0;
       return root
         ? {
             start: root.start
@@ -743,6 +765,7 @@ function applyUnblendedEntityPose(
         clip: T.AnimationClip;
         time: number;
         sourceStart: number;
+        stationary?: true;
         source?: T.Group;
         route?: {
           profile: LocomotionProfile;
@@ -773,6 +796,7 @@ function applyUnblendedEntityPose(
             clip: native,
             time: sourceSecondsAt(clip, time - start, native.duration),
             sourceStart: clipSourceStart(clip, native.duration),
+            stationary: clip.stationary,
             source: source === group ? undefined : source,
           };
           if (motion.path && source) {
@@ -1022,6 +1046,17 @@ function applyUnblendedEntityPose(
   }
   if (missing)
     group.userData.motionWarning = `The original file or a measurable foot stride for ${entity.name}'s action is unavailable. Choose an imported walking/running cycle or reimport the source.`;
+  if (
+    ground &&
+    (current?.stationary ||
+      (current?.route && transitionAt(entity, scene, time, true)))
+  ) {
+    const floor = new T.Vector3(...pose.root);
+    // Standalone imported playback subtracts its source's starting root
+    // displacement. The floor stays at the incoming timeline origin.
+    if (current.stationary) floor.y += nativeStartY * entity.scale;
+    ground(floor);
+  }
   return current?.route
     ? {
         root: new T.Vector3(...pose.root),

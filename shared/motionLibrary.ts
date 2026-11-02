@@ -44,6 +44,11 @@ export const recordedArrivals = capturedMotions.filter(
     capturedCatalogue.find((entry) => entry.trial === motion.animationName)
       ?.routeRole === "arrival",
 );
+export const recordedStanding = capturedMotions.filter(
+  (motion) =>
+    capturedCatalogue.find((entry) => entry.trial === motion.animationName)
+      ?.routeRole === "standing",
+);
 export function isRecordedArrival(motion: Motion) {
   return recordedArrivals.some(
     (arrival) =>

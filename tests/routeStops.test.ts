@@ -12,12 +12,12 @@ import {
   type Motion,
   type Scene,
 } from "../shared/scene";
-import { compilePath, savePathCommands } from "../shared/path";
+import { compilePath, savePathCommands, pathToWorld } from "../shared/path";
 import { libraryMotions, motionSource } from "../shared/motionLibrary";
 import { routeActiveDuration } from "../shared/clipTiming";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { prepareAutomaticRoutes } from "../src/automaticRoutes";
-import { planObjectRoute } from "../src/routePlanner";
+import { planObjectRoute, routeContext } from "../src/routePlanner";
 import { inspectRouteClearance } from "../src/routeClearance";
 import { locomotionProfile, routeEntryHeading } from "../src/locomotion";
 import { importedClip, rigHeading } from "../src/rig";
@@ -622,3 +622,68 @@ it("drops a scheduled stop the body has not reached when the passage opens first
       ),
     ).toBeLessThan(1e-9);
 });
+
+it.each([true, false])(
+  "preserves a coordinate destination and facing through a long wait (standing=%s)",
+  (standing) => {
+    const f = fixture(standing ? undefined : ["Walk"]);
+    f.scene = {
+      ...f.scene,
+      entities: f.scene.entities.filter((e) => e.id !== "destination"),
+    };
+    f.objects.delete("destination");
+    f.scene.entities[0].clips[0].navigation = {
+      point: [0, 0, 6],
+      endHeading: 0,
+      movement: "walk",
+    };
+    const planned = prepareAutomaticRoutes(f.scene, f.objects);
+    expect(planned.issues).toEqual([]);
+    f.scene = planned.scene;
+    const blocked = prepareAutomaticRoutes(
+      enclose(f),
+      f.objects,
+      undefined,
+      1.25,
+    );
+    expect(blocked.issues).toHaveLength(1);
+    const stop = blocked.scene.entities[0].clips[0].routeStop!;
+    const resumeAt = stop + 70;
+    const before = body(blocked.playbackScene, f.objects, stop + 1);
+    const opened = applyCommands(blocked.scene, [
+      { type: "update", id: "wall-w", changes: { position: [1.4, 0, 4] } },
+    ]);
+    const resumed = prepareAutomaticRoutes(
+      opened,
+      f.objects,
+      undefined,
+      resumeAt,
+    );
+    expect(resumed.issues).toEqual([]);
+    const actor = resumed.scene.entities[0];
+    const continuation = actor.clips.at(-1)!;
+    const { frame } = routeContext(
+      resumed.scene,
+      f.objects,
+      actor.id,
+      continuation.id,
+    );
+    const goal = pathToWorld(continuation.navigation!.point!, frame);
+    expect(Math.hypot(goal[0] - 3, goal[2])).toBeLessThan(1e-6);
+    const heading = frame.heading + continuation.navigation!.endHeading!;
+    expect(
+      Math.abs(
+        Math.atan2(
+          Math.sin(heading - Math.PI / 2),
+          Math.cos(heading - Math.PI / 2),
+        ),
+      ),
+    ).toBeLessThan(1e-6);
+    const end = actor.clips.reduce((sum, c) => sum + c.duration, 0);
+    const actual = body(resumed.scene, f.objects, end - 1e-6);
+    expect(Math.hypot(actual.hips[0] - 3, actual.hips[2])).toBeLessThan(0.12);
+    expect(
+      distance(body(resumed.scene, f.objects, stop + 1), before),
+    ).toBeLessThan(1e-8);
+  },
+);
