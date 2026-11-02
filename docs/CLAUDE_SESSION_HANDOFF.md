@@ -37,7 +37,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 96671b5 | Skeleton-only sources keep receivers on the ground |
 | 16e7ad2 | BVH imports go to Actions (verified through the real dialog) |
 | b030635 | Long takes disclosed; unusable captures refused |
-| (next) | Full Rigify exports: DEF- deform bones win over same-named controls |
+| 338feb1 | Full Rigify exports: DEF- deform bones win over same-named controls |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D33). Summaries also appended to
