@@ -1787,3 +1787,106 @@ TypeScript, formatting/diff checks and isolated build at
 `/tmp/scene-natural-motion/forearm-roll-build`. Existing SDK-schema, dependency
 annotation, software-WebGL and bundle-size advisories remain. All9,264final
 real-source audit samples exactly match the pre-explicit-mapping results.
+
+## Adaptive walking cycles for recorded arrivals — 2026-11-01
+
+Concrete progress after b0abc36; the natural-animation goal remains OPEN. Do not
+claim that captured 82_14's bent-knee/backward-leaning final stance is a neutral
+idle or that these route checks establish all-action naturalness.
+
+Changes in this checkpoint:
+
+- New `automaticArrival.ts` tries the original same-take proposal first. When
+  destination-owned, non-native navigation using 82_14 cannot find a finish, it
+  tries eight previously measured walking intervals from that same take, and
+  chooses the admissible proposal with the lowest existing source-match score.
+  Explicit `proposeCapturedArrival` calls retain their selected interval.
+- `capturedArrival.ts` accepts an internal alternate gait range. It measures
+  playback rate from the ORIGINAL requested gait/duration, then applies that
+  rate to the alternate approach and untouched recorded tail. Source/stop gates,
+  collision checks, target reach, and retiming remain unchanged. No threshold was
+  relaxed. Original motion data remains available for navigation restoration.
+- Repeated alternate cycles require positive receiving-body loop acceptance
+  from actual playback. `routeLoopPoseAllowed` exposes the existing cached
+  closure decision for the exact scene/entity/profile/source clock. Missing
+  evidence rejects the candidate. Cache lookup uses playback's combined
+  ratio-times-stride division, avoiding a different floating-point key.
+- Added a selectable **Captured gradual walking stride** (82_14, 1.2–2.375 s).
+  Fresh default walking remains 35_01. An explicitly established gradual stride
+  remains the chosen gait for subsequent automatic routes, including after its
+  generated prefix/tail pair: the chooser follows the saved original intent.
+  Standalone arrival takes still do not become default repeating gaits.
+- This assembly applies to automatic destination requests. A manually drawn
+  path remains the creator's waypoints and does not acquire a stop merely by
+  selecting the new stride. No native starting performance was added.
+
+Evidence and limits:
+
+- Earlier 77-range/616-proposal data actually contained successes for each of
+  Party/Casual at 3,4,6,8 m, but no universal cut. Eight best-per-case ranges were
+  used as a bounded candidate set. Those ranges are candidates, not certificates
+  for arbitrary receivers; runtime body and geometric checks remain necessary.
+- Current actual `prepareAutomaticRoutesAsync` fixtures use the original
+  1.2–2.375 interval and native rate. Party succeeds at 3,4,6,8 m and with a crate
+  at z=1.4; its tight detour at z=2.5 still rejects. Casual succeeds in all six
+  cases, including both crates. Thus 11/12 accepted. These are explicit actor /
+  crate fixtures; the tests do NOT pass a rendered cafe environment object to
+  the planner. Do not describe them as comprehensive cafe-wall clearance tests.
+- Hip endpoint error: Party ~0.000075 mm; Casual ~11.093 mm (its captured body
+  offset). Destination/facing request and arrival ownership persist. Real-data
+  regression verifies explicit 1.7x source rate, unchanged original scene and
+  sampled object state, retained destination, repeat planning, and reverse seeks.
+- 11 accepted scenes / 76 actual loop, approach-to-stop, and end boundaries:
+  at +/-1 microsecond, max bone displacement 0.008579 mm, sampled skin 0.007343
+  mm, angular displacement 0.000030732 rad. These are finite-time deltas, not
+  claims of mathematical zero. Reverse-seek/history comparison was exactly zero
+  at the sampled checkpoints. Skin checks sample 12 vertices per mesh.
+- Export and reload: Party 1,311 sample times, 102 matched bone/mesh nodes,
+  max joint 0.091908 mm / skin 0.090742 mm. Casual 1,206 times, 29 nodes,
+  joint 0.020700 mm / skin 0.037670 mm. Export uses production baking/boundaries.
+- Full suite: 1,164 tests / 100 files passed. After the combined-ratio cache-key
+  refinement, 59 relevant tests passed again; TypeScript and final production
+  build passed. Existing bundle-size warning remains.
+
+Normal-speed evidence:
+
+- `.data/natural-motion-investigation/adaptive-arrivals/production-party-1x.mp4`
+  compares the old 8 m held-gait route with the new native-rate recorded finish.
+- `production-casual-1x.mp4` in the same directory compares the old 4 m held-gait
+  route with its new finish. Both are full route + 2 seconds of ending, 30 fps,
+  unchanged source clock. Left is old planned scene, right is new assembly.
+  Baselines were actually prepared on frozen b0abc36 Vite4604; both saved scenes
+  render with the same current animation engine. Planner changes after capture
+  only refine the exact cache lookup for non-unit stride scales.
+- Whole-body frames at joins and final stances were inspected. The old scene
+  visibly holds a raised foot; the new scene continues the recorded slowdown.
+  The source's final lean and bent knees remain; this is not a neutral standing
+  source and no visual acceptance from the user has been obtained.
+- Final UI on4607 loads the saved Casual arrival, plays/pauses, seeks to its end,
+  rewinds, and GETs unchanged saved content (apart from revision bookkeeping).
+  Network-enabled final run has no HTTP/JS errors. Actions -> Draw a path exposes
+  the gradual stride and measures 0.67m/s on Casual. Selecting it without saving
+  does not mutate the project. One earlier selector run reported a transient
+  unspecified404; the instrumented retry had no HTTP/JS errors. Software-WebGL
+  fallback advisories persist. No source GLBs were copied into this evidence.
+
+Reproduction / live services:
+
+- Work: `/tmp/scene-natural-motion/adaptive-arrivals`. Durable ignored archive:
+  `.data/natural-motion-investigation/adaptive-arrivals`, including reports,
+  videos, screenshots, logs, and drivers. `projects.json` in /tmp is the initial
+  direct-proposal screen; final results are `current-projects-{party,casual}.json`.
+- Final runtime **4607**, PID2832729, `test-results/natural.config.ts`, noHMR/watch,
+  proxies private API4413/PID2779004 at `/tmp/scene-natural-motion/data`.
+  Frozen4604 is b0abc36;4605/4606 are intermediate. Owned Chrome9451 still used.
+- Private saved projects: `adaptive-current-stop-{party,casual}-{four,long,
+straight,detour,short}-review`, plus Casual `tight-detour`. No Party tight
+  arrival was saved. IDs retain their own original request in navigation metadata.
+- Set `FABLE_APP=http://127.0.0.1:4607` for drivers. Selector driver clicks Actions
+  before Draw a path, and waits for the requested project title, not just canvas.
+- Protected workspaces, user4311/4337 services, and protected Astra data unchanged.
+
+Next priority: inspect this source finish in motion and improve the real default
+route experience (35_01 still has no measured stop). Native starts, running
+arrivals, source hand/toe limitations, and broader action quality remain open.
+Do not spend another turn merely tuning the already tiny seam/export residuals.

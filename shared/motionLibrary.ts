@@ -56,6 +56,23 @@ export function isRecordedArrival(motion: Motion) {
       arrival.animationName === motion.animationName,
   );
 }
+/** Alternative walking cycles from the original gradual-stop take. Automatic
+ * navigation may choose one when its original cycle cannot meet a stop phase.
+ * These are candidates, not receiver or clearance certificates. */
+export const capturedArrivalGaits = {
+  sourceAssetId: "cmu-capture-82-14",
+  animationName: "82_14",
+  ranges: [
+    { start: 1.2, end: 2.375 },
+    { start: 164 / 120, end: 312 / 120 },
+    { start: 146 / 120, end: 288 / 120 },
+    { start: 164 / 120, end: 311 / 120 },
+    { start: 164 / 120, end: 313 / 120 },
+    { start: 78 / 120, end: 208 / 120 },
+    { start: 4 / 120, end: 137 / 120 },
+    { start: 6 / 120, end: 139 / 120 },
+  ],
+};
 /** Route selector presets reference original takes and saved source intervals.
  * They are not extra animations or replacements for any saved scene action. */
 export const capturedRouteGaits: Motion[] = [
@@ -85,6 +102,20 @@ export const capturedRouteGaits: Motion[] = [
       ],
       smooth: false,
       sourceRange: { start: 0.2, end: 116 / 120 },
+    },
+  },
+  {
+    ...capturedMotions.find((motion) => motion.animationName === "82_14")!,
+    id: "captured-gradual-walking-stride",
+    name: "Captured gradual walking stride",
+    duration: 1.175,
+    path: {
+      points: [
+        [0, 0, 0],
+        [0, 0, 1.4701022968450306],
+      ],
+      smooth: false,
+      sourceRange: { ...capturedArrivalGaits.ranges[0] },
     },
   },
 ];

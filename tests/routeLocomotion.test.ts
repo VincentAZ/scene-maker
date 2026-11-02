@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { allMotions, starterScene, type Motion } from "../shared/scene";
-import { libraryMotions, recordedArrivals } from "../shared/motionLibrary";
+import {
+  libraryMotions,
+  recordedArrivals,
+  capturedRouteGaits,
+} from "../shared/motionLibrary";
 import {
   defaultRouteLocomotion,
   matchingRouteLocomotion,
@@ -264,3 +268,29 @@ it.each(recordedArrivals)(
     expect(routeLocomotions(scene, actor)).toContain(arrival);
   },
 );
+
+it("keeps an explicitly established gradual walking gait after its generated arrival", () => {
+  const scene = starterScene(),
+    actor = scene.entities[0];
+  const gait = capturedRouteGaits.find(
+    (m) => m.id === "captured-gradual-walking-stride",
+  )!;
+  expect(defaultRouteLocomotion(scene, actor).id).toBe(
+    "captured-walking-stride",
+  );
+  scene.customMotions.push({ ...gait, id: "chosen-gait" });
+  actor.clips = [
+    {
+      id: "approach",
+      motionId: "generated-approach",
+      duration: 2,
+      navigation: {
+        point: [0, 0, 4],
+        movement: "walk",
+        arrival: { clipId: "finish", motionId: "chosen-gait", duration: 5 },
+      },
+    },
+    { id: "finish", motionId: "captured-82-14", duration: 3, playbackRate: 1 },
+  ];
+  expect(defaultRouteLocomotion(scene, actor).id).toBe(gait.id);
+});

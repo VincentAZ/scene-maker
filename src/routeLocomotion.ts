@@ -149,11 +149,17 @@ export function defaultRouteLocomotion(
     (motion) =>
       motion.kind === "imported" &&
       namedRouteMovement(motion) === movement &&
-      !isRecordedArrival(motion),
+      (!isRecordedArrival(motion) ||
+        capturedRouteGaits.some(
+          (gait) => sourceKey(gait) === sourceKey(motion),
+        )),
   );
   const library = allMotions(scene);
   for (const clip of [...actor.clips].reverse()) {
-    const motion = library.find((candidate) => candidate.id === clip.motionId);
+    const motion = library.find(
+      (candidate) =>
+        candidate.id === (clip.navigation?.arrival?.motionId ?? clip.motionId),
+    );
     if (motion?.kind !== "imported" || namedRouteMovement(motion) !== movement)
       continue;
     const previous = matchingRouteLocomotion(matching, motion);

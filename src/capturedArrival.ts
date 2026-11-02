@@ -25,6 +25,7 @@ import {
   locomotionScale,
   routeSourceDuration,
   routeEntryHeading,
+  routeLocomotionProfile,
 } from "./locomotion";
 import {
   importedClip,
@@ -40,6 +41,7 @@ import {
 } from "./routePlanner";
 import { reachableGrip } from "./interactions";
 import { applyAnimatedEntityPose } from "./world";
+import { routeLoopPoseAllowed } from "./routeLoopPose";
 import {
   inspectRouteClearanceSteps,
   movingObstacleIds,
@@ -86,7 +88,10 @@ export function* proposeCapturedArrivalSteps(
   actorId: string,
   clipId: string,
   environment?: T.Object3D | null,
-  options: { scheduledEnd?: number } = {},
+  options: {
+    scheduledEnd?: number;
+    gaitRange?: { start: number; end: number };
+  } = {},
 ): Generator<void, CapturedArrivalProposal, unknown> {
   const actor = original.entities.find((e) => e.id === actorId),
     group = objects.get(actorId),
@@ -131,12 +136,19 @@ export function* proposeCapturedArrivalSteps(
         });
     });
   try {
-    const profile = locomotionProfile(source, take, motion.path.sourceRange),
-      arrivalProfile = motion.path.sourceRange
-        ? locomotionProfile(source, take)
+    const gaitRange = options.gaitRange ?? motion.path.sourceRange,
+      profile = locomotionProfile(source, take, gaitRange),
+      originalProfile = options.gaitRange
+        ? locomotionProfile(source, take, motion.path.sourceRange)
         : profile,
+      arrivalProfile = gaitRange ? locomotionProfile(source, take) : profile,
       ratio = source === group ? 1 : locomotionScale(source, group);
-    if (!profile || !arrivalProfile?.stops?.length || !(ratio > 0))
+    if (
+      !profile ||
+      !originalProfile ||
+      !arrivalProfile?.stops?.length ||
+      !(ratio > 0)
+    )
       return {
         reason: "This take has no measured travelling-to-standing segment.",
       };
@@ -150,7 +162,7 @@ export function* proposeCapturedArrivalSteps(
         : (motion.path.endHeading ?? originalPath.samples.at(-1)!.heading),
       rate =
         routeSourceDuration(
-          profile,
+          originalProfile,
           originalPath.length / ratio / (motion.path.strideScale ?? 1),
         ) / clip.duration;
     const context = routeContext(
@@ -275,8 +287,7 @@ export function* proposeCapturedArrivalSteps(
                 false,
                 routeEntryHeading(profile),
               );
-              if (motion.path!.sourceRange)
-                path.sourceRange = { ...motion.path!.sourceRange };
+              if (gaitRange) path.sourceRange = { ...gaitRange };
               if (motion.path!.strideScale !== undefined)
                 path.strideScale = motion.path!.strideScale;
               plans.set(`${start}:${end}`, path);
@@ -389,6 +400,26 @@ export function* proposeCapturedArrivalSteps(
               scene,
               start + prefixDuration - 1e-7,
             );
+            // Use playback's combined travel ratio for its cache identity.
+            // Dividing by ratio and stride separately can differ by an ulp.
+            const receivingDistance =
+              compilePath(path).length / (ratio * (path.strideScale ?? 1));
+            if (
+              options.gaitRange &&
+              match.prefixSourceDuration > profile.duration + 1e-6 &&
+              routeLoopPoseAllowed(
+                group,
+                scene.entities.find((e) => e.id === actorId)!,
+                scene,
+                routeLocomotionProfile(profile, receivingDistance),
+                start,
+                prefixDuration,
+                routeSourceDuration(profile, receivingDistance),
+              ) !== true
+            )
+              throw Error(
+                "This walking cycle does not close safely on the receiving character.",
+              );
             const actualHeading = rigHeading(group);
             if (actualHeading === undefined || group.userData.motionWarning)
               throw Error(

@@ -1,7 +1,7 @@
 import * as T from "three";
 import { expect, it } from "vitest";
 import { starterScene } from "../shared/scene";
-import { closeRouteLoopPose } from "../src/routeLoopPose";
+import { closeRouteLoopPose, routeLoopPoseAllowed } from "../src/routeLoopPose";
 import {
   routeSourceBoundaries,
   type LocomotionProfile,
@@ -668,4 +668,28 @@ it("closes transferred ground-clearance constraints along with the receiving pos
   sample(0.95, 1).forEach((height, i) =>
     expect(height).toBeCloseTo([0.0138, 0.00665][i], 8),
   );
+});
+
+it("exposes only the receiving closure measured for the exact scene and source clock", () => {
+  const f = fixture();
+  const allowed = (scene = f.scene, duration = 2) =>
+    routeLoopPoseAllowed(f.group, f.entity, scene, f.profile, 0, duration, 2);
+  expect(allowed()).toBeUndefined();
+  f.sample(0.95);
+  expect(allowed()).toBe(true);
+  expect(allowed({ ...f.scene })).toBeUndefined();
+  expect(allowed(f.scene, 3)).toBeUndefined();
+  const bad = fixture(false, 0.8);
+  bad.sample(0.95);
+  expect(
+    routeLoopPoseAllowed(
+      bad.group,
+      bad.entity,
+      bad.scene,
+      bad.profile,
+      0,
+      2,
+      2,
+    ),
+  ).toBe(false);
 });

@@ -7,7 +7,7 @@ import {
   type Scene,
 } from "../shared/scene";
 import { retimeDialogueAfterChange } from "../shared/dialogueSchedule";
-import { proposeCapturedArrivalSteps } from "./capturedArrival";
+import { proposeAutomaticArrivalSteps } from "./automaticArrival";
 import type { PreparedRoutes } from "./automaticRoutes";
 import { pathToWorld } from "../shared/path";
 import {
@@ -298,7 +298,7 @@ export function* installArrivalRoutes(
         if (issues[i].actorId === actor.id && issues[i].clipId === clip.id)
           issues.splice(i, 1);
     };
-    const proposal = yield* proposeCapturedArrivalSteps(
+    const proposal = yield* proposeAutomaticArrivalSteps(
       scene,
       objects,
       actor.id,

@@ -44,6 +44,35 @@ type Saved = {
 // different scene objects in turn; keep a few recent closures per body so
 // that alternation does not recapture the loop on every call.
 const cache = new WeakMap<T.Group, Saved[]>();
+/** Read the body closure evaluated by playback for this exact route. Missing
+ * evidence is distinct from acceptance; planners must sample before asking. */
+export function routeLoopPoseAllowed(
+  group: T.Group,
+  entity: Entity,
+  scene: Scene,
+  profile: LocomotionProfile,
+  start: number,
+  duration: number,
+  sourceDuration: number,
+): boolean | undefined {
+  const key = JSON.stringify([
+    entity.position,
+    entity.rotation,
+    entity.scale,
+    start,
+    duration,
+    sourceDuration,
+  ]);
+  return cache
+    .get(group)
+    ?.find(
+      (entry) =>
+        entry.scene === scene &&
+        entry.entity === entity &&
+        entry.profile === profile &&
+        entry.key === key,
+    )?.closure?.allowed;
+}
 const RECENT = 4;
 const up = new T.Vector3(0, 1, 0);
 function angularVelocity(a: T.Quaternion, b: T.Quaternion, dt: number) {
