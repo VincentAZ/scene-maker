@@ -867,3 +867,15 @@ only notice is the channel disclosure ("4 animation channels could not be
 transferred (ltoes, rtoes, lwrist…)… neck motion share one neck joint") —
 character-for-character the notice the original GLB fixture take gives on the
 same body (checked separately). Screenshot `claude-session/bvh-ui-playing.png`.
+
+## D31 — Investigated, no change: CMU `lwrist` vs `lhand` as the hand (14:01–14:04)
+
+The UI notice lists `lwrist` among untransferred channels, and the widely used
+CMU BVH conversion calls `lwrist` "LeftHand". Measured on the 35_01 fixture:
+`lwrist` sits at the wrist (thumb branches from it) but carries only forearm
+twist (8.7° range); `lhand`, 11.6 cm further, carries the hand's flexion
+(23.8°). Mapping the hand role to `lwrist` would trade the larger motion for the
+smaller. With `lhand` as the hand, the world-orientation transfer already
+includes `lwrist`'s twist (it is `lhand`'s parent); only that intermediate
+joint has no receiving counterpart, which the notice correctly discloses.
+Kept as is (automatic ASF recognition and the fixtures' explicit mapping agree).
