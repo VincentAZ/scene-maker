@@ -55,8 +55,9 @@ The fixture has Harper playing Celebrate → Walk → Wave hello, Sage playing A
 
 ## Captured performances
 
-Two CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
-2.975 s) and **Captured walk and turns** (69_06, 43.433 s). These are original
+Three CMU Graphics Lab captures are also bundled: **Captured walk** (35_01,
+2.975 s), **Captured walk and turns** (69_06, 43.433 s), and **Captured run**
+(35_17, 1.383 s). These are original
 120 Hz body performances; finger/thumb channels were not captured and are
 excluded. Facial animation is not included. Source skeletons are displayed as
 capsules for original-performance previews. That display is not a body scan
@@ -69,6 +70,7 @@ Download the listed ASF and AMC into a private source directory, then run:
 ```sh
 node scripts/prepare-cmu-motion.mjs <source-directory> 35_01
 node scripts/prepare-cmu-motion.mjs <source-directory> 69_06
+node scripts/prepare-cmu-motion.mjs <source-directory> 35_17
 ```
 
 Use separate directories for different subjects. Copy each resulting GLB to
@@ -89,10 +91,21 @@ without an established or native gait now select **Captured walking stride**,
 which references source seconds 0.4–1.525 of 35_01. The editor measures that
 interval and receiver proportions to offer the original pace. It saves the
 source identity and interval on the route; it does not alter the original take
-or migrate saved routes. Running currently retains the authored fallback.
+or migrate saved routes. New running routes use **Captured running stride**,
+source seconds 0.15–0.8833333333 of 35_17, unless the actor already has an
+established/native running gait. Authored and procedural choices remain available.
 
 Contact evidence is measured on the uninterrupted capture and trimmed to the
-selected stride, preserving support when a cut falls inside a planted step.
-Normal-speed route evidence exists for Party Woman and Casual Female. Broader
+selected walking stride, preserving support when a cut falls inside a planted
+step. The running take has no detected stance intervals: it retains captured
+foot motion without stance-lock correction. Its foot endpoints match across
+the selected repeat, but that is not a no-sliding guarantee.
+
+Imported skins bypass cached frustum bounds, which can otherwise hide a body
+whose root motion moves its bones outside the bounds of an earlier pose.
+Static meshes retain normal frustum culling. This avoids a per-frame scan of
+every deformed vertex, at the cost of drawing off-screen imported skins.
+
+Normal-speed walking/running route evidence exists for Party Woman and Casual Female. Broader
 provider coverage, contact quality, arrival/wait visual verification, and other
 natural defaults remain unfinished; this is not a universal quality claim.

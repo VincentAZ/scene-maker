@@ -133,8 +133,8 @@ export function matchingRouteLocomotion(
   );
 }
 
-/** Prefer the actor's established/native gait; otherwise use the authored
- * captured stride before an authored or procedural fallback. */
+/** Prefer the actor's established/native gait; otherwise use a captured stride
+ * before an authored or procedural fallback. */
 export function defaultRouteLocomotion(
   scene: Scene,
   actor: Entity,

@@ -93,7 +93,7 @@ describe("route locomotion selection", () => {
     expect(namedRouteMovement(unnamed)).toBeUndefined();
   });
 
-  it("prefers the character's own gait or most recent imported gait, then the authored library", () => {
+  it("prefers the character's own gait or most recent imported gait, then the captured strides", () => {
     const { scene, actor, walk } = fixture();
     expect(defaultRouteLocomotion(scene, actor)).toBe(walk);
     const carry = libraryMotions.find(
@@ -110,7 +110,15 @@ describe("route locomotion selection", () => {
       start: 0.4,
       end: 1.525,
     });
-    expect(defaultRouteLocomotion(scene, actor, "run").id).toBe("authored-run");
+    expect(defaultRouteLocomotion(scene, actor, "run").id).toBe(
+      "captured-running-stride",
+    );
+    expect(
+      defaultRouteLocomotion(scene, actor, "run").path?.sourceRange,
+    ).toEqual({
+      start: 0.15,
+      end: 106 / 120,
+    });
   });
 
   it("deduplicates route copies but preserves an existing route whose original action is gone", () => {

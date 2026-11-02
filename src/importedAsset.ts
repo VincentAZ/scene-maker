@@ -54,6 +54,13 @@ export function prepareImportedAsset(
   const group = new T.Group(),
     imported = gltf.scene;
   repairOpaqueImportedMaterials(imported);
+  imported.traverse((object) => {
+    // SkinnedMesh bounds are cached, but captured travel can move the entire
+    // body through its bones without moving the mesh node. A bind/earlier-pose
+    // sphere can then reject a body that is visibly inside the camera. Keep
+    // skins drawable without rescanning every deformed vertex each frame.
+    if (object instanceof T.SkinnedMesh) object.frustumCulled = false;
+  });
   let content: T.Object3D = imported;
   // Keep node UUIDs: original animation tracks may bind to unnamed nodes.
   // Rooms must keep their authored transforms: grounding by bounds can lift

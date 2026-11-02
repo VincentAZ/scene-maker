@@ -434,3 +434,83 @@ new default in a real scene through arrivals, waits, detours and export; more
 provider rigs and close sole/hand views. Native source and receiver aesthetics
 still need acceptance. Do not turn this walking-default milestone into a claim
 that the whole natural-animation objective is complete.
+
+## Continuation update — captured running and animated-skin visibility
+
+Prior turn was **progress**: walking defaults/contact trimming were committed as
+4bf996b. This turn adds a running source and fixes an observed rendering defect.
+The complete natural-animation objective is still **not achieved**.
+
+- Retrieved official CMU subject 35 trial 17: **run/jog**, 120 Hz, 167 frames,
+  1.383333 seconds. Raw ASF/AMC, official catalogue and reference AVI are in
+  `/tmp/scene-natural-motion/cmu-run/`. Also evaluated 09_01 (1.225 s), not shipped.
+  Source URLs/terms use the already-established CMU terms. Website row colors
+  alone were not treated as quality evidence; the feedback link is a report form,
+  not a list of confirmed defects. Official reference and app frame sequences
+  show alternating running flight/stance and arm swing, not an authored jog.
+- Shipped 35_17 as **Captured run**, with hashes/mapping/provenance in the existing
+  captured catalogue and existing CMU terms. Original 120 Hz key values retained,
+  no smoothing/time warp/finger fabrication. Added selector preset **Captured
+  running stride**, source seconds 0.15–106/120 (88/120 s), measured distance
+  2.6321303311993876. New runs without an established/native gait now select it.
+  Existing saved authored routes/native priorities remain. Foot endpoint matching
+  found three candidates; selected this interior window. **No stance intervals
+  are detected in this capture**; it uses original foot motion without stance
+  locks. Do not claim no skating or complete running acceptance from the seam.
+- The native runner disappeared in side-view footage after ~0.5 s, despite its
+  skin being inside the camera. Reproduced WebGL draws: at 0.67/1.2 s the cached
+  SkinnedMesh sphere was outside, precise deformed bounds inside, normal draws=0,
+  disabling frustum culling draws=1. `prepareImportedAsset` now disables cached
+  frustum culling on imported skins; static meshes keep culling. This preserves
+  animation poses and avoids per-frame full vertex scans, with an off-screen
+  skin drawing cost. New regression exercises real bone travel and renderer's
+  visibility predicate. Its initial failure was a test action remaining paused
+  after LoopOnce; resetting before each seek fixed the test setup.
+- Browser after-fix diagnostic draws the runner at every listed time. Files:
+  `cmu-run/culling-before.json`, `culling-after.json`; driver
+  `test-results/skinned-culling-diagnostic.mjs`. Before movie
+  `jog-native-side-1x.mp4` visibly loses the original; corrected
+  `jog-native-side-visible-1x.mp4` shows both through the entire actual take.
+- Normal-speed six-stride route videos, 4.4 seconds / 60 fps:
+  `cmu-run/shipped-run-route-party-1x.mp4` (original skeleton / Party Woman),
+  `cmu-run/jog-route-sage-1x.mp4` (original / Casual Female, displayed as Sage).
+  Party final video uses shipped URL and generic captured-performance label.
+  Earlier jog/Sage labels mistakenly say "CMU walking capture" but the actual
+  take is 35_17; do not mistake that harness label for a different input.
+  Reviewed source visibility, body/flight sequence and repeat-adjacent frames.
+  These remain feedback evidence, not universal naturalness acceptance.
+- Actual Actions preview of **Captured run** preserves .63 s across Original/
+  Party Woman switches, Play/Pause, correct Add recipient, no saved-content
+  changes, no errors. `cmu-run/preview-ui.log`; driver
+  `test-results/library-run-preview-ui.mjs`.
+- Actual route editor selected running stride and saved 6 m / 2.0124856 s on
+  Party Woman with exact source/range and collisions=true, in disposable
+  `captured-run-default-review`. `/tmp/scene-natural-motion/default-captured-run-saved.json`.
+  `cmu-run/route-ui-recheck.log` has no errors. First run had one unlocated 404;
+  URL-bearing repeat did not reproduce it, so the original cause is unproven.
+- Export harness now samples the **entire** route + .3 s held tail, explicit bake
+  boundaries and half-frame times, instead of only initial timestamps. Baked and
+  reloaded both source and receiver: 843 samples each through 4.7 s. Maximum
+  joint/skin position discrepancy: source <0.135 mm; Party Woman <0.159 mm;
+  Sage <0.197 mm. Reports `run-full-export-parity-export.json` and
+  `run-sage-full-export-parity-export.json`. This is full-duration numerical
+  comparison, not independent visual export review. The tiny parity-run MP4s
+  intentionally capture only .05 s; use the named full route videos for viewing.
+- Full suite: **1080 tests /96 files**, TypeScript, diff check, isolated build
+  pass. Logs in `cmu-run/{full-suite,typescript,build}.log`. Existing AI SDK schema
+  and build chunk-size warnings remain. No collision/navigation/timing logic was
+  edited. New Vite **4553**, handle 28719; API4413 restarted for catalogue,
+  handle4471, PID2633778. Owned Chrome9451 remains PID2594784. Revalidate services.
+- Durable evidence (including converter raw files/movies/scripts/logs) is in
+  `.data/natural-motion-investigation/captured-running/`. The main comparison
+  harness defaults now write to `/tmp/scene-natural-motion/comparisons`, not the
+  protected original workspace. No protected project/workspace was modified.
+
+Next priority: inspect the **saved walking/running routes in a real scene**
+through starts, arrivals, blocked waits/recovery and detours. In particular,
+verify that a route ending during a running flight does not simply hold that
+pose. Use the existing route-stop/transition machinery and inspect evidence
+before adding another correction. Other authored/procedural actions still need
+natural source replacements or appropriate behavior. The explicit original
+ActorCore-dummy/Party-Woman comparison and broader provider/extremity validation
+remain required; this turn's running take is CMU, not an ActorCore motion.
