@@ -194,9 +194,33 @@ function planFor(
     ancestor(upperChest.bone, lowerChest.bone) &&
     chestBranch(source, upperChest.bone) &&
     chestBranch(target, targetChest.bone);
+  // A single receiving neck represents the source chain’s endpoint. Rigs
+  // with two neck segments retain independent motion at both segments.
+  const lowerNeck = a.byKey.get("neck"),
+    upperNeck = a.byKey.get("upperneck"),
+    targetNeck = b.byKey.get("neck");
+  const combinedNeck =
+    lowerNeck &&
+    upperNeck &&
+    targetNeck &&
+    !b.joints.some((joint) => joint.key === "upperneck") &&
+    !target.userData.disabledRigRoles?.has("upperneck") &&
+    upperNeck.bone.parent === lowerNeck.bone &&
+    source.userData.bones.head.parent === upperNeck.bone &&
+    target.userData.bones.head.parent === targetNeck.bone &&
+    lowerNeck.bone.children.filter((child) => child instanceof T.Bone)
+      .length === 1 &&
+    upperNeck.bone.children.filter((child) => child instanceof T.Bone)
+      .length === 1 &&
+    targetNeck.bone.children.filter((child) => child instanceof T.Bone)
+      .length === 1;
   const pairs: Pair[] = b.joints.flatMap((t) => {
     const s =
-      combinedChest && t === targetChest ? upperChest : a.byKey.get(t.key);
+      combinedChest && t === targetChest
+        ? upperChest
+        : combinedNeck && t === targetNeck
+          ? upperNeck
+          : a.byKey.get(t.key);
     return s &&
       b.byKey.has(t.key) &&
       (s.bone === hips ||
@@ -352,13 +376,14 @@ function planFor(
           reason: "Unnamed morph weights cannot be safely matched",
         });
     } else if (
-      combinedChest &&
-      node === lowerChest.bone &&
+      ((combinedChest && node === lowerChest.bone) ||
+        (combinedNeck && node === lowerNeck.bone)) &&
       ["position", "quaternion"].includes(path.propertyName)
     ) {
       report.composed.push({
         channel: track.name,
-        target: targetChest.bone.name,
+        target: (node === lowerNeck?.bone ? targetNeck! : targetChest!).bone
+          .name,
       });
     } else if (
       node instanceof T.Bone &&
@@ -417,9 +442,14 @@ export function applyRetargetNotice(
     : "";
   target.userData.motionNotice = [
     unsupported,
-    report?.composed.length
-      ? "Upper and lower chest motion share one chest joint on this character."
-      : "",
+    ...(["chest", "neck"] as const).map((role) =>
+      report?.composed.some(
+        ({ target: name }) =>
+          name === rigs.get(target)?.byKey.get(role)?.bone.name,
+      )
+        ? `Upper and lower ${role} motion share one ${role} joint on this character.`
+        : "",
+    ),
   ]
     .filter(Boolean)
     .join(" ");

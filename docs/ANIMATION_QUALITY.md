@@ -4693,3 +4693,17 @@ an unrestricted imported original performance, are in the ignored `playback-cloc
 evidence archive. These verify timing and framing; natural source quality and
 remaining start/stop/retargeting work are still open. See the continuation brief
 for exact reproduction, limits and final validation.
+
+### Upper-neck articulation (2026-11-01)
+
+An unbranched extra segment between an identified lower neck and head can now
+transfer across differently named rigs. Two-segment receivers retain separate
+motion; a compatible single-neck receiver represents the source endpoint and
+reports the composition. Explicit exclusions and ambiguous topology take priority.
+
+Three real captures previously lost24–39° of upper-neck bend on Party Woman and
+Casual Female. Corrected discrepancies are below .0035°; native performances and
+ActorCore-to-Party playback are unchanged. Normal-speed close-up evidence and
+full route/split/export preservation results are in the continuation brief and
+ignored `detail-chains` archive. Wrist/toe detail and natural starts/stops remain
+open; this does not establish universal naturalness.

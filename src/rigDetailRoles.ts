@@ -12,7 +12,8 @@ const contains = (parent: T.Object3D, child: T.Object3D) => {
 
 /** Conservative anatomical fallback from already identified body anchors.
  * The common arm/head branch identifies a chest; a single intervening bone
- * identifies a shoulder or neck. Multi-bone branches remain ambiguous.
+ * identifies a shoulder or neck. A known lower neck followed by one unbranched
+ * segment identifies an upper neck; other multi-bone branches remain ambiguous.
  * Explicit mappings, disabled roles, and existing anatomical names win. */
 export function inferDetailRoles(
   joints: { bone: T.Bone; key: string }[],
@@ -66,4 +67,15 @@ export function inferDetailRoles(
     const chain = intermediate(end);
     if (chain.length === 1) assign(role, chain[0]);
   }
+  const necks = joints.filter((joint) => joint.key === "neck");
+  const upper = head.parent;
+  if (
+    necks.length === 1 &&
+    upper instanceof T.Bone &&
+    upper.parent === necks[0].bone &&
+    necks[0].bone.children.filter((child) => child instanceof T.Bone).length ===
+      1 &&
+    upper.children.filter((child) => child instanceof T.Bone).length === 1
+  )
+    assign("upperneck", upper);
 }

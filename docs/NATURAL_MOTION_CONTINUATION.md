@@ -1602,3 +1602,89 @@ saved project: `playback-clock-standing-wait-review`. Candidate4597 PID2799457;
 frozen4593 PID2793580. Revalidate before use. The React best-practices skill was
 reviewed for stable callbacks, hook ownership and accessibility; no new global
 listeners or changed transport ARIA labels were introduced.
+
+## Anatomical upper-neck transfer (2026-11-01, after e2a538e)
+
+Previous goal turn: **progress**. The overall natural-animation goal remains
+OPEN. This turn restores measured missing neck motion; it does not replace
+starts/stops, resolve all extremities, or establish all-action naturalness.
+
+- Actual rig inspection shows CMU lowerneck → upperneck → head, Party Woman
+  NeckTwist01 → NeckTwist02 → head, and Casual Female Neck → head. Lower neck
+  already matched, but the extra source segment did not. Receiving head world
+  orientation composed the source chain while neck skin missed its upper bend.
+- Full-duration60Hz audits on35_01,69_06,82_14 find maximum upper-neck orientation
+  discrepancies24.207°,39.072°,26.191° on Party Woman and Casual Female. The
+  comparison compensates source entry heading and both bind frames; this is
+  NECK segment orientation, not a claim that the head was39° misoriented.
+- `rigDetailRoles.ts` now identifies an upper neck only immediately between a
+  uniquely known lower neck and head, with no bone branch at either neck joint.
+  Existing semantic roles, explicit mappings, disabled roles and excluded bones
+  retain precedence. Added `upperNeck` to the editable detail-role list.
+- Two-segment receiving necks retain independent lower/upper motion. A single
+  neck represents the source upper endpoint only when both source chain and
+  receiver topology are unambiguous. Disabled/ambiguous upper roles block that
+  fallback. The transfer report explicitly describes the composed lower channel
+  and names the receiving neck. No source keys or provider-name condition added.
+- Corrected worst audit error is .003466° on Party Woman (floating-point/frame
+  decomposition), below .000004° on Casual Female. Remaining wrist channels are
+  still unsupported; composition does not imply identical multi-segment skin.
+- Five synthetic cases cover independent/composed necks, different bind axes,
+  reverse seeking, explicit disabling, ambiguous names and branching. The two
+  positive cases fail frozen e2a538e at .06442rad and pass the fix; head orientation
+  must not receive the neck contribution twice. A real shipped69_06→Casual test
+  checks the full neck bend, including the39° worst-time sample.
+
+Visible and preservation evidence:
+
+- `neck-transfer-before-after-1x.mp4`: source seconds9–14 of69_06 on Party Woman,
+  30fps, close head/neck/upper-body view. Frozen e2a538e left, corrected right;
+  same source phase, rate, lighting and camera formula. The baseline's recorded
+  local poses are replayed on an independently loaded identical receiving rig.
+  Whole neck/head frames inspected around11.83s. The final crop retains the
+  neck and upper body while excluding a blank lower-edge compositor strip.
+- Actual unrestricted original ActorCore-to-Party UI recording:
+  `actorcore-party-actual-ui-1x.mp4`, eight wall seconds, source1→8.92s. Captured
+  on4597 before this correction; preservation below proves that pair unchanged.
+  Complements prior `playback-clock/review/native.mp4` of the original dummy.
+  These are separate wall-time recordings, not frame-exact synchronized panels.
+ 128 captured images are timestamp-resampled to30fps with held frames, no stretch.
+-26native/receiver cases×39timestamps: all eight CMU original takes, ActorCore
+  original and ActorCore→Party remain EXACTLY unchanged. Root and lower-body
+  joint positions unchanged for all cases. Other receiving positions change by
+  up to58.090mm as neck/head attachments now follow the restored articulation.
+-140walk/run cases across35rigs, straight/curved paths,23,870full-motion samples:
+  root positions and source clocks match the previous transfer-frame baseline
+  exactly. Max loop joint/skin changes .008496/.008104mm; angle .000028998rad,
+  finite-h velocity residual .027001m/s; no loop failures. Minimum sole clearance
+  -9.61e-10m. This is preservation, not proof of natural arrival behavior.
+-140source-cut cases: maximum joint .000035802mm, sampled skin .000025803mm,
+  angle5.961e-8rad. The complete receiving-frame correction remains intact.
+- Full5.3-second trimmed neck passage plus held tail exported/reloaded:665samples,
+ 102bone/mesh pairs,12vertices/mesh,38,438,332-byte GLB; max joint/skin discrepancy
+  .082790/.082788mm. Export implementation unchanged; no licensed GLBs archived.
+- Actual final4598 library preview preserves .63s across source/Party switch,
+  Play/Pause and Add recipient, no saved-content change or JS/HTTP errors.
+  Software-WebGL advisory remains. Full suite **1,147tests/99files passed**,
+  maxWorkers=2/default limits, TypeScript and isolated build passed. A first
+  typecheck caught a missing non-null assertion in the new fixture; corrected.
+
+Reproduction:
+
+- Current uninstrumented Vite4598 PID2806329; frozen e2a538e Vite4599 PID2806432
+  replaces detailedRetarget,rigDetailRoles,shared/rigMapping with exact snapshots.
+  A final production edit after4598 startup is a comment only. PrivateAPI4413 and
+  ownedChrome9451 unchanged. Revalidate before use; no protected state touched.
+- Work `/tmp/scene-natural-motion/detail-chains`, durable ignored archive
+  `.data/natural-motion-investigation/detail-chains`. Drivers `neck-*`,
+  `detail-chain-inspect.mjs`, `detail-recipient-record.mjs`, and frozen config.
+  Archive includes reports, snapshots, videos and capture timestamps, excludes
+  frame directories and licensed input/export GLBs.
+- Next: inspect remaining wrist contribution to forearm skin and toe handling
+  with measured anatomical axes/topology, preserving already composed hand/foot
+  motion. Continue compatible native starts/arrivals and running stops. The
+  accepted safety bounds and current gait presets were not weakened or changed.
+
+Final70-second standing-wait/recovery:4,309timestamps, maximum history component
+difference3.445464e-8, endpoint error6.00545mm, no recovery issues. Saved only as
+private `neck-standing-wait-review`. Full goal remains active.

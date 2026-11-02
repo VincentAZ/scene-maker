@@ -434,6 +434,92 @@ describe("detailed imported animation runtime", () => {
     },
   );
 
+  it.each(["separate", "combine", "disabled", "ambiguous", "branched"])(
+    "preserves anatomical neck segments across unrelated names (%s)",
+    (mode) => {
+      const source = fixture(),
+        native = fixture(),
+        target = fixture(0.7);
+      const lower = "CC_Base_NeckTwist01",
+        upper = "CC_Base_NeckTwist02";
+      for (const f of [source, native])
+        f.joints[upper].name = "SourceUpperSegment";
+      target.joints[upper].name = "ReceiverUpperSegment";
+      if (mode !== "separate" && mode !== "branched") {
+        target.joints[lower].attach(target.joints.CC_Base_Head);
+        target.joints[upper].removeFromParent();
+      }
+      if (mode === "ambiguous")
+        for (let i = 0; i < 2; i++) {
+          const extra = new T.Bone();
+          extra.name = "UpperNeck";
+          target.joints[lower].add(extra);
+        }
+      if (mode === "branched") {
+        const extra = new T.Bone();
+        extra.name = "UnknownNeckBranch";
+        target.joints[lower].add(extra);
+      }
+      const clip = new T.AnimationClip(
+        "Independent neck bends",
+        duration,
+        [lower, upper].map(
+          (name, index) =>
+            new T.QuaternionKeyframeTrack(
+              source.joints[name].name + ".quaternion",
+              [0, duration],
+              [
+                ...source.bind[name].quaternion.toArray(),
+                ...source.bind[name].quaternion
+                  .clone()
+                  .multiply(rotation(0.2 + index * 0.15, -0.15, 0.1))
+                  .toArray(),
+              ],
+            ),
+        ),
+      );
+      source.configure([clip]);
+      native.configure([clip]);
+      target.configure(
+        [],
+        mode === "disabled" ? { upperNeck: null } : undefined,
+      );
+      schedule(native, native, [clip], false);
+      schedule(target, source, [clip], true);
+      const endpoint = mode === "separate" ? upper : lower;
+      const sourceEnd = ["combine", "separate"].includes(mode) ? upper : lower;
+      for (const time of [0.4, 1.2, 2.1, 0.4]) {
+        native.sample(time);
+        target.sample(time);
+        const expected = orientation(native.joints[sourceEnd])
+          .multiply(source.bind[sourceEnd].world.clone().invert())
+          .multiply(target.bind[endpoint].world);
+        expect(
+          orientation(target.joints[endpoint]).angleTo(expected),
+        ).toBeLessThan(1e-6);
+        // Head orientation already contains the neck contribution and must not
+        // have the new upper segment applied a second time.
+        const headExpected = orientation(native.joints.CC_Base_Head)
+          .multiply(source.bind.CC_Base_Head.world.clone().invert())
+          .multiply(target.bind.CC_Base_Head.world);
+        expect(
+          orientation(target.joints.CC_Base_Head).angleTo(headExpected),
+        ).toBeLessThan(1e-6);
+      }
+      const report = retargetReport(source.group, target.group, clip)!;
+      expect(report.unsupported.map((c) => c.channel)).toEqual(
+        ["combine", "separate"].includes(mode)
+          ? []
+          : ["SourceUpperSegment.quaternion"],
+      );
+      expect(report.composed).toEqual(
+        mode === "combine"
+          ? [{ channel: lower + ".quaternion", target: lower }]
+          : [],
+      );
+    },
+  );
+
   it("preserves chest and shoulder motion between unrelated names using anatomical hierarchy", () => {
     const source = fixture(),
       native = fixture(),

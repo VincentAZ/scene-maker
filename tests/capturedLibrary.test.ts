@@ -1,7 +1,12 @@
 import { expect, it } from "vitest";
 import * as T from "three";
 import { libraryCharacters } from "../shared/characterLibrary";
-import { setMotionSources } from "../src/rig";
+import {
+  setMotionSources,
+  applyHumanoidPose,
+  applyTransferredClip,
+  nativeRootMotion,
+} from "../src/rig";
 import { locomotionScale } from "../src/locomotion";
 import { sampleFootSurfaces } from "../src/footSurface";
 import fs from "node:fs/promises";
@@ -42,6 +47,53 @@ async function load(asset: Asset) {
   );
   return { bytes, gltf, group: prepareImportedAsset(asset, gltf) };
 }
+
+it("retains the complete captured neck bend on a single-neck receiver", async () => {
+  const { group: source, gltf } = await load(
+    capturedMotionSources.find((a) => a.id === "cmu-capture-69-06")!,
+  );
+  const { group: target } = await load(
+    libraryCharacters.find((a) => a.id === "quaternius-casual-female")!,
+  );
+  const take = gltf.animations[0],
+    upper = source.userData.bones.head.parent as T.Bone,
+    neck = target.userData.bones.head.parent as T.Bone;
+  const q = (node: T.Object3D) =>
+    node.getWorldQuaternion(new T.Quaternion()).normalize();
+  const sourceBind = q(upper),
+    targetBind = q(neck);
+  const initial = new T.Quaternion().setFromAxisAngle(
+    new T.Vector3(0, 1, 0),
+    -nativeRootMotion(source, take)!.startHeading,
+  );
+  try {
+    for (const time of [0, 4.2, 11.85, 25, 40, 11.85]) {
+      applyHumanoidPose(target, {}, true);
+      target.position.set(0, 0, 0);
+      target.quaternion.identity();
+      applyTransferredClip(source, target, take, time);
+      target.updateMatrixWorld(true);
+      const expected = initial
+        .clone()
+        .multiply(q(upper))
+        .multiply(sourceBind.clone().invert())
+        .multiply(targetBind);
+      expect(q(neck).angleTo(expected)).toBeLessThan(1e-6);
+    }
+    expect(target.userData.retargetReport.composed).toContainEqual({
+      channel: "lowerneck.quaternion",
+      target: neck.name,
+    });
+    expect(
+      target.userData.retargetReport.unsupported.some(
+        (c: { channel: string }) => c.channel === "upperneck.quaternion",
+      ),
+    ).toBe(false);
+  } finally {
+    disposeObject(source);
+    disposeObject(target);
+  }
+});
 
 it.each(["cmu-capture-82-14", "quaternius-casual-female"])(
   "retains the original capture floor when a route hands over to a trimmed stop on %s",

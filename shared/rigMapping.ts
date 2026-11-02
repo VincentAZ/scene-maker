@@ -55,6 +55,7 @@ export const detailJointRoles = [
   "chest",
   "upperChest",
   "neck",
+  "upperNeck",
   "leftShoulder",
   "rightShoulder",
   "leftToeBase",
