@@ -1984,3 +1984,72 @@ had only the stale40-action inventory expectation fail; it was updated to41 and
 the full suite rerun. Changed implementation/data/test files pass formatting and
 diff checks. Existing SDK schema-compatibility and bundle-size advisories remain.
 Build output: `/tmp/scene-natural-motion/stop-source-build`.
+
+
+## Session handoff — hand/body investigation, 2026-11-02
+
+The user requested a new session. Last implementation is **0e7823d**, adding the
+complete91_34 recorded performance. This latest investigation changed no production
+code or defaults. The overall natural-animation goal remains unfinished.
+
+New evidence and next decision:
+
+- Read this entire continuation document and the original user attachment again.
+  Inspected actual91_34 frame0: Party Woman's left hand is largely inside her
+  clothing, with fingers protruding. The right hand is strongly splayed outward.
+- `test-results/hand-contact-inspect.mjs` samples source/Party arm directions,
+  anatomical joint positions and palm directions at0,.5,2,3,5,9,15,18.38seconds.
+  Raw source faces approximately180degrees relative to normalized receiver;
+  comparing raw directions without removing that facing gives FALSE large errors.
+  A rough180degree correction leaves directions within about1.2degrees. Use the
+  exact source entry heading for a definitive comparison. This does not currently
+  support blaming lost upper/lower arm swing for the visible penetration.
+- In canonical straight-arm neutral, source hand→aggregate-finger direction is
+  down; receiver hand→middle-knuckle direction retains about7–9degrees of rest
+  bend. No neutral-hand calibration change was implemented. This difference
+  alone does not explain or solve the observed intersection.
+- The source palm already bends inward at the first frame. Raw91_34 AMC has
+  lhand(-10.43,-33.695),rhand(-3.12254,-57.4364) degrees. These are original
+  channel values, not introduced by the app. CMU's official homepage warns
+  that hand/toe joints can be noisy, in addition to uncaptured fingers/thumbs:
+  https://mocap.cs.cmu.edu/ . Do not silently replace raw motion or label invented
+  finger detail as captured. Noise warning alone is not proof of this take's error.
+- `test-results/hand-contact-collision.mjs` independently samples actual receiving
+  skin. It labels hand vertices by >.75 descendant-hand skin weight and body
+  triangles by all vertices having <.05 arm-descendant weight. Closest-triangle
+  signed-distance diagnostic at0s finds607/691left-hand and101/745right-hand
+  vertices on the negative side, deepest66.916/51.613mm. The left worst point is
+  [0.09244,0.96272,0.01098], nearest body surface[0.15391,0.96398,0.03740].
+  This supports the visible intersection; it is NOT a robust watertight collision
+  detector. Removed arm triangles leave openings, clothing may have multiple
+  surfaces, and nearest-face sign can misclassify some points. Do not directly
+  promote its counts/depths as certified penetration or production collision.
+- Potential next experiment: bounded geometry-based outward arm adjustment for
+  low resting hands, preserving hand world rotation, finger articulation, source
+  timing and actual recorded samples. `solveLimb` exists in src/ik.ts. No such
+  solver was written or integrated, and no algorithm/threshold is yet validated.
+  It must handle detached joints, helpers, reverse seeking, scene cuts, loop
+  closure and export without losing source detail or changing native originals.
+  Investigate exact geometry and motion continuity before shipping. Alternatives
+  include better palm calibration or choosing a better source; evidence should
+  decide rather than assuming a contact solver is the answer.
+
+Artifacts and state:
+
+- Working diagnostics: `/tmp/scene-natural-motion/hand-contact/{inspection,
+collisions}.{json,log}`. Durable copies and both drivers:
+  `.data/natural-motion-investigation/hand-contact/`.
+- Both diagnostic processes completed successfully. No rendering/export/test job
+  remains pending from this investigation. No new test suite was necessary because
+  no product code changed. Last implementation validation remains1167tests,
+  TypeScript/build/UI/export checks documented above.
+- Rechecked live services at handoff: privateVite4608/PID2838043,
+  privateAPI4413/PID2837944,ownedChrome9451/PID2775841. Revalidate in new session.
+  API uses `/tmp/scene-natural-motion/data`; protected workspaces/services/user
+  Astra project unchanged. Existing private review projects were only read.
+- Continue on branch `fix/natural-motion-baseline` in
+  `/home/vincent/Repos/scene-maker-natural-motion`, NEVER the original workspace.
+  Main remaining priorities: visible transfer/contact quality, natural default
+  route starts/stops (35_01 still lacks a measured stop), running arrivals and
+  broader action/provider quality. The new complete take is selectable, not a
+  general route solution. Keep the full original goal and all preservation rules.
