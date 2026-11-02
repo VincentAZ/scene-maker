@@ -25,9 +25,11 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 7736423 | Single-neck sources bend both receiving neck segments |
 | cf994dc | Animation-only (mesh-less) armature imports recognised |
 | 1816a0e | Characters authored facing −Z (or sideways) turned to face +Z on import |
+| 756737a | Unresolved hand clearance disclosed in the motion notice |
+| (next) | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D19). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D21). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -56,6 +58,12 @@ full suite, typecheck, build.
 - Root motion carried on a separate root bone is invariant (D16).
 - A −Z-authored character (Soldier) walks/runs its own gaits on routes after
   import facing normalization (D19).
+- Skeletons named in the Unreal, Rigify, Daz Genesis, VRM/VRoid, Blender and
+  3ds Max Biped conventions are recognised as receivers and as animation
+  sources, including the sanitized names three.js gives them on load; Party
+  re-authored in each transfers identically to the Mixamo-renamed variant (D21).
+  `claude-rig-variants.mjs`/`claude-source-variants.mjs` have `names_<convention>`
+  variants.
 
 ## Known remaining gaps (measured)
 
@@ -69,13 +77,22 @@ full suite, typecheck, build.
   are only partly corrected and reported (`handClearance.unresolved`).
 - Skeleton-only sources (CMU capsules) keep their bind foot pitch; their finger
   channels stay excluded (not fabricated).
+- A full Rigify export that also carries its control bones ("hips", "head")
+  reports ambiguity and needs the rig mapping editor (by policy, not guessed).
+  VRM 1.0 files whose humanoid map lives only in the VRMC_vrm extension (no
+  J_Bip names) are not read; GLTFLoader ignores that extension.
+- Hand-clearance notice is per pose (as the foot-contact notice), so it can
+  appear for a fraction of a second on takes with a brief deep contact.
 - Not addressed this session: natural default route starts/stops (35_01 lacks a
-  measured stop), running arrivals, UI disclosure of hand-clearance adaptation.
+  measured stop), running arrivals.
+- Full suite on this machine: another session's headless Chrome (PID 1323435)
+  holds load at 16–18; run with `--maxWorkers=4` or two asset-heavy
+  motionLibrary tests can exceed their 5 s timeout (D20).
 
 ## Runtime at handoff
 
-Final Vite 4665 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4664 serve
+Final Vite 4668 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4667 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 

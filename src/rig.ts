@@ -10,6 +10,7 @@ import {
   applyRetargetNotice,
 } from "./detailedRetarget";
 import { boneNames } from "../shared/scene";
+import { withoutConventionPrefix } from "./boneConventions";
 import { configureRigContacts, type RigContacts } from "./ik";
 import { captureFootSurfaces, transferFootClearance } from "./footSurface";
 import { captureHandClearance, supportTransferredHands } from "./handClearance";
@@ -64,8 +65,13 @@ const parents: Partial<Record<BoneName, BoneName>> = {
 };
 const aliases: Record<string, string> = {
   hips: "hips",
+  hip: "hips",
   pelvis: "hips",
   spine: "spine",
+  // Unreal mannequin, Daz Genesis (abdomenLower) and Genesis 1/2 (abdomen).
+  spine01: "spine",
+  abdomenlower: "spine",
+  abdomen: "spine",
   head: "head",
   leftarm: "leftArm",
   leftupperarm: "leftArm",
@@ -111,31 +117,38 @@ const aliases: Record<string, string> = {
   ccbasercalf: "rightShin",
   ccbaserfoot: "rightFoot",
 };
+const LIMB_PART =
+  "upperarm|arm|shldrbend|shldr|forearmbend|forearm|lowerarm|hand|thighbend|thigh|upperleg|upleg|calf|shin|lowerleg|foot";
 /** Exact anatomical tokens only. Suffix helpers (twist/IK/end) never match. */
 function canonicalBoneName(name: string): string | undefined {
-  const short = name
-    .split(/[|:]/)
-    .at(-1)!
-    .replace(/^mixamorig[_:]?/i, "");
+  const short = withoutConventionPrefix(
+    name
+      .split(/[|:]/)
+      .at(-1)!
+      .replace(/^mixamorig[_:]?/i, ""),
+  );
   if (boneNames.includes(short as BoneName)) return short;
-  const direct = aliases[short.replace(/[_\s-]/g, "").toLowerCase()];
+  const compact = short.replace(/[_\s.-]/g, "").toLowerCase();
+  const direct = aliases[compact];
   if (direct) return direct;
-  const suffix = short.match(
-    /^(upperarm|arm|forearm|lowerarm|hand|thigh|upperleg|upleg|calf|shin|lowerleg|foot)[_. -]?(l|r|left|right)$/i,
-  );
-  const prefix = short.match(
-    /^(l|r|left|right)[_. -]?(upperarm|arm|forearm|lowerarm|hand|thigh|upperleg|upleg|calf|shin|lowerleg|foot)$/i,
-  );
-  const sided = suffix || (prefix && [short, prefix[2], prefix[1]]);
+  // Side and part in either order, separators ignored ("upper_arm.L",
+  // "L UpperArm", "lShldrBend", "hand_r").
+  const suffix = compact.match(new RegExp(`^(${LIMB_PART})(l|r|left|right)$`));
+  const prefix = compact.match(new RegExp(`^(l|r|left|right)(${LIMB_PART})$`));
+  const sided = suffix || (prefix && [compact, prefix[2], prefix[1]]);
   if (!sided) return;
   const side = /^(l|left)$/i.test(sided[2]) ? "left" : "right";
   const part: Record<string, string> = {
     arm: "Arm",
     upperarm: "Arm",
+    shldr: "Arm",
+    shldrbend: "Arm",
     forearm: "Forearm",
+    forearmbend: "Forearm",
     lowerarm: "Forearm",
     hand: "Hand",
     thigh: "Leg",
+    thighbend: "Leg",
     upperleg: "Leg",
     upleg: "Leg",
     calf: "Shin",
@@ -143,7 +156,7 @@ function canonicalBoneName(name: string): string | undefined {
     lowerleg: "Shin",
     foot: "Foot",
   };
-  return side + part[sided[1].toLowerCase()];
+  return side + part[sided[1]];
 }
 
 function restore(rig: HumanoidRig) {
@@ -302,7 +315,16 @@ export function configureImportedRig(
           (joint) => joint === bone || hasAncestor(joint, bone),
         ),
     );
-    if (matches.length === 1) bones[name] = matches[0];
+    // Hip above pelvis (Daz, Character Creator): the topmost carries both the
+    // torso and the legs. Only a single ancestor chain is resolved this way;
+    // unrelated duplicates stay ambiguous.
+    const top =
+      name === "hips" &&
+      matches.find((bone) =>
+        matches.every((other) => other === bone || hasAncestor(other, bone)),
+      );
+    if (top) bones[name] = top;
+    else if (matches.length === 1) bones[name] = matches[0];
     else if (matches.length > 1)
       ambiguous.push({
         joint: name,

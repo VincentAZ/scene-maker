@@ -3,12 +3,15 @@ import { forearmRollPairs } from "./forearmRoll";
 import { limbHelperPairs } from "./limbHelpers";
 import { extremityPairs } from "./extremityChains";
 import { inferDetailRoles } from "./rigDetailRoles";
+import { withoutConventionPrefix } from "./boneConventions";
 
 const normalized = (name: string) =>
-  name
-    .split(/[|:]/)
-    .at(-1)!
-    .replace(/^mixamorig[_:]?/i, "")
+  withoutConventionPrefix(
+    name
+      .split(/[|:]/)
+      .at(-1)!
+      .replace(/^mixamorig[_:]?/i, ""),
+  )
     .replace(/[_\s-]/g, "")
     .toLowerCase();
 /** Semantic names plus conservative hierarchy matching below. Twist/share/facial
@@ -25,6 +28,11 @@ function jointKey(bone: T.Bone, canonical: Record<string, T.Bone>) {
     spine1: "chest",
     ccbasenecktwist01: "neck",
     neck: "neck",
+    // Unreal (neck_01/neck_02) and Daz (neckLower/neckUpper) neck segments.
+    neck01: "neck",
+    necklower: "neck",
+    neck02: "upperneck",
+    neckupper: "upperneck",
     ccbaselclavicle: "leftshoulder",
     ccbaserclavicle: "rightshoulder",
     ccbaseltoebase: "lefttoebase",

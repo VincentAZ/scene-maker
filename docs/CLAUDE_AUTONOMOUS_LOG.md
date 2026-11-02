@@ -565,3 +565,50 @@ asset-heavy `motionLibrary` tests intermittently exceed the 5 s timeout (each
 ≈2.6 s alone on this code, on cf994dc and on 7736423 alike). The file passes
 alone; the full suite passes 1,196/1,196 with `--maxWorkers=4`. Not touched (not
 ours); timeouts not raised.
+
+## D21 — Standard skeleton naming conventions recognised (13:00–13:20)
+
+Probe: a synthetic skinned body named in each common standard convention.
+Before: Unity-style names passed; Unreal lacked `spine` (`spine_01` unknown);
+Blender `upper_arm.L` lacked both arms; Daz Genesis lacked hips/spine/arms/legs
+(`hip`, `abdomenLower`, `lShldrBend`, `lForearmBend`, `lThighBend`); VRM/VRoid
+(`J_Bip_L_UpperArm`), Rigify (`DEF-upper_arm.L`, numbered `DEF-spine.00n`
+torso) and 3ds Max Biped (`Bip01 L UpperArm`) recognised NOTHING — every such
+character or animation was refused as "not a recognizable humanoid body".
+Also found: three.js sanitizes node names on load (`DEF-spine.001` →
+`DEF-spine001`, `hand.L` → `handL`, `Bip01 Neck` → `Bip01_Neck`).
+
+Decision (`src/boneConventions.ts`, used by `rig.ts` roles and
+`detailedRetarget.ts` detail keys): strip the standard deform-layer prefixes
+(`DEF-`, `J_Bip_<C|L|R>_`, `Bip01 `); resolve Rigify's numbered torso chain
+(both spellings) to hips/spine/chest/upperChest/neck/upperNeck/head; parse side
+and limb part in either order with separators ignored; add Daz part names
+(ShldrBend/Shldr, ForearmBend, ThighBend), `hip`, `abdomenLower`/`abdomen`
+(spine), `spine_01`; neck keys `neck_01`/`neckLower` → neck,
+`neck_02`/`neckUpper` → upper neck. Hip above pelvis (Daz, CC): when every hips
+candidate lies on one ancestor chain the topmost is taken; unrelated duplicates
+stay ambiguous. Control (`MCH-`, `ORG-`, `_fk`, `_ik`) and twist/segment
+(`.001`, `Twist`) names still never match.
+Rejected (tried, reverted): (1) topology inference of hips/spine/head when no
+name matched — contradicts the established policy that a missing named joint is
+reported, not guessed (actorcoreRig tests), and on CC bodies the thighs meet at
+Pelvis, not Hip; (2) dropping unweighted name candidates as "control bones" —
+suppressed the ambiguity report the policy requires and dropped unweighted
+fixture joints. A full Rigify export with its "hips"/"head" controls therefore
+reports ambiguity and points to the rig mapping editor (tested).
+
+Evidence: `tests/rigConventions.test.ts` (17): every role for Unreal, Rigify,
+Daz, VRM, Blender, Unity, Biped, both as authored and as three.js loads them;
+Daz hip-over-pelvis; twist/MCH/ORG/fk/ik names excluded; control-bone
+ambiguity. 9 of 10 original-spelling cases fail on the previous code.
+Real-mesh invariance (`claude-rig-variants.mjs` new `names_<convention>`
+variants: Party re-authored in each convention, GLB export, app re-import,
+Vite 4668): CMU 91_34 0.00 mm/0.03° on all six; Thoughtful walk 3.15 mm and
+Quaternius Walk 0.00 mm with only the known eye (10.4°/5.5°) and rib-twist
+(2.6°) name-only helpers deviating — identical to the existing Mixamo-renamed
+variant. Before the neck keys, the four conventions without a bare `neck`
+deviated 32.6°/24 mm at the neck on single-neck sources. Source side
+(`claude-source-variants.mjs`, ActorCore Dummy M re-authored with tracks
+renamed): all six drive Party at 3.15 mm/0.75° (known Waist layout), source
+joints 0.00 mm vs identity. No collisions with any of 190 GLB files on disk
+(bundled + private). Suite 1,213 (`--maxWorkers=4`), tsc, prettier, build OK.
