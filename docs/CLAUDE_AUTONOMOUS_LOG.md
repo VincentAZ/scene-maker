@@ -566,7 +566,7 @@ asset-heavy `motionLibrary` tests intermittently exceed the 5 s timeout (each
 alone; the full suite passes 1,196/1,196 with `--maxWorkers=4`. Not touched (not
 ours); timeouts not raised.
 
-## D21 — Standard skeleton naming conventions recognised (13:00–13:20)
+## D21 — Standard skeleton naming conventions recognised (13:00–13:13)
 
 Probe: a synthetic skinned body named in each common standard convention.
 Before: Unity-style names passed; Unreal lacked `spine` (`spine_01` unknown);
@@ -613,7 +613,7 @@ renamed): all six drive Party at 3.15 mm/0.75° (known Waist layout), source
 joints 0.00 mm vs identity. No collisions with any of 190 GLB files on disk
 (bundled + private). Suite 1,213 (`--maxWorkers=4`), tsc, prettier, build OK.
 
-## D22 — BVH motion capture imports; SOMA naming; detached feet without skin (13:20–13:55)
+## D22 — BVH motion capture imports; SOMA naming; detached feet without skin (13:14–13:26)
 
 Imports accepted only GLB and FBX (FBX through Blender, which is not installed
 on this machine). BVH — the common interchange format of motion-capture
@@ -672,7 +672,7 @@ Gates on Vite 4670 identical to D21 (route 140, cuts 140, native exact, all 19
 cross-rig deltas, wait, export, real UI); suite 1,222 (`--maxWorkers=4`), tsc,
 prettier, build OK.
 
-## D23 — VRM/VRoid characters import (13:30–13:40)
+## D23 — VRM/VRoid characters import (13:26–13:28)
 
 `.vrm` (VRoid Studio and most VTuber avatars) is binary glTF 2.0 with the
 J_Bip names recognised since D21, but the picker and server refused the
