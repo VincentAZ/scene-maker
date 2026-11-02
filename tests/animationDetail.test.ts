@@ -307,6 +307,62 @@ function expectSnapshot(f: Fixture, expected: ReturnType<typeof snapshot>) {
 }
 
 describe("detailed imported animation runtime", () => {
+  it("matches renamed limb helpers by their place on the limb", () => {
+    // Same body; the source's twist/share helpers carry another convention's
+    // names. Their animation must still reach the receiver's helpers.
+    const helpers = [
+      "CC_Base_L_UpperarmTwist01",
+      "CC_Base_L_ForearmTwist01",
+      "CC_Base_L_ThighTwist01",
+      "CC_Base_L_CalfTwist01",
+      "CC_Base_L_KneeShareBone",
+    ];
+    const original = fixture(),
+      renamed = fixture(),
+      direct = fixture(),
+      viaRenamed = fixture();
+    helpers.forEach((name, i) => (renamed.joints[name].name = `aux_${i}`));
+    const clip = (f: Fixture) =>
+      new T.AnimationClip(
+        "Helper roll",
+        duration,
+        helpers.map(
+          (name, i) =>
+            new T.QuaternionKeyframeTrack(
+              `${f.joints[name].name}.quaternion`,
+              [0, duration],
+              [
+                ...f.bind[name].quaternion.toArray(),
+                ...f.bind[name].quaternion
+                  .clone()
+                  .multiply(rotation(0.1 * i, 0.4, -0.05 * i))
+                  .toArray(),
+              ],
+            ),
+        ),
+      );
+    const a = clip(original),
+      b = clip(renamed);
+    original.configure([a]);
+    renamed.configure([b]);
+    direct.configure();
+    viaRenamed.configure();
+    schedule(direct, original, [a], true);
+    schedule(viaRenamed, renamed, [b], true);
+    for (const time of [0.4, 1.2, 2.1, 0.4]) {
+      direct.sample(time);
+      viaRenamed.sample(time);
+      expectPoseEqual(viaRenamed, direct);
+      for (const name of helpers)
+        expect(
+          direct.joints[name].quaternion.angleTo(direct.bind[name].quaternion),
+        ).toBeGreaterThan(0.01);
+    }
+    expect(
+      retargetReport(renamed.group, viaRenamed.group, b)!.unsupported,
+    ).toEqual([]);
+  });
+
   it.each([
     [0.004, ""],
     [2, "bone lengths"],

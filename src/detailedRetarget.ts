@@ -1,5 +1,6 @@
 import * as T from "three";
 import { forearmRollPairs } from "./forearmRoll";
+import { limbHelperPairs } from "./limbHelpers";
 import { inferDetailRoles } from "./rigDetailRoles";
 
 const normalized = (name: string) =>
@@ -295,6 +296,18 @@ function planFor(
       : [];
   });
   pairs.push(...forearmRollPairs(source, target, clip, a, b, pairs));
+  const weighted = new Set<T.Bone>();
+  target.traverse((node) => {
+    if (!(node instanceof T.SkinnedMesh)) return;
+    const indices = node.geometry.getAttribute("skinIndex"),
+      weights = node.geometry.getAttribute("skinWeight");
+    if (!indices || !weights) return;
+    for (let i = 0; i < indices.count; i++)
+      for (let k = 0; k < weights.itemSize; k++)
+        if (weights.getComponent(i, k) > 0)
+          weighted.add(node.skeleton.bones[indices.getComponent(i, k)]);
+  });
+  pairs.push(...limbHelperPairs(source, target, a, b, pairs, weighted));
   // Torso chains differ between conventions (Waist/Spine01/Spine02,
   // Spine/Spine1/Spine2, lowerback/upperback/thorax) and names disagree on
   // which segment is "spine". Identically named torso bones (same convention)

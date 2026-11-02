@@ -290,3 +290,22 @@ armature ×2 — each fails on the previous code); route 140 unchanged maxima;
 source cuts 140 (≤3.58e-8 m); native preservation exact, transferred lower body/
 root ≤1.4e-15; 70 s wait 3.445e-8 / 6.005 mm; export 2,248 samples ≤0.0035 mm;
 real UI unchanged/no errors; typecheck, Prettier, diff, build OK.
+
+## D10 — Limb helper bones matched by their place on the limb (11:40–11:55)
+
+New `src/limbHelpers.ts`, called from the detailed plan after name pairs and
+`forearmRoll.ts`: on each anatomical limb segment (upper arm, forearm, thigh, calf),
+non-anatomical bones that branch off the segment's start joint, lie within 10% of
+the segment length from its axis and are not otherwise paired are located by
+fraction along the segment; source and receiver helpers pair only on a mutual,
+unique (second candidate ≥0.1 further) nearest match within 0.2. Receivers with
+skin only drive weighted helpers (unweighted controls untouched); explicit roles
+and exclusions win; unmatched helpers keep following their parent as before.
+
+Renamed-convention ActorCore source → Party (vs same-convention reference):
+upper-arm twist 55°→0.1°, forearm twist 18°→0.1°, thigh/calf twist ≤8°→≤2.6°.
+The right ElbowShareBone (53°) stays unmatched: it sits at a fraction ambiguous
+with a forearm twist bone, so the matcher declines — conservative by design.
+Existing fixtures (CMU→Party/Casual, ActorCore→Party/Dummy F, Quaternius→Party)
+exactly unchanged. New test (renamed helpers on the CC fixture) fails on the
+previous code. Gates on Vite 4646 all identical to D9 values; suite 1,185.

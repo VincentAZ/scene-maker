@@ -2197,6 +2197,8 @@ source drove a Character Creator torso one segment off; torso chains (hips → a
 head branch) are now mapped by normalized height, with exact-name anchors only
 within one convention (`src/detailedRetarget.ts`). Z-up armatures and source bind/
 finger rest changes were already invariant (≤2.3°). CMU → Casual Female torso bend
-error p90 7.0°→4.0°; CC → CC exactly unchanged. Not yet fixed: twist/share helper
-bones still match only by exact name (renamed source loses their data). Full
-details: `docs/CLAUDE_AUTONOMOUS_LOG.md` D9. Runtime Vite 4644.
+error p90 7.0°→4.0°; CC → CC exactly unchanged. Twist/share helper bones on the
+limbs now also match by their measured place on the segment when names differ
+(`src/limbHelpers.ts`; upper-arm twist 55°→0.1° on a renamed source); ambiguous
+positions are left unmatched. Details: `docs/CLAUDE_AUTONOMOUS_LOG.md` D9–D10.
+Runtime Vite 4646.
