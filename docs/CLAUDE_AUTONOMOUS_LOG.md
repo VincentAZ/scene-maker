@@ -493,3 +493,18 @@ joints; its walk drives Party within 12.3 mm of the skinned original (expected:
 no skin → bind foot pitch kept, no source contact allowance). New test (plain-node
 armature) fails on the previous code. Existing fixtures exactly unchanged; suite
 1,191; gates on Vite 4661 identical to D11.
+
+## D18 — Rejected: anatomical two-step arm pointing (12:38–12:40)
+
+Tried to remove the ≈4.7° upper-arm twist leak of forward-tilted A-pose binds by
+pointing arms down along a fixed anatomical path (undo flexion about the
+side-to-side axis, then abduction about the forward axis) instead of one
+shortest rotation. First version used shortest rotation for the "flexion" step —
+which is not about the side-to-side axis when the sideways component is non-zero —
+and made it worse (7.7°, existing fixtures shifted 2–4°). The explicit-axis
+version exposed the real problem: for a T-pose arm (pointing sideways) the
+flexion angle is undefined, and rotating about the side-to-side axis spins the
+arm about its own length (85–175° errors). The single shortest rotation is regular
+everywhere; with a nearly straight bind elbow there is no anatomical reference for
+upper-arm twist. Reverted; the 4.7° (upper-arm twist helpers only) stays a
+documented limit. Nothing committed for this attempt.
