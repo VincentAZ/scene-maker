@@ -888,6 +888,11 @@ function applyUnblendedEntityPose(
       current.sourceStart,
     );
   else if (current) sampleNativeClip(group, current.clip, current.time);
+  if (current?.route && !current.source)
+    // Routes replace planar travel, but retain the same vertical reference as
+    // native standalone playback. A capture's constant root offset is not a jump.
+    group.position.y -=
+      (current.route.profile.sourceOriginY ?? 0) * entity.scale;
   if (current?.route && !group.userData.motionWarning) {
     const { profile, sample, ratio, heading } = current.route;
     const original = current.source || group;
@@ -936,9 +941,10 @@ function applyUnblendedEntityPose(
     current?.route && !group.userData.motionWarning
       ? sampleFootSurfaces(current.source || group)
       : undefined;
-  if (current?.source && loopClearance && routeClearance) {
-    const left = routeClearance.left + loopClearance.left,
-      right = routeClearance.right + loopClearance.right;
+  if (current?.source && current.route && routeClearance) {
+    const origin = current.route.profile.sourceOriginY ?? 0;
+    const left = routeClearance.left + (loopClearance?.left ?? 0) - origin,
+      right = routeClearance.right + (loopClearance?.right ?? 0) - origin;
     routeClearance = {
       ...routeClearance,
       left,

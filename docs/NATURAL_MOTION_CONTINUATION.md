@@ -630,3 +630,99 @@ A durable archive for this turn is
 CMU inputs, saved experimental project JSON, videos, reports and drivers. The
 licensed ActorCore input GLBs remain only in the private runtime uploads. The
 private review project exports do not become redistributable source assets.
+
+## Continuation update — route height reference and full-take arrivals
+
+The prior turn was **progress**, and the overall natural-animation goal remains
+**open**. This turn fixes two production issues; it does not ship a new editor
+control or an automatic transition between separate capture files.
+
+- Found existing `capturedArrival.ts`, `arrivalMatching.ts` and
+  `navigationArrivals.ts` already implement same-take stopping proposals,
+  geometry checks, schedules and automatic destination replanning. Reuse these;
+  do not duplicate their collision/history machinery with the straight prototype.
+- That planner previously searched only `motion.path.sourceRange`. A selected
+  stride consequently hid the stopping segment elsewhere in its original take.
+  The proposer now measures the full take for stops while retaining the selected
+  stride for approach distance/rate/phase. The matcher uses separate samplers,
+  offsets and support clocks for the gait interval and full stopping performance.
+  Existing pose, velocity, support and clearance gates are unchanged. Regressions
+  exercise repeated selected strides, actual source offsets, unsupported phases,
+  and the proposal's retained sourceRange/standalone-tail metadata.
+- A second defect appeared in real capture evaluation: travelling routes used
+  raw capture-space heights for ground evidence and route clearance, although
+  standalone native/retargeted playback normalizes initial root displacement.
+  Added `LocomotionProfile.sourceOriginY`, normalizing travelling sole heights,
+  penetration support and both native/retargeted route evaluation. Selected
+  intervals keep the full take's floor, so trimming at a raised gait phase does
+  not invent a new floor. Source keys, planar trajectory and cadence are unchanged.
+- In-place virtual gait reconstruction retains its existing bind-floor
+  calibration. Applying normalization there initially broke bundled Run flight
+  reconstruction (zero speed samples); the travelling-only correction passes that
+  existing regression. Do not claim arbitrary vertical-offset invariance for
+  in-place gait reconstruction. New travelling-route regressions failed before
+  the fix and pass for +/- capture offsets, trimmed starts, positioned/scaled
+  characters, reverse seeking, final holds, native and transferred playback.
+- Evaluated additional official CMU captures 104_09,104_56,143_02,16_34 (raw AMC,
+  ASF, converted GLBs/mappings/hashes in `/tmp/scene-natural-motion/arrival-selection`).
+  They are private evaluation assets, **not shipped library entries**. Files in
+  isolated uploads use `arrival-candidate-<subject>-<trial>.glb`. Downloads used
+  per-command curl -k after the web tool could not open the official site.
+- 104_56 is a 3.058333-second running stop. Before correction no stop was detected;
+  after correction it has a measured settled interval approximately2.427–3.025s
+  and three supported entries. The existing short16_33/16_57 takes still do not
+  contain the required0.4s of settled motion. Do not weaken the gate to admit them.
+  A bounded-jitter detector experiment was tried, did not solve this condition,
+  and was completely reverted (no stop/contact threshold change shipped).
+- Native1x/60fps source/Party Woman curved-route videos:
+  `arrival-selection/run-stop-route-before-1x.mp4` and
+  `run-stop-route-fixed-1x.mp4`, each the actual3.05s performance. Combined honest
+  before/after: `route-height-before-after-1x.mp4` (before above, fixed below).
+  Source and receiver stay visible; inspected the sequence/contact sheet.
+  At2.5s the receiver's two foot origins are about7.3cm lower after correction,
+  removing excess clearance. This is a targeted floor-reference result, not
+  universal no-skating or naturalness acceptance. Capsule feet are still only
+  visualization geometry. Full baked/reloaded GLB comparison through end+0.3s:
+  742samples/rig; maximum joint/skin discrepancy under0.0007mm.
+- Repeated shipped walking stride: `walking-stride-height-fixed-1x.mp4`,
+  six strides/6.75s/60fps. Full bake/reload through7.05s,1648samples/rig,
+  max joint/skin discrepancy under0.004mm. All playback warnings empty/GL0;
+  four unsupported CMU anatomical channels remain explicitly reported.
+- The ignored velocity-scored prototype now saves separate private
+  `velocity-walk-arrival-review` and `velocity-run-arrival-review` projects;
+  it did not overwrite the earlier recorded-* projects. It picks stop starts
+  .05s walking and .375s running (instead of .025/.75), reducing the root-speed
+  mismatch at the cost of a worse running pose match. It remains straight-only,
+  experimental and **not** the production arrival planner. Report remains in
+  `arrivals/velocity-arrival-plan.json`; driver `velocity-arrival-project.mjs`.
+- Latest Vite4558 (handle9242) serves final runtime. API4413 and owned Chrome9451
+  still live.4556 retains the pre-height-fix cached runtime used for controlled
+  before footage;4557 contains an intermediate version. Revalidate services.
+
+Next: use the existing arrival planner's safety machinery for compatible full
+performances or carefully extend it to independent sources. Cross-source joins
+must compare both pose and velocity on the receiver; do not adopt the prototype's
+weighted score as a safety gate. Running contact evidence, standing waits,
+starts, other natural actions and wider provider/extremity validation remain
+open. Keep the original workspaces/services and protected user project untouched.
+
+Final verification for this milestone: **1,090 tests/96files passed** using
+`vitest run --maxWorkers=2` with unchanged test timeouts, plus TypeScript,
+diff check and isolated production build. Two earlier runs under concurrent
+render/export load each hit a different existing5s test timeout (conversation
+geometry and authored-bank packaging); the final run avoided competing rendering.
+The first run also caught the genuine in-place Run regression described above,
+which was corrected before the final run. Existing SDK schema/chunk-size warnings
+remain. Logs are `arrival-selection/{full-suite-verified,typescript-final,build}.log`.
+
+Final shipped-running-stride evidence is
+`arrival-selection/running-stride-height-fixed-1x.mp4`: six native strides,
+4.4s/60fps (264 sampled frames through4.3833s; no stretched final frame).
+Full bake/reload through4.7s,843samples/rig: source max<0.135mm, receiver<0.159mm.
+Body/feet frame sequences inspected for walking/running and the stop candidate;
+normal-speed movies are available for actual visual review. These checks do not
+settle broad provider quality or the remaining arrivals/waits problem.
+
+Durable ignored archive: `.data/natural-motion-investigation/arrival-selection/`
+contains videos, reports, public raw inputs and conversion outputs, validation
+logs and drivers (not the large frame directories or licensed input models).

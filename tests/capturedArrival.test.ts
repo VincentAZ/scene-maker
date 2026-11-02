@@ -17,6 +17,8 @@ import { finishNavigationWork } from "../src/navigationWork";
 // Here a controlled admissible set exercises selection, retries, and rollback.
 const state = vi.hoisted(() => ({
   profile: undefined as LocomotionProfile | undefined,
+  gait: undefined as LocomotionProfile | undefined,
+  matchedProfiles: [] as LocomotionProfile[],
   pass: 0,
   distances: [] as number[][],
   checks: [] as number[],
@@ -24,16 +26,19 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../src/locomotion", async (original) => ({
   ...(await original<typeof import("../src/locomotion")>()),
-  locomotionProfile: () => state.profile,
+  locomotionProfile: (_source: unknown, _take: unknown, range?: unknown) =>
+    range && state.gait ? state.gait : state.profile,
 }));
 vi.mock("../src/arrivalMatching", () => ({
   matchCapturedArrivalSteps: function* (
     _source: unknown,
     _take: unknown,
-    _profile: unknown,
+    profile: LocomotionProfile,
     _distance: unknown,
     plan: (start: number, end: number, distance: number) => number | undefined,
+    arrivalProfile: LocomotionProfile,
   ) {
+    state.matchedProfiles = [profile, arrivalProfile];
     state.pass++;
     const distances: number[] = [];
     state.distances.push(distances);
@@ -97,6 +102,8 @@ beforeEach(() => {
   state.distances = [];
   state.checks = [];
   state.mode = "second";
+  state.gait = undefined;
+  state.matchedProfiles = [];
 });
 function fixture() {
   const scene = applyCommands(starterScene(), [
@@ -190,6 +197,32 @@ it("tries the next admissible entry after obstruction without leaking rejected c
   expect(result.destination).toEqual([0, 0, 6]);
   expect(f.pose()).toEqual(pose);
   expect(JSON.stringify(f.scene)).toBe(before);
+});
+
+it("searches the full original take for stops while retaining the selected route gait", () => {
+  const f = fixture();
+  const full = state.profile!;
+  state.gait = { ...full, duration: 1, distance: 1, stops: [] };
+  f.scene.customMotions[0].path!.sourceRange = { start: 0, end: 1 };
+  const result = proposeCapturedArrival(
+    f.scene,
+    f.objects,
+    "actor",
+    "route-clip",
+  );
+  expect("scene" in result).toBe(true);
+  expect(state.matchedProfiles).toEqual([state.gait, full]);
+  if (!("scene" in result)) return;
+  const actor = result.scene.entities[0];
+  const prefix = result.scene.customMotions.find(
+    (m) => m.id === actor.clips[0].motionId,
+  )!;
+  const arrival = result.scene.customMotions.find(
+    (m) => m.id === actor.clips[1].motionId,
+  )!;
+  expect(prefix.path!.sourceRange).toEqual({ start: 0, end: 1 });
+  expect(arrival.path).toBeUndefined();
+  expect(actor.clips[1].sourceStart).toBe(2);
 });
 it("keeps adapted prefix steps at their source rate and preserves the unscaled native stopping tail", () => {
   const f = fixture();

@@ -22,7 +22,7 @@ import {
   supportRouteFootContacts,
 } from "../src/routeContacts";
 import { applyRouteFootPlanting } from "../src/routeFootPlanting";
-import type { LocomotionProfile } from "../src/locomotion";
+import { locomotionProfile, type LocomotionProfile } from "../src/locomotion";
 
 function rig(detached = false, weighted = true, rigid = false) {
   const group = new T.Group(),
@@ -100,6 +100,108 @@ function useShoeGeometryOnly(f: ReturnType<typeof rig>) {
 }
 
 describe("geometry-based foot clearance", () => {
+  it.each([
+    [0.35, 0],
+    [-0.25, 0],
+    [0.35, 0.4],
+    [-0.25, 0.4],
+  ])(
+    "ignores a constant capture height in route contacts and playback (%s, start %s)",
+    (offset, sourceStart) => {
+      const baseline = rig(),
+        shifted = rig(),
+        target = rig();
+      const make = (f: ReturnType<typeof rig>, y: number) =>
+        new T.AnimationClip("Travel and stop", 4, [
+          new T.VectorKeyframeTrack(
+            f.body.uuid + ".position",
+            [0, 1, 2, 3, 4],
+            [0, y, 0, 0, y + 0.1, 1, 0, y, 2, 0, y, 2, 0, y, 2],
+          ),
+        ]);
+      const baseTake = make(baseline, 0),
+        shiftedTake = make(shifted, offset);
+      baseline.configure([baseTake]);
+      shifted.configure([shiftedTake]);
+      const range = { start: sourceStart, end: 4 };
+      const baseProfile = locomotionProfile(baseline.group, baseTake, range)!;
+      const shiftedProfile = locomotionProfile(
+        shifted.group,
+        shiftedTake,
+        range,
+      )!;
+      // Cutting a stride at a raised phase must keep the full take's floor.
+      expect(baseProfile.sourceOriginY).toBeCloseTo(0, 7);
+      expect(shiftedProfile.sourceOriginY).toBeCloseTo(offset, 7);
+      const intervals = (p: LocomotionProfile) =>
+        p.nativeContacts!.map(({ side, start, end }) => ({ side, start, end }));
+      expect(intervals(baseProfile).length).toBeGreaterThan(0);
+      expect(intervals(shiftedProfile)).toEqual(intervals(baseProfile));
+      expect(shiftedProfile.stops).toEqual(baseProfile.stops);
+      const scene = starterScene(),
+        actor = scene.entities[0];
+      scene.entities = [actor];
+      scene.animationCollisions = false;
+      actor.position = [1, 0.5, -2];
+      actor.rotation = 0.4;
+      actor.scale = 1.3;
+      actor.clips = [
+        {
+          id: "route",
+          motionId: "route",
+          duration: 4,
+          playbackRate: 1,
+          transition: "cut",
+        },
+      ];
+      scene.customMotions = [
+        {
+          id: "route",
+          name: "Route",
+          kind: "imported",
+          animationName: baseTake.name,
+          sourceAssetId: actor.assetId,
+          duration: 4,
+          distance: 0,
+          poses: [],
+          path: {
+            points: [
+              [0, 0, 0],
+              [0, 0, 2],
+            ],
+            smooth: false,
+            sourceRange: range,
+          },
+        },
+      ];
+      const shared = {
+        ...scene,
+        customMotions: scene.customMotions.map((m) => ({
+          ...m,
+          sourceAssetId: "capture",
+        })),
+      };
+      setMotionSources(target.group, new Map([["capture", shifted.group]]));
+      for (const time of [0, 0.4, 1.2, 2.4, 3.8, 4.2, 0.4]) {
+        applyAnimatedEntityPose(baseline.group, actor, scene, time);
+        const expected = baseline.bones.leftFoot.getWorldPosition(
+          new T.Vector3(),
+        );
+        applyAnimatedEntityPose(shifted.group, actor, scene, time);
+        expect(
+          shifted.bones.leftFoot
+            .getWorldPosition(new T.Vector3())
+            .distanceTo(expected),
+        ).toBeLessThan(1e-6);
+        applyAnimatedEntityPose(target.group, actor, shared, time);
+        expect(
+          target.bones.leftFoot
+            .getWorldPosition(new T.Vector3())
+            .distanceTo(expected),
+        ).toBeLessThan(1e-6);
+      }
+    },
+  );
   it.each([
     [0, 0.35],
     [0.4, 0.35],

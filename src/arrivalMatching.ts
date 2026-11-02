@@ -37,6 +37,8 @@ const up = new T.Vector3(0, 1, 0);
 /** Candidate matching only: this does not certify scene clearance or apply a
  * transition. Distances use source-local units. Compare a route's prospective
  * outgoing phase to captured deceleration entries in the same original take.
+ * A selected gait interval can use stopping evidence from the full take; both
+ * samplers keep their own source offset, contact clock, and trajectory frame.
  * Only positively weighted or rigidly attached bones contribute, including
  * detached deformers. Stationary control bones cannot dominate the score. */
 export function* matchCapturedArrivalSteps(
@@ -49,6 +51,7 @@ export function* matchCapturedArrivalSteps(
     sourceEnd: number,
     tailDistance: number,
   ) => number | undefined,
+  arrivalProfile: LocomotionProfile = profile,
 ): Generator<
   void,
   {
@@ -60,7 +63,8 @@ export function* matchCapturedArrivalSteps(
   unknown
 > {
   if (
-    !profile.stops?.length ||
+    !arrivalProfile.stops?.length ||
+    arrivalProfile.frames.length < 2 ||
     profile.frames.length < 2 ||
     !(distance > 0) ||
     !Number.isFinite(distance)
@@ -120,108 +124,113 @@ export function* matchCapturedArrivalSteps(
     }),
   );
   const mixer = source.userData.mixer as T.AnimationMixer;
-  const cache = new Map<number, Pose>();
-  const frameAt = (time: number) => {
-    let low = 0,
-      high = profile.frames.length - 1;
-    while (low + 1 < high) {
-      const mid = (low + high) >> 1;
-      if (profile.frames[mid].time < time) low = mid;
-      else high = mid;
-    }
-    const a = profile.frames[low],
-      b = profile.frames[high];
-    const weight =
-      b.time > a.time
-        ? T.MathUtils.clamp((time - a.time) / (b.time - a.time), 0, 1)
-        : 0;
-    return {
-      center: a.center.clone().lerp(b.center, weight),
-      heading: T.MathUtils.lerp(a.heading, b.heading, weight),
-      distance: T.MathUtils.lerp(a.distance, b.distance, weight),
+  const sampler = (profile: LocomotionProfile) => {
+    const cache = new Map<number, Pose>();
+    const frameAt = (time: number) => {
+      let low = 0,
+        high = profile.frames.length - 1;
+      while (low + 1 < high) {
+        const mid = (low + high) >> 1;
+        if (profile.frames[mid].time < time) low = mid;
+        else high = mid;
+      }
+      const a = profile.frames[low],
+        b = profile.frames[high];
+      const weight =
+        b.time > a.time
+          ? T.MathUtils.clamp((time - a.time) / (b.time - a.time), 0, 1)
+          : 0;
+      return {
+        center: a.center.clone().lerp(b.center, weight),
+        heading: T.MathUtils.lerp(a.heading, b.heading, weight),
+        distance: T.MathUtils.lerp(a.distance, b.distance, weight),
+      };
     };
-  };
-  const poseAt = (time: number) => {
-    const cached = cache.get(time);
-    if (cached) return cached;
-    mixer.stopAllAction();
-    applyHumanoidPose(source, {}, true);
-    sampleNativeClip(source, clip, (profile.sourceStart ?? 0) + time);
-    source.updateWorldMatrix(true, true);
-    const frame = frameAt(time),
-      inverse = source.getWorldQuaternion(new T.Quaternion()).invert();
-    const turn = new T.Quaternion().setFromAxisAngle(up, -frame.heading);
-    const sourceScale = source.getWorldScale(new T.Vector3());
-    // Remove travel and heading, retaining vertical body motion and sway.
-    const center = new T.Vector3(frame.center.x, 0, frame.center.z);
-    const pose: Pose = {
-      positions: bones.map((b) =>
-        source
-          .worldToLocal(b.getWorldPosition(new T.Vector3()))
-          .sub(center)
-          .applyQuaternion(turn)
-          .divideScalar(height),
-      ),
-      rotations: bones.map((b) =>
-        b
-          .getWorldQuaternion(new T.Quaternion())
-          .premultiply(inverse)
-          .premultiply(turn)
-          .normalize(),
-      ),
-      scales: bones.map((b) =>
-        b.getWorldScale(new T.Vector3()).divide(sourceScale),
-      ),
-      morphs: morphs.flatMap((m) => m.morphTargetInfluences!),
+    const poseAt = (time: number) => {
+      const cached = cache.get(time);
+      if (cached) return cached;
+      mixer.stopAllAction();
+      applyHumanoidPose(source, {}, true);
+      sampleNativeClip(source, clip, (profile.sourceStart ?? 0) + time);
+      source.updateWorldMatrix(true, true);
+      const frame = frameAt(time),
+        inverse = source.getWorldQuaternion(new T.Quaternion()).invert();
+      const turn = new T.Quaternion().setFromAxisAngle(up, -frame.heading);
+      const sourceScale = source.getWorldScale(new T.Vector3());
+      // Remove travel and heading, retaining vertical body motion and sway.
+      const center = new T.Vector3(frame.center.x, 0, frame.center.z);
+      const pose: Pose = {
+        positions: bones.map((b) =>
+          source
+            .worldToLocal(b.getWorldPosition(new T.Vector3()))
+            .sub(center)
+            .applyQuaternion(turn)
+            .divideScalar(height),
+        ),
+        rotations: bones.map((b) =>
+          b
+            .getWorldQuaternion(new T.Quaternion())
+            .premultiply(inverse)
+            .premultiply(turn)
+            .normalize(),
+        ),
+        scales: bones.map((b) =>
+          b.getWorldScale(new T.Vector3()).divide(sourceScale),
+        ),
+        morphs: morphs.flatMap((m) => m.morphTargetInfluences!),
+      };
+      cache.set(time, pose);
+      return pose;
     };
-    cache.set(time, pose);
-    return pose;
-  };
-  const velocityAt = (time: number) => {
-    const a = Math.max(0, time - 1 / 120),
-      b = Math.min(profile.duration, time + 1 / 120),
-      before = poseAt(a),
-      after = poseAt(b);
-    return {
-      linear: after.positions.map((p, i) =>
-        p
-          .clone()
-          .sub(before.positions[i])
-          .divideScalar(b - a),
-      ),
-      angular: after.rotations.map((q, i) => {
-        const delta = q
-          .clone()
-          .multiply(before.rotations[i].clone().invert())
-          .normalize();
-        if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w);
-        const sine = Math.hypot(delta.x, delta.y, delta.z);
-        return sine > 1e-12
-          ? new T.Vector3(delta.x, delta.y, delta.z).multiplyScalar(
-              (2 * Math.atan2(sine, delta.w)) / (sine * (b - a)),
-            )
-          : new T.Vector3();
-      }),
+    const velocityAt = (time: number) => {
+      const a = Math.max(0, time - 1 / 120),
+        b = Math.min(profile.duration, time + 1 / 120),
+        before = poseAt(a),
+        after = poseAt(b);
+      return {
+        linear: after.positions.map((p, i) =>
+          p
+            .clone()
+            .sub(before.positions[i])
+            .divideScalar(b - a),
+        ),
+        angular: after.rotations.map((q, i) => {
+          const delta = q
+            .clone()
+            .multiply(before.rotations[i].clone().invert())
+            .normalize();
+          if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w);
+          const sine = Math.hypot(delta.x, delta.y, delta.z);
+          return sine > 1e-12
+            ? new T.Vector3(delta.x, delta.y, delta.z).multiplyScalar(
+                (2 * Math.atan2(sine, delta.w)) / (sine * (b - a)),
+              )
+            : new T.Vector3();
+        }),
+      };
     };
+    const supportAt = (time: number) =>
+      profile.contacts?.reduce(
+        (mask, c) =>
+          time >= c.start && time <= c.end
+            ? mask | (c.side === "left" ? 1 : 2)
+            : mask,
+        0,
+      ) ?? 0;
+    const speedAt = (time: number) => {
+      const a = Math.max(0, time - 0.05),
+        b = Math.min(profile.duration, time + 0.05);
+      return (frameAt(b).distance - frameAt(a).distance) / (b - a);
+    };
+    return { poseAt, velocityAt, supportAt, speedAt };
   };
-  const supportAt = (time: number) =>
-    profile.contacts?.reduce(
-      (mask, c) =>
-        time >= c.start && time <= c.end
-          ? mask | (c.side === "left" ? 1 : 2)
-          : mask,
-      0,
-    ) ?? 0;
-  const speedAt = (time: number) => {
-    const a = Math.max(0, time - 0.05),
-      b = Math.min(profile.duration, time + 0.05);
-    return (frameAt(b).distance - frameAt(a).distance) / (b - a);
-  };
+  const gait = sampler(profile);
+  const arrival = arrivalProfile === profile ? gait : sampler(arrivalProfile);
   let best: ArrivalMatch | undefined,
     examined = 0;
   const matches: ArrivalMatch[] = [];
   try {
-    for (const stop of profile.stops)
+    for (const stop of arrivalProfile.stops)
       for (const entry of stop.entries) {
         yield;
         // A captured stop's arc length is not its net displacement. A route
@@ -229,8 +238,8 @@ export function* matchCapturedArrivalSteps(
         // displacement and final facing, including any obstacle detour.
         const prefixDistance = prefixDistanceForEntry
           ? prefixDistanceForEntry(
-              (profile.sourceStart ?? 0) + entry.time,
-              (profile.sourceStart ?? 0) + stop.sourceEnd,
+              (arrivalProfile.sourceStart ?? 0) + entry.time,
+              (arrivalProfile.sourceStart ?? 0) + stop.sourceEnd,
               entry.distance,
             )
           : distance - entry.distance;
@@ -241,12 +250,12 @@ export function* matchCapturedArrivalSteps(
         )
           continue;
         const incoming = sampleRouteLocomotion(profile, prefixDistance, 1),
-          support = supportAt(incoming.time) & entry.support;
+          support = gait.supportAt(incoming.time) & entry.support;
         if (!support) continue;
-        const before = poseAt(incoming.time),
-          after = poseAt(entry.time),
-          v0 = velocityAt(incoming.time),
-          v1 = velocityAt(entry.time);
+        const before = gait.poseAt(incoming.time),
+          after = arrival.poseAt(entry.time),
+          v0 = gait.velocityAt(incoming.time),
+          v1 = arrival.velocityAt(entry.time);
         let positionSum = 0,
           positionMax = 0,
           rotationSum = 0,
@@ -278,7 +287,7 @@ export function* matchCapturedArrivalSteps(
           velocityRms = Math.sqrt(velocitySum / bones.length),
           angularVelocityRms = Math.sqrt(angularVelocitySum / bones.length);
         const speedDifference =
-          Math.abs(speedAt(incoming.time) - entry.speed) / height;
+          Math.abs(gait.speedAt(incoming.time) - entry.speed) / height;
         const morphMax = Math.max(
           0,
           ...before.morphs.map((v, i) => Math.abs(v - after.morphs[i])),
@@ -293,8 +302,8 @@ export function* matchCapturedArrivalSteps(
           morphMax * 0.1;
         if (!Number.isFinite(score + positionMax + rotationMax)) continue;
         const candidate: ArrivalMatch = {
-          sourceStart: (profile.sourceStart ?? 0) + entry.time,
-          sourceEnd: (profile.sourceStart ?? 0) + stop.sourceEnd,
+          sourceStart: (arrivalProfile.sourceStart ?? 0) + entry.time,
+          sourceEnd: (arrivalProfile.sourceStart ?? 0) + stop.sourceEnd,
           prefixDistance,
           prefixSourceDuration: routeSourceDuration(profile, prefixDistance),
           tailDistance: entry.distance,

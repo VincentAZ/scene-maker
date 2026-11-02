@@ -45,6 +45,8 @@ export type LocomotionProfile = {
   startHeading: number;
   /** Original take offset; profile frames and contacts use interval-local time. */
   sourceStart?: number;
+  /** Full take's capture-space height, retained across selected gait cuts. */
+  sourceOriginY?: number;
   warning: string;
   mode: "travel" | "in-place";
   contacts?: FootContact[];
@@ -252,6 +254,27 @@ export function locomotionProfile(
         distance: 0,
       };
     });
+    const span = new T.Box3()
+      .setFromPoints(
+        frames.map((f) => new T.Vector3(f.center.x, 0, f.center.z)),
+      )
+      .getSize(new T.Vector3())
+      .length();
+    const mode = fullMode ?? (span > 0.35 ? "travel" : "in-place");
+    // Travelling takes use native source-start normalization. In-place gait
+    // reconstruction instead relies on the authored bind-floor reference to
+    // distinguish stance from flight; retain that existing calibration.
+    const sourceOriginY =
+      mode === "travel" ? (fullProfile?.sourceOriginY ?? root.start.y) : 0;
+    if (sourceOriginY)
+      for (const frame of raw) {
+        if (frame.soleHeights) {
+          frame.soleHeights = frame.soleHeights.map(
+            (y) => y - sourceOriginY,
+          ) as [number, number];
+          frame.penetration = Math.max(0, -Math.min(...frame.soleHeights));
+        }
+      }
     const supportRadius = Math.ceil((count / duration) * 0.04);
     const ground = groundSupportEnvelope(
       raw.map((frame) => frame.penetration),
@@ -266,13 +289,6 @@ export function locomotionProfile(
       frame.groundLift = ground[index];
       frame.loopGroundLift = loopGround[index];
     });
-    const span = new T.Box3()
-      .setFromPoints(
-        frames.map((f) => new T.Vector3(f.center.x, 0, f.center.z)),
-      )
-      .getSize(new T.Vector3())
-      .length();
-    const mode = fullMode ?? (span > 0.35 ? "travel" : "in-place");
     if (mode === "travel") {
       // Align the trajectory rather than the pelvis. A sideways/backward step
       // must retain the body's angle to travel, and a stationary pivot must not
@@ -495,6 +511,7 @@ export function locomotionProfile(
       distance,
       duration,
       ...(sourceStart ? { sourceStart } : {}),
+      sourceOriginY,
       startHeading: root.startHeading,
       warning,
       mode,

@@ -221,6 +221,54 @@ it("requires measured stopping evidence and sufficient prefix travel", () => {
   }
 });
 
+it("matches a selected stride to a later stop in its full take using independent source clocks", () => {
+  const f = fixture();
+  const gait: LocomotionProfile = {
+    ...f.profile,
+    sourceStart: 0.5,
+    duration: 1,
+    distance: 1,
+    stops: [],
+    frames: f.profile.frames
+      .filter((frame) => frame.time >= 0.5 && frame.time <= 1.5)
+      .map((frame) => ({
+        ...frame,
+        time: frame.time - 0.5,
+        distance: frame.distance - 0.5,
+      })),
+    contacts: [{ ...f.profile.contacts![0], start: 0, end: 1 }],
+  };
+  try {
+    const before = JSON.stringify([gait, f.profile]);
+    const result = matchCapturedArrival(
+      f.group,
+      f.clip,
+      gait,
+      6.5,
+      undefined,
+      f.profile,
+    );
+    expect(result.match).toBeDefined();
+    expect(result.match!.sourceStart).toBe(2);
+    expect(result.match!.sourceEnd).toBe(3.5);
+    expect(result.match!.prefixDistance).toBe(5.5);
+    expect(result.match!.prefixSourceDuration).toBe(5.5);
+    expect(result.match!.positionMax).toBeLessThan(1e-6);
+    expect(result.match!.velocityRms).toBeLessThan(1e-6);
+    expect(JSON.stringify([gait, f.profile])).toBe(before);
+    expect(
+      matchCapturedArrival(f.group, f.clip, gait, 6.5).match,
+    ).toBeUndefined();
+    gait.contacts = [];
+    expect(
+      matchCapturedArrival(f.group, f.clip, gait, 6.5, undefined, f.profile)
+        .match,
+    ).toBeUndefined();
+  } finally {
+    disposeObject(f.group);
+  }
+});
+
 it("returns every compatible entry in deterministic quality order without admitting failed pose gates", () => {
   const f = fixture(true);
   try {

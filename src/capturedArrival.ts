@@ -132,8 +132,11 @@ export function* proposeCapturedArrivalSteps(
     });
   try {
     const profile = locomotionProfile(source, take, motion.path.sourceRange),
+      arrivalProfile = motion.path.sourceRange
+        ? locomotionProfile(source, take)
+        : profile,
       ratio = source === group ? 1 : locomotionScale(source, group);
-    if (!profile?.stops?.length || !(ratio > 0))
+    if (!profile || !arrivalProfile?.stops?.length || !(ratio > 0))
       return {
         reason: "This take has no measured travelling-to-standing segment.",
       };
@@ -286,6 +289,7 @@ export function* proposeCapturedArrivalSteps(
               return undefined;
             }
           },
+          arrivalProfile,
         );
         candidateCount += result.matches.length;
         if (!result.matches.length) continue;
