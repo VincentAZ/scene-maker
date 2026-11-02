@@ -12,6 +12,7 @@ import {
 import { boneNames } from "../shared/scene";
 import { configureRigContacts, type RigContacts } from "./ik";
 import { captureFootSurfaces, transferFootClearance } from "./footSurface";
+import { captureHandClearance, supportTransferredHands } from "./handClearance";
 
 type BoneName = (typeof boneNames)[number];
 type Transform = {
@@ -332,6 +333,7 @@ export function configureImportedRig(
   captureDetailBind(group);
   const contacts = configureRigContacts(group);
   captureFootSurfaces(group);
+  captureHandClearance(group);
   const compatible =
     explicit.invalid.length === 0 &&
     boneNames.every(
@@ -952,6 +954,7 @@ export function applyTransferredClip(
       standingHeight(target) / standingHeight(source),
     )
   ) {
+    supportTransferredHands(target, source);
     transferFootClearance(
       source,
       target,

@@ -2053,3 +2053,116 @@ collisions}.{json,log}`. Durable copies and both drivers:
   route starts/stops (35_01 still lacks a measured stop), running arrivals and
   broader action/provider quality. The new complete take is selectable, not a
   general route solution. Keep the full original goal and all preservation rules.
+
+## Session stopped for Claude handoff — 2026-11-02
+
+The user clarified that the goal is a **general import-and-retarget system for
+new standard humanoid rigs and new standard humanoid animations**, not getting a
+finite set of rigs to work with a fixed animation bank. Existing assets are test
+fixtures, not a whitelist. This clarification controls future work.
+
+The user then explicitly requested: “stop, and create a handoff to Claude.”
+Implementation stopped; Codex goal paused. HEAD remains10d1d01; no new commit.
+See **docs/CLAUDE_NATURAL_MOTION_HANDOFF.md** for the full state and restart notes.
+
+There is an UNCOMMITTED, incompletely validated generic hand/body-clearance
+candidate in src/handClearance.ts, with three integration lines in src/rig.ts and
+8 passing synthetic tests in tests/handClearance.test.ts. It uses receiving skin
+geometry and anatomical mapping without provider/take names. This is not a
+finished or accepted natural-animation solution. In particular, a full-take scan
+still finds rapid correction changes near17.3583s that need diagnosis.
+
+The candidate's140-case route-repeat matrix and140-case source-cut matrix passed
+their existing numerical comparisons. No final full suite/typecheck/build,
+actual UI, native preservation,70-second history or export check was performed.
+The complete18.4s/30fps before-after video finished during stop cleanup but was
+NOT visually reviewed. It is offline1x evidence, not a wall-clock UI recording.
+
+Work: /tmp/scene-natural-motion/hand-clearance; durable ignored archive:
+.data/natural-motion-investigation/hand-clearance. Current candidate4613,
+frozen10d1d01 rig baseline4614, privateAPI4413, ownedChrome9451. All active review
+jobs finished; private servers remain available. Protected workspaces/services
+and Astra data were not modified. Read the dedicated handoff before resuming.
+
+## Receiving-body hand clearance (Claude session, 2026-11-02)
+
+Supersedes the uncommitted lateral candidate described above. The overall
+natural-animation goal remains OPEN. Full decision log with every rejected
+iteration: `docs/CLAUDE_AUTONOMOUS_LOG.md`.
+
+Why the Codex candidate was rejected: its completed before/after movie shows CMU
+91_34's left hand going to the front of the belly (≈17.0–17.4 s). The lateral
+inside-test cannot tell "in front of the torso" from "inside the hips", so it moved
+the hand to the hip: 0→88 mm in 70 ms. That explained the unresolved "18.85 mm per
+1/120 s" jump. Measurements (`claude-body-profile.mjs`) also showed skeleton joint
+spacing is convention-dependent (CMU hip joints 30% wider than ActorCore's), so a
+source body surface cannot be inferred from the skeleton.
+
+Shipped (`src/handClearance.ts`, two call lines in `src/rig.ts`):
+
+- Receiver surface = kernel-weighted soft maximum of body-vertex radii around the
+  torso axis (outer clothing layer favoured, density-normalized, coverage fade at
+  hems/openings, each vertex a smooth cap). Body = vertices with no arm weight;
+  probes = up to 40 hand vertices fully weighted to the hand (farthest-point
+  sampled at capture). Swung thighs fade out (sitting/kicking).
+- Push direction = depth-weighted outward directions of penetrating probes;
+  distance = length of the push path still inside the body (12 samples, linear
+  interpolation) — continuous by construction. Two-bone IK with the recorded elbow
+  as pole; hand world rotation restored, so wrist/finger articulation is untouched.
+  Soft cap 15% of arm length; deeper cases reported in `handClearance.unresolved`.
+- Active only for hands at their own side of hips/thighs/lower torso. Crossed arms,
+  chest-height and behind-the-back contacts keep the transferred pose: a folded-arm
+  hand tucked under the other arm is meant to be hidden (pushing it out was
+  observed to wreck the gesture).
+- If the source rig has skin, its own hand penetration at the same instant is
+  allowed on the receiver (performance contact such as a hand resting on a thigh).
+  Identical bodies are therefore unchanged; skeleton-only sources allow nothing.
+- Pure pose function, transferred playback only. Native originals untouched. No
+  provider/mesh/take names. Cost 1.0 ms/pose for the whole 91_34→Party transfer
+  in the browser; direct typed-array skinning and probe-region focusing keep the
+  existing 17-motion × all-bodies unit test at ~2.4 s (baseline 1.2 s; 5 s limit
+  unchanged).
+
+Evidence (`/tmp/scene-natural-motion/claude-session/`, durable copy in
+`.data/natural-motion-investigation/claude-session/`):
+
+- 1× movies (left frozen 10d1d01 or no correction, right current):
+  `review/close-start-before-after-1x.mp4`, `review/close-end-before-after-1x.mp4`,
+  `review/full-body-before-after-1x.mp4` (91_34 on Party);
+  `review/actorcore-party-folded-1x.mp4`, `review/actorcore-casual-behind-1x.mp4`,
+  `review/cmu-pirate-1x.mp4`. Offline fixed-time renders, not wall-clock UI capture.
+  Fingers no longer pass through the skirt in the opening/final stances; the belly
+  gesture is kept; folded arms are unchanged.
+- Correction 2nd difference vs source wrist (60 Hz, max mm): ActorCore Thoughtful
+  walk→Party 8.4/4.1 (source 2.8/3.3); Relax→Party 1.1/1.5 (0.8/0.8); Thoughtful
+  walk→Casual Female 10.5/10.1 (3.1/3.5); 91_34→Party 14.9/8.3 (32.5/16.9);
+  77_02→Party 27.3/9.5 (27.0/32.1); 91_34→Pirate 26.5/25.3 (30.1/14.1); Dummy M→
+  Dummy F 5.3/2.1 (3.1/3.3). Residual penetration on 91_34→Party ≤ 8.4 mm (L).
+- 11 unit tests in `tests/handClearance.test.ts` (open cylinder "skirt", scales
+  0.6/1/1.8 with placement, front contact pushed forward not sideways, exclusions,
+  order independence, continuity, open hem, bone axes/names, gross mismatch,
+  detached/legless rigs). Four fail on the rejected candidate (front contact, hem,
+  unresolved report, legless rig).
+- Full suite 1,178 tests / 101 files pass (`--maxWorkers=2`, default timeouts);
+  TypeScript, Prettier, diff check, isolated build pass (existing chunk advisory).
+- Route repeats: 140 cases, max joint 0.008496 mm, skin 0.008104 mm, angle
+  2.8997e-5 rad, velocity residual 0.027 m/s, no failures. Source cuts: 140 cases,
+  max 3.58e-8 m / 5.96e-8 rad / skin 2.58e-8 m. Both identical to prior baselines.
+- Native preservation vs frozen 10d1d01 (4614): all 9 native originals exactly
+  unchanged; transferred cases change only arm-chain bones; root and lower body
+  exactly unchanged.
+- 70-second blocked wait/recovery: 4,309 samples, history max 3.445e-8, resume
+  71.7 s, endpoint 6.005 mm, no recovery issues (`hand-clearance-standing-wait-review`).
+- Export: 91_34 Party scene baked/reloaded, 2,248 samples, 102 pairs, max joint
+  0.00057 mm, skin 0.00039 mm.
+- Real UI (Vite 4630): saved `captured-stand-walk-stop-party-review` loads, plays,
+  pauses; content unchanged apart from revision; no JS/HTTP errors.
+
+Limits: hands buried by gross proportion mismatch (e.g. clasped behind a far wider
+stylized body) are only partly corrected and reported unresolved; excluded regions
+(chest, crossed, behind) are not corrected at all; the surface is an estimate, not
+a watertight collision test; no user visual acceptance yet.
+
+Runtime: final Vite 4630 (`test-results/natural.config.ts`), frozen 10d1d01 rig
+4614, API 4413, Chrome 9451. 4609–4629 are intermediate. Drivers:
+`test-results/claude-hand-*.mjs`.
