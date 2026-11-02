@@ -430,7 +430,7 @@ by topology; renamed facial/control joints are REPORTED as unsupported rather th
 silently paired. Overriding that for a 5–10° eye residual is not justified.
 Source archived at `.data/natural-motion-investigation/claude-session/rejected/residualPairs.ts`.
 
-## D15 — Single-neck sources bend both receiving neck segments (12:21–12:40)
+## D15 — Single-neck sources bend both receiving neck segments (12:21–12:28)
 
 Quaternius sources have one neck bone; their heads bend up to 65° relative to it
 (SwordSlash; Roll 48°, Death 39°). Character Creator receivers have two neck
