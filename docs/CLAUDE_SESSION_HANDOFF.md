@@ -27,7 +27,7 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 1816a0e | Characters authored facing −Z (or sideways) turned to face +Z on import |
 | 756737a | Unresolved hand clearance disclosed in the motion notice |
 | a69f256 | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
-| (next) | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures |
+| 21b8bd0 | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D22). Summaries also appended to
