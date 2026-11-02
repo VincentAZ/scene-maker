@@ -367,8 +367,12 @@ export function configureImportedRig(
       matches.find((bone) =>
         matches.every((other) => other === bone || hasAncestor(other, bone)),
       );
+    // A deform-layer name (Rigify "DEF-") states which of a deform bone and a
+    // same-named control (a full Rigify export's "hips", "head") is the joint.
+    const deform = matches.filter((bone) => /^DEF[-_]/i.test(bone.name));
     if (top) bones[name] = top;
     else if (matches.length === 1) bones[name] = matches[0];
+    else if (deform.length === 1) bones[name] = deform[0];
     else if (matches.length > 1)
       ambiguous.push({
         joint: name,

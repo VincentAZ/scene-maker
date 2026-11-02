@@ -349,13 +349,23 @@ it("keeps twist segments, mechanism and control layers out of the body roles", (
   expect(roles.leftLeg.name).toBe("DEF-thigh.L");
 });
 
-it("reports a named control bone beside the deform skeleton as ambiguous", () => {
-  // Full Rigify exports also carry a control called "hips"; choosing between
-  // it and DEF-spine is left to the rig mapping, not to traversal order.
-  const { group, roles } = body(conventions.rigify, [["hips", null]]);
+it("takes the deform bone over a same-named control of a full Rigify export", () => {
+  // Full Rigify exports also carry controls called "hips" and "head"; the
+  // DEF- layer states which bones deform the body.
+  const { group, roles } = body(conventions.rigify, [
+    ["hips", null],
+    ["head", null],
+  ]);
+  expect(roles.hips.name).toBe("DEF-spine");
+  expect(roles.head.name).toBe("DEF-spine.006");
+  expect(group.userData.rigMappingReport.ambiguous).toEqual([]);
+});
+
+it("still reports same-named bones without a deform layer as ambiguous", () => {
+  const { group, roles } = body(conventions.blender, [["hips", null]]);
   expect(roles.hips).toBeUndefined();
   expect(group.userData.rigMappingReport.ambiguous).toEqual([
-    { joint: "hips", candidates: ["DEF-spine", "hips"] },
+    { joint: "hips", candidates: ["hips", "hips"] },
   ]);
 });
 

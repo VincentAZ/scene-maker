@@ -899,3 +899,20 @@ were moved out of the private data to `claude-session/quarantined-test-uploads/`
 (`mixamo-eval-*` evaluation copies kept); the refused import's upload is among
 them. A refused import leaves its upload unreferenced — pre-existing behaviour
 of `/api/import` for any post-upload failure, not changed here.
+
+## D33 — Full Rigify exports: the DEF- deform bone wins over a same-named control (14:05–14:08)
+
+D21 left a full Rigify export (controls exported alongside the DEF- deform
+layer) ambiguous: its control bones "hips" and "head" compete with DEF-spine
+and DEF-spine.006, so the character was refused unless mapped by hand.
+Decision (`rig.ts`): when exactly one candidate for a role carries a
+deform-layer prefix (`DEF-`), it is the joint — the rig itself states which
+bones deform the body. This is convention knowledge, not traversal order:
+same-named bones without a deform layer (another rig's duplicate, two plain
+"hips") stay ambiguous, as the existing policy test requires.
+Evidence: `rigConventions` — Rigify with "hips" and "head" controls resolves to
+DEF-spine / DEF-spine.006 with no ambiguity (fails without the rule); two plain
+"hips" still ambiguous; `rig.test` "OtherRig" ambiguity unchanged. Suite 1,240
+(`--maxWorkers=4`). No fixture on disk has DEF- names (D21 scan).
+Gates on Vite 4681 identical to D32 (route, cuts, native exact, all 19
+cross-rig deltas, wait, export, real UI).

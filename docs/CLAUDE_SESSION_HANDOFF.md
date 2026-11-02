@@ -37,9 +37,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 96671b5 | Skeleton-only sources keep receivers on the ground |
 | 16e7ad2 | BVH imports go to Actions (verified through the real dialog) |
 | b030635 | Long takes disclosed; unusable captures refused |
+| (next) | Full Rigify exports: DEF- deform bones win over same-named controls |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D32). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D33). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -109,7 +110,8 @@ full suite, typecheck, build.
   channels stay excluded (not fabricated). Mesh-less sources (BVH) use virtual
   bind-floor soles for ground clearance only (D29).
 - A full Rigify export that also carries its control bones ("hips", "head")
-  reports ambiguity and needs the rig mapping editor (by policy, not guessed).
+  resolves to the DEF- deform bones (D33); other same-named duplicates still
+  report ambiguity (policy).
   VRM files' declared humanoid map is read (D26), but VRM materials (MToon)
   and spring bones are not; no real .vrm file was available to test.
 - Hand-clearance notice is per pose (as the foot-contact notice), so it can
@@ -122,8 +124,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4680 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4679 serve
+Final Vite 4681 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4680 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 
