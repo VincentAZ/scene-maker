@@ -291,7 +291,7 @@ source cuts 140 (≤3.58e-8 m); native preservation exact, transferred lower bod
 root ≤1.4e-15; 70 s wait 3.445e-8 / 6.005 mm; export 2,248 samples ≤0.0035 mm;
 real UI unchanged/no errors; typecheck, Prettier, diff, build OK.
 
-## D10 — Limb helper bones matched by their place on the limb (11:40–11:55)
+## D10 — Limb helper bones matched by their place on the limb (11:38–11:44)
 
 New `src/limbHelpers.ts`, called from the detailed plan after name pairs and
 `forearmRoll.ts`: on each anatomical limb segment (upper arm, forearm, thigh, calf),
@@ -309,3 +309,41 @@ with a forearm twist bone, so the matcher declines — conservative by design.
 Existing fixtures (CMU→Party/Casual, ActorCore→Party/Dummy F, Quaternius→Party)
 exactly unchanged. New test (renamed helpers on the CC fixture) fails on the
 previous code. Gates on Vite 4646 all identical to D9 values; suite 1,185.
+
+## D11 — Sole-flat foot rest (11:45–12:20)
+
+Receiver variants (`claude-rig-variants.mjs` feet/stance): a bind with feet
+pitched 20° gave every transferred pose 20° foot error (toe joints 73 mm); a legs-
+apart, bent-knee stance only 1.9°. Decision: the foot's neutral is "sole flat":
+with the leg vertical, the skin's lowest supporting line under the ankle (sagittal
+lower convex hull) is level — physically right also in heeled shoes. Toes likewise
+from the support line under their own region. Applied to every rig in the shared
+neutral pass, AFTER detached joints follow their anchors (a detached foot first
+failed `footSurface.test.ts`: attached/detached copies disagreed).
+
+Guards, each motivated by measurement: bind sole slopes of real bodies are ≈0
+(Party 0.3°, Dummy M −0.3°, Dummy F −0.9°); CMU visualization capsules gave a
+degenerate −82° with zero span; Quaternius blocky feet only 2 cm of support. A
+line must cover ≥30% of the foot (15% for toes) and lie ≥20% of its span below
+the joint (10% for toes): a capsule around the bone has only its radius below it
+— my first synthetic capsule test proved coverage alone did not reject capsules
+(CMU was skipped only by geometric luck). Otherwise the bind is kept.
+
+Unexpected existing defect found and fixed by this: Party Woman's left sole was
+pitched while the source stood still — 12–14° on 91_34 (now 4.5–6.5°), up to 10°
+on 77_02 (now −4…2°), 5.5–9° on ActorCore Relax (now −2…2°); the right foot was
+already within ≈5°. Cause: her bind legs are not vertical, so the legs-vertical
+neutral left her left sole ≈7.4° off level. Side-view stills
+`claude-session/feet/{old,new}-{91,relax}.png`: shoe heel tip and toe box now
+level. Foot variant after: 0.85° (uniform ≈21 mm position offset there is most
+likely my re-baked shoe geometry changing ground support — not proven).
+
+Gates on Vite 4653: suite 1,187 (2 new foot tests; the leveling test fails with
+the normalization stubbed); route 140 unchanged maxima; source cuts unchanged;
+native exact; transferred body height changes ≤21.8 mm (ground support under
+flatter soles); wait 3.448e-8 / 6.005 mm; export ≤0.0035 mm; UI clean; build OK.
+
+Process note: `pkill -f "port 4651 "` also matched its own shell command line and
+killed that shell (and my Vite 4651). User services 4311 (listening) untouched;
+4337 was not listening when checked afterwards — not checked at session start,
+and that pattern cannot match it. Use PIDs, not -f patterns.

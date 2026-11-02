@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import * as T from "three";
-import { captureArmRest, normalizeArmRest } from "../src/restNeutral";
+import {
+  captureArmRest,
+  normalizeArmRest,
+  normalizeFootRest,
+} from "../src/restNeutral";
 
 const point = (n: T.Object3D) => n.getWorldPosition(new T.Vector3());
 function rotateWorld(bone: T.Object3D, q: T.Quaternion) {
@@ -138,5 +142,114 @@ describe("anatomical arm rest", () => {
     expect(
       a.lower.getWorldQuaternion(new T.Quaternion()).angleTo(pointed),
     ).toBeLessThan(1e-9);
+  });
+});
+
+/** A leg ending in a skinned foot box (sole from heel to toes) and a toe box. */
+function leg(pitch = 0, toeBend = 0, capsule = false) {
+  const group = new T.Group(),
+    shin = new T.Bone(),
+    foot = new T.Bone(),
+    toe = new T.Bone();
+  group.add(shin);
+  shin.position.set(0, 0.5, 0);
+  shin.add(foot);
+  foot.position.set(0, -0.42, 0);
+  foot.add(toe);
+  toe.position.set(0, -0.06, 0.13);
+  group.updateMatrixWorld(true);
+  const skin = (bone: T.Bone, geometry: T.BufferGeometry) => {
+    const count = geometry.attributes.position.count;
+    geometry.setAttribute(
+      "skinIndex",
+      new T.Uint16BufferAttribute(new Uint16Array(count * 4), 4),
+    );
+    const weights = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) weights[i * 4] = 1;
+    geometry.setAttribute(
+      "skinWeight",
+      new T.Float32BufferAttribute(weights, 4),
+    );
+    const mesh = new T.SkinnedMesh(geometry, new T.MeshBasicMaterial());
+    group.add(mesh);
+    group.updateMatrixWorld(true);
+    mesh.bind(new T.Skeleton([bone]));
+  };
+  if (capsule) {
+    // Visualization capsule along the ankle-to-toe bone: no sole below it.
+    const from = point(foot),
+      to = point(toe),
+      direction = to.clone().sub(from);
+    skin(
+      foot,
+      new T.CylinderGeometry(0.012, 0.012, direction.length(), 8, 8)
+        .applyQuaternion(
+          new T.Quaternion().setFromUnitVectors(
+            new T.Vector3(0, 1, 0),
+            direction.clone().normalize(),
+          ),
+        )
+        .translate(...from.add(to).multiplyScalar(0.5).toArray()),
+    );
+  } else {
+    skin(
+      foot,
+      new T.BoxGeometry(0.09, 0.06, 0.2, 3, 3, 8).translate(0, 0.05, 0.03),
+    );
+    skin(
+      toe,
+      new T.BoxGeometry(0.08, 0.03, 0.07, 3, 2, 4).translate(0, 0.015, 0.165),
+    );
+  }
+  const across = new T.Vector3(1, 0, 0);
+  if (pitch)
+    rotateWorld(foot, new T.Quaternion().setFromAxisAngle(across, pitch));
+  if (toeBend)
+    rotateWorld(toe, new T.Quaternion().setFromAxisAngle(across, toeBend));
+  // Re-bind in that pose, as an exporter with this bind would.
+  group.updateMatrixWorld(true);
+  group.traverse((m) => {
+    if (!(m instanceof T.SkinnedMesh)) return;
+    const p = m.geometry.attributes.position,
+      v = new T.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      m.getVertexPosition(i, v);
+      p.setXYZ(i, v.x, v.y, v.z);
+    }
+    m.skeleton.calculateInverses();
+    m.bind(m.skeleton, m.matrixWorld);
+  });
+  return { group, foot, toe };
+}
+const soleHeights = (l: ReturnType<typeof leg>) => {
+  l.group.updateMatrixWorld(true);
+  const heel = point(l.foot).add(new T.Vector3(0, 0, -0.07)),
+    ball = point(l.toe);
+  return [heel, ball];
+};
+
+describe("anatomical foot rest", () => {
+  it("levels a foot bound with a pitched sole, and its bent toes", () => {
+    const flat = leg(),
+      pitched = leg(0.35, -0.3);
+    for (const l of [flat, pitched])
+      normalizeFootRest(l.group, l.foot, down, forward);
+    // Same foot and toe orientation as the flat bind once both are normalized.
+    for (const name of ["foot", "toe"] as const)
+      expect(
+        flat[name]
+          .getWorldQuaternion(new T.Quaternion())
+          .angleTo(pitched[name].getWorldQuaternion(new T.Quaternion())),
+      ).toBeLessThan(0.02);
+    const [heel, ball] = soleHeights(flat);
+    expect(Math.abs(heel.y - ball.y)).toBeLessThan(0.08);
+  });
+  it("keeps the bind when the skin gives no sole to stand on", () => {
+    const l = leg(0.2, 0, true);
+    const before = l.foot.getWorldQuaternion(new T.Quaternion());
+    normalizeFootRest(l.group, l.foot, down, forward);
+    expect(
+      l.foot.getWorldQuaternion(new T.Quaternion()).angleTo(before),
+    ).toBeLessThan(1e-6);
   });
 });

@@ -2202,3 +2202,14 @@ limbs now also match by their measured place on the segment when names differ
 (`src/limbHelpers.ts`; upper-arm twist 55°→0.1° on a renamed source); ambiguous
 positions are left unmatched. Details: `docs/CLAUDE_AUTONOMOUS_LOG.md` D9–D10.
 Runtime Vite 4646.
+
+## Sole-flat foot rest (Claude, 2026-11-02)
+
+A receiver bound with pitched feet transferred every pose 20° pitched. The shared
+neutral now levels each foot (and toes) on the skin's lowest supporting line under
+the ankle, only where the skin forms a real sole (capsule/blocky feet keep the
+bind; `src/restNeutral.ts`, called from `src/rig.ts` after detached joints). This
+also removed an existing defect: Party Woman's left sole was pitched up to 12–14°
+while sources stood still; now within ≈5°. Transferred body heights shift ≤22 mm
+as ground support follows the flatter soles. Details: `docs/CLAUDE_AUTONOMOUS_LOG.md`
+D11. Runtime Vite 4653.

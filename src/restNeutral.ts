@@ -202,3 +202,97 @@ export function normalizeArmRest(
     }
   });
 }
+
+/** Lowest supporting line of a set of points in a vertical plane: the lower
+ * convex hull edge spanning `x`. Returns its slope and how much of the
+ * points' extent it covers, or undefined. */
+function support(points: [number, number][], x?: number) {
+  if (points.length < 8) return;
+  points.sort((p, q) => p[0] - q[0]);
+  const hull: [number, number][] = [];
+  for (const p of points) {
+    while (hull.length >= 2) {
+      const [a, b] = hull.slice(-2);
+      if ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) > 0)
+        break;
+      hull.pop();
+    }
+    hull.push(p);
+  }
+  const extent = points.at(-1)![0] - points[0][0];
+  x ??= points[0][0] + extent / 2;
+  for (let i = 1; i < hull.length; i++) {
+    const [a, b] = [hull[i - 1], hull[i]];
+    if (a[0] <= x && b[0] >= x && b[0] > a[0])
+      return {
+        slope: Math.atan2(b[1] - a[1], b[0] - a[0]),
+        cover: extent > 0 ? (b[0] - a[0]) / extent : 0,
+        span: b[0] - a[0],
+        heightAt: (px: number, py: number) =>
+          py - (a[1] + ((b[1] - a[1]) * (px - a[0])) / (b[0] - a[0])),
+      };
+  }
+}
+
+/** Sole flat: standing with the leg vertical, the receiving foot's heel and
+ * ball rest on the ground together (also in heeled shoes). The bind's foot
+ * pitch is replaced by the pitch at which the skin's lowest supporting line
+ * under the ankle is level; toes likewise from their own sole. Feet whose
+ * skin gives no clear support line (visualization capsules, blocky feet)
+ * keep the bind. Apply after the leg points along `down`. */
+export function normalizeFootRest(
+  group: T.Group,
+  foot: T.Bone | undefined,
+  down: T.Vector3,
+  forward: T.Vector3,
+) {
+  if (!foot) return;
+  const up = down.clone().negate();
+  const across = new T.Vector3().crossVectors(up, forward).normalize();
+  const flatten = (
+    bone: T.Bone,
+    region: (b: T.Bone) => boolean,
+    under: T.Vector3 | undefined,
+    cover: number,
+    depth: number,
+  ) => {
+    group.updateMatrixWorld(true);
+    const points: [number, number][] = [];
+    const v = new T.Vector3();
+    group.traverse((mesh) => {
+      if (!(mesh instanceof T.SkinnedMesh)) return;
+      const { skinIndex, skinWeight } = mesh.geometry.attributes;
+      if (!skinIndex || !skinWeight) return;
+      const inside = mesh.skeleton.bones.map(region);
+      for (let i = 0; i < skinIndex.count; i++) {
+        let w = 0;
+        for (let k = 0; k < skinWeight.itemSize; k++)
+          if (inside[skinIndex.getComponent(i, k)])
+            w += skinWeight.getComponent(i, k);
+        if (w < 0.5) continue;
+        mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld);
+        points.push([v.dot(forward), v.dot(up)]);
+      }
+    });
+    const line = support(points, under?.dot(forward));
+    // A real foot or shoe stands well below its joint; a visualization
+    // capsule around the bone has only its radius below it.
+    const joint = point(bone);
+    if (
+      !line ||
+      line.cover < cover ||
+      line.heightAt(joint.dot(forward), joint.dot(up)) < depth * line.span ||
+      Math.abs(line.slope) > Math.PI / 4 ||
+      Math.abs(line.slope) < 1e-9
+    )
+      return;
+    rotateWorld(bone, new T.Quaternion().setFromAxisAngle(across, line.slope));
+  };
+  // The foot rests on the line under the ankle; a toe on the line under its
+  // own middle (its joint is where the toe region begins).
+  flatten(foot, (b) => below(b, foot) || b === foot, point(foot), 0.3, 0.2);
+  for (const toe of foot.children)
+    // A bent toe's supporting line is shorter than a foot's.
+    if (toe instanceof T.Bone)
+      flatten(toe, (b) => below(b, toe) || b === toe, undefined, 0.15, 0.1);
+}

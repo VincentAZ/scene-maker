@@ -13,7 +13,12 @@ import { boneNames } from "../shared/scene";
 import { configureRigContacts, type RigContacts } from "./ik";
 import { captureFootSurfaces, transferFootClearance } from "./footSurface";
 import { captureHandClearance, supportTransferredHands } from "./handClearance";
-import { captureArmRest, normalizeArmRest, type ArmRest } from "./restNeutral";
+import {
+  captureArmRest,
+  normalizeArmRest,
+  normalizeFootRest,
+  type ArmRest,
+} from "./restNeutral";
 
 type BoneName = (typeof boneNames)[number];
 type Transform = {
@@ -435,6 +440,11 @@ export function configureImportedRig(
       );
   }
   followDetachedJoints(data);
+  // After detached skin joints follow their anchors, so an attached and a
+  // detached foot receive the same anatomical rest.
+  if (forward.lengthSq() > 0.5)
+    for (const side of ["left", "right"] as const)
+      normalizeFootRest(group, bones[side + "Foot"], down, forward);
   const inverse = group.getWorldQuaternion(new T.Quaternion()).invert();
   for (const name of boneNames)
     data.neutralWorld[name] = inverse
