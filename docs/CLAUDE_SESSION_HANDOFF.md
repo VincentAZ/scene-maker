@@ -36,9 +36,10 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 | 1024ae7 | Characters lying along another axis stood up on import |
 | 96671b5 | Skeleton-only sources keep receivers on the ground |
 | 16e7ad2 | BVH imports go to Actions (verified through the real dialog) |
+| (next) | Long takes disclosed; unusable captures refused |
 
 Every decision, rejected variant, harness pitfall and measurement is in
-`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D30). Summaries also appended to
+`docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D32). Summaries also appended to
 `docs/NATURAL_MOTION_CONTINUATION.md`.
 
 ## How to check generality
@@ -121,8 +122,8 @@ full suite, typecheck, build.
 
 ## Runtime at handoff
 
-Final Vite 4679 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
-runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4678 serve
+Final Vite 4680 (`test-results/natural.config.ts`, HMR off), frozen 10d1d01 rig
+runtime 4614, API 4413, owned Chrome 9451. Intermediate Vite ports 4609–4679 serve
 older code; do not use them for evidence. Start a fresh port after edits (no HMR).
 Never stop processes with `pkill -f <pattern>` — it matched its own shell once.
 

@@ -1389,6 +1389,22 @@ export default function App() {
         name: string;
         animations: { name: string; duration: number }[];
       }>("/api/import", { method: "POST", body: data });
+      // Takes are limited to 60 seconds; longer ones are counted in the notice,
+      // not dropped silently, and a capture with nothing usable is not imported.
+      const tooLong = result.animations.filter((a) => a.duration > 60);
+      if (
+        capture &&
+        tooLong.length &&
+        tooLong.length === result.animations.length
+      ) {
+        report(
+          `${result.name} is ${Math.round(tooLong[0]?.duration ?? 0)} seconds long. Trim the capture to 60 seconds or less and import it again.`,
+        );
+        return;
+      }
+      const skipped = tooLong.length
+        ? ` · ${tooLong.length} take${tooLong.length > 1 ? "s" : ""} longer than 60 s ${tooLong.length > 1 ? "were" : "was"} not added`
+        : "";
       const asset: Asset = {
         id: uid(),
         name: result.name.slice(0, 100),
@@ -1424,10 +1440,10 @@ export default function App() {
         setTab("motions");
         setFilter("My actions");
         setSearch("");
-        toast(`${asset.name} is ready in Actions`);
+        toast(`${asset.name} is ready in Actions${skipped}`);
       } else {
         setSelected(sceneRef.current.entities.at(-1)!.id);
-        toast(`${asset.name} is ready`);
+        toast(`${asset.name} is ready${skipped}`);
       }
     } catch (e) {
       report((e as Error).message);

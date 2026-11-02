@@ -879,3 +879,23 @@ smaller. With `lhand` as the hand, the world-orientation transfer already
 includes `lwrist`'s twist (it is `lhand`'s parent); only that intermediate
 joint has no receiving counterpart, which the notice correctly discloses.
 Kept as is (automatic ASF recognition and the fixtures' explicit mapping agree).
+
+## D32 — Long takes are disclosed; an unusable capture is refused (14:04–14:05)
+
+Takes over the scene schema's 60 s limit were dropped silently on import; with
+D30 a long BVH would have said "ready in Actions" and listed nothing.
+Decision (`App.tsx` `importAsset`; the 60 s schema limit is unchanged): the
+confirmation counts takes that were not added ("· 1 take longer than 60 s was
+not added"); a BVH capture whose only take is too long is refused before
+anything is created ("… is 70 seconds long. Trim the capture to 60 seconds or
+less and import it again."). Other imports behave as before.
+Evidence: real dialog on Vite 4680 with a 70 s BVH (35_01 frames repeated):
+message shown, no asset/take/actor created, no console errors (the driver now
+collects errors before its own check fetches the never-saved project, whose
+404 is expected); the normal BVH flow (import → Sage → play) still passes;
+real UI gate unchanged; suite 1,239, build OK.
+Housekeeping: 39 unreferenced uploads created by this session's BVH drivers
+were moved out of the private data to `claude-session/quarantined-test-uploads/`
+(`mixamo-eval-*` evaluation copies kept); the refused import's upload is among
+them. A refused import leaves its upload unreferenced — pre-existing behaviour
+of `/api/import` for any post-upload failure, not changed here.
