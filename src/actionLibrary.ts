@@ -6,7 +6,6 @@ export type ActionSort = "grouped" | "name" | "shortest" | "longest" | "newest";
 export const actionSources: { id: ActionSource; label: string }[] = [
   { id: "all", label: "All" },
   { id: "recorded", label: "Recorded" },
-  { id: "stylized", label: "Stylized" },
   { id: "mine", label: "My imports" },
 ];
 export const actionSorts: { id: ActionSort; label: string }[] = [

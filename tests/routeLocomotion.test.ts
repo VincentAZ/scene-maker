@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allMotions, starterScene, type Motion } from "../shared/scene";
 import {
-  libraryMotions,
+  capturedMotions,
   recordedArrivals,
   capturedRouteGaits,
 } from "../shared/motionLibrary";
@@ -69,7 +69,7 @@ it.each([1e-8, 1, 1e8])(
 );
 
 describe("route locomotion selection", () => {
-  it("keeps procedural fallbacks, bundled gaits and uploaded clips without offering bundled non-gaits", () => {
+  it("keeps the studio gaits, recorded strides and uploaded clips without offering retired stylized clips", () => {
     const { scene, actor, walk } = fixture();
     const unnamed = {
       ...walk,
@@ -83,16 +83,19 @@ describe("route locomotion selection", () => {
       expect.arrayContaining([
         "walk",
         "run",
-        "authored-walk",
-        "authored-run",
-        "authored-walk-carry",
+        "captured-walking-stride",
+        "captured-running-stride",
+        "captured-141-19",
         "native-walk",
         "take",
       ]),
     );
-    expect(options.some((motion) => motion.id === "authored-jump")).toBe(false);
+    // The stylized clips are retired from the library, gaits included.
+    expect(options.some((motion) => motion.id.startsWith("authored-"))).toBe(
+      false,
+    );
     expect(options.indexOf(walk)).toBeLessThan(
-      options.findIndex((motion) => motion.id === "authored-walk"),
+      options.findIndex((motion) => motion.id === "captured-walking-stride"),
     );
     expect(namedRouteMovement(unnamed)).toBeUndefined();
   });
@@ -100,11 +103,12 @@ describe("route locomotion selection", () => {
   it("prefers the character's own gait or most recent imported gait, then the captured strides", () => {
     const { scene, actor, walk } = fixture();
     expect(defaultRouteLocomotion(scene, actor)).toBe(walk);
-    const carry = libraryMotions.find(
-      (motion) => motion.id === "authored-walk-carry",
+    // A recorded walk the actor last performed outranks its own gait.
+    const casual = capturedMotions.find(
+      (motion) => motion.id === "captured-141-19",
     )!;
-    actor.clips.push({ id: "carry", motionId: carry.id, duration: 3 });
-    expect(defaultRouteLocomotion(scene, actor)).toBe(carry);
+    actor.clips.push({ id: "casual", motionId: casual.id, duration: 3 });
+    expect(defaultRouteLocomotion(scene, actor)).toBe(casual);
     actor.clips = [];
     scene.customMotions = [];
     expect(defaultRouteLocomotion(scene, actor).id).toBe(

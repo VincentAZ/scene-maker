@@ -655,8 +655,9 @@ it("plans around backdrop walls while excluding floor meshes from route footprin
 it("can plan geometry with an explicitly selected imported gait without losing its original identity", async () => {
   const scene = fixture();
   const objects = await objectsFor(scene);
+  // A recorded walk other than the studio stride (the CMU casual walk).
   const original = allMotions(scene).find(
-    (motion) => motion.id === "authored-walk-carry",
+    (motion) => motion.id === "captured-141-19",
   )!;
   const motion = planObjectRoute(
     scene,

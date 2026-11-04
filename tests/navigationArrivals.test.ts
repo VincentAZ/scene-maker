@@ -7,7 +7,10 @@ import {
   type Scene,
   type Motion,
 } from "../shared/scene";
-import { motionSource } from "../shared/motionLibrary";
+import {
+  capturedArrivalGaits,
+  capturedRouteGaits,
+} from "../shared/motionLibrary";
 import {
   expandArrivalRequests,
   installArrivalRoutes,
@@ -27,8 +30,9 @@ function fixture() {
     duration: 4,
     distance: 0,
     poses: [],
-    sourceAssetId: motionSource.id,
-    animationName: "Walk",
+    // The recorded gradual-stop take, routed and then played to its stop.
+    sourceAssetId: capturedArrivalGaits.sourceAssetId,
+    animationName: capturedArrivalGaits.animationName,
     path: {
       points: [
         [0, 0, 0],
@@ -190,7 +194,8 @@ it("rejects missing or incompatible saved pair references", () => {
       s.entities[0].clips[0].navigation!.arrival!.motionId = "idle";
     },
     (s: Scene) => {
-      s.customMotions[2].animationName = "Run";
+      // The stop plays a different recording than the routed arrival.
+      s.customMotions[2].animationName = capturedRouteGaits[1].animationName;
     },
     (s: Scene) => {
       s.entities[0].clips[0].navigation!.arrival!.motionId = "prefix";

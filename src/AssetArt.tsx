@@ -1,7 +1,38 @@
+import { useState } from "react";
 import type { Asset } from "../shared/scene";
 import { libraryEntry } from "../shared/characterLibrary";
 import { furnitureEntry } from "../shared/furnitureLibrary";
 import { setLayout } from "../shared/setLayouts";
+import { Box, Mountain, UserRound } from "lucide-react";
+import { useModelThumbnail } from "./modelThumbnail";
+
+/** An imported model shows a render of itself; never a drawn stand-in. */
+function ImportedArt({ asset }: { asset: Asset }) {
+  // A saved preview whose file is gone is rendered again from the model.
+  const [broken, setBroken] = useState(false);
+  const url = useModelThumbnail(asset, broken);
+  if (url)
+    return (
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setBroken(true)}
+      />
+    );
+  if (url === undefined)
+    return (
+      <span className="asset-art-loading" aria-label="Rendering preview" />
+    );
+  const Icon =
+    asset.category === "characters"
+      ? UserRound
+      : asset.category === "environments"
+        ? Mountain
+        : Box;
+  return <Icon className="asset-art-icon" aria-hidden="true" />;
+}
 export function AssetArt({ asset }: { asset: Asset }) {
   const entry = libraryEntry(asset) || furnitureEntry(asset);
   if (setLayout(asset.id))
@@ -13,6 +44,7 @@ export function AssetArt({ asset }: { asset: Asset }) {
         decoding="async"
       />
     );
+  if (asset.url) return <ImportedArt asset={asset} />;
   if (asset.thumbnail)
     return <img src={asset.thumbnail} alt="" loading="lazy" decoding="async" />;
   if (entry)

@@ -2,6 +2,7 @@ import { it, expect } from "vitest";
 import { characterDraft } from "../shared/characterDesign";
 import { assetSchema, applyCommands, starterScene } from "../shared/scene";
 import { assistant } from "../server/ai";
+import { validatePlan } from "../shared/studio";
 
 it("bounds character recipes to supported local looks, colors, wearables, and previews", () => {
   const draft = characterDraft("quaternius-casual-female", "Cleo");
@@ -34,33 +35,46 @@ it("bounds character recipes to supported local looks, colors, wearables, and pr
     expect(assetSchema.safeParse({ ...draft, ...change }).success).toBe(false);
 });
 
-it("opens the character maker or creates a named skinned character through the offline assistant", async () => {
+it("asks for an imported character instead of building a retired starting look through the offline assistant", async () => {
   const config = { assistant: null, providers: {}, blender: "blender" },
     scene = starterScene();
   for (const prompt of [
     "Create a character",
     "Design a new character",
     "Create a character named Cleo from Missing",
-  ])
-    expect((await assistant(config, scene, prompt)).steps).toEqual([
-      { type: "show", panel: "createCharacter" },
-    ]);
-  const plan = await assistant(
-    config,
-    scene,
     'Create a character named "Cleo" based on Sage',
-  );
-  expect(plan.mode).toBe("offline");
-  const edit = plan.steps[0];
-  if (edit.type !== "edit") throw Error("Expected character creation");
-  const result = applyCommands(scene, edit.commands);
-  expect(result.customAssets.at(-1)).toMatchObject({
-    name: "Cleo",
-    design: { baseId: "quaternius-casual-female" },
-  });
-  expect(result.entities.at(-1)?.name).toBe("Cleo");
-  expect(plan.steps[1]).toEqual({
-    type: "select",
-    id: result.entities.at(-1)!.id,
-  });
+  ]) {
+    const plan = await assistant(config, scene, prompt);
+    expect(plan.mode).toBe("offline");
+    expect(plan.steps, prompt).toEqual([
+      { type: "show", panel: "importAsset", category: "characters" },
+    ]);
+    expect(plan.response).toContain("Import");
+  }
+  // A recolored starting look is still a valid recipe for old projects, but
+  // the assistant may no longer create one.
+  const draft = characterDraft("quaternius-casual-female", "Cleo");
+  expect(
+    applyCommands(scene, [
+      { type: "createAsset", asset: draft },
+    ]).customAssets.at(-1)?.design,
+  ).toEqual(draft.design);
+  expect(() =>
+    validatePlan(
+      {
+        response: "Created Cleo.",
+        steps: [
+          {
+            type: "edit",
+            commands: [
+              { type: "createAsset", asset: draft },
+              { type: "add", id: "cleo", assetId: draft.id },
+            ],
+          },
+        ],
+      },
+      scene,
+      () => scene,
+    ),
+  ).toThrow("retired");
 });

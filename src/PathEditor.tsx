@@ -20,7 +20,6 @@ import {
 } from "../shared/path";
 import type { Point } from "../shared/ladder";
 import type { Footprint } from "../shared/navigation";
-import { motionSource } from "../shared/motionLibrary";
 import {
   defaultRouteLocomotion,
   matchingRouteLocomotion,
@@ -603,7 +602,7 @@ export function PathEditor({
               value={locomotionId}
               onChange={(event) => setLocomotionId(event.target.value)}
             >
-              <optgroup label="Recorded, stylized and imported gaits">
+              <optgroup label="Recorded and imported gaits">
                 {locomotions
                   .filter((candidate) => candidate.kind === "imported")
                   .map((candidate) => (
@@ -614,11 +613,9 @@ export function PathEditor({
                         : ""}
                       {candidate.sourceAssetId === actor.assetId
                         ? " · original character"
-                        : candidate.sourceAssetId === motionSource.id
-                          ? " · stylized"
-                          : candidate.sourceAssetId?.startsWith("cmu-capture-")
-                            ? " · recorded"
-                            : " · imported"}
+                        : candidate.sourceAssetId?.startsWith("cmu-capture-")
+                          ? " · recorded"
+                          : " · imported"}
                     </option>
                   ))}
               </optgroup>

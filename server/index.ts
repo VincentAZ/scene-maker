@@ -8,7 +8,7 @@ import { codingPreview } from "./codingPreview";
 import { createSpeechService } from "./speech";
 import { checkForUpdates, versionInfo } from "./updates";
 import { recordingsRouter } from "./recordings";
-import { readStudioLibrary } from "./studioLibrary";
+import { readStudioLibrary, removeFromLibrary } from "./studioLibrary";
 import express from "express";
 import multer from "multer";
 import path from "node:path";
@@ -188,6 +188,13 @@ app.post("/api/update/check", async (_req, res) => {
 });
 app.get("/api/library", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
+  res.json(readStudioLibrary());
+});
+app.post("/api/library/remove", (req, res) => {
+  const { ids } = z
+    .object({ ids: z.array(z.string().min(1).max(200)).min(1).max(500) })
+    .parse(req.body);
+  removeFromLibrary(ids);
   res.json(readStudioLibrary());
 });
 app.get("/api/projects", (_req, res) => res.json(listProjects()));

@@ -269,13 +269,32 @@ button svg {
   background: #eaf0df;
   color: #4d6341;
 }
+/* Search, filters and sort stay in place; only the list below them scrolls. */
 .library-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 16px 18px 14px;
+}
+.library-body > * {
+  flex-shrink: 0;
+}
+.library-body > .asset-grid,
+.action-library > .motion-library {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  margin-right: -10px;
+  padding-right: 10px;
   scrollbar-width: thin;
   scrollbar-color: #d9ddcf transparent;
+}
+.library-body > .action-library {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .search {
   position: relative;
@@ -363,13 +382,13 @@ button svg {
   align-items: flex-end;
   justify-content: center;
 }
-.asset-card:nth-child(4n + 2) .asset-art {
+.asset-tile:nth-child(4n + 2) .asset-art {
   background: #f0e9de;
 }
-.asset-card:nth-child(4n + 3) .asset-art {
+.asset-tile:nth-child(4n + 3) .asset-art {
   background: #e7ece9;
 }
-.asset-card:nth-child(4n + 4) .asset-art {
+.asset-tile:nth-child(4n + 4) .asset-art {
   background: #ede8e2;
 }
 .asset-art svg,
@@ -1688,6 +1707,9 @@ label > span {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.motion-library > * {
+  flex-shrink: 0;
 }
 .motion-card {
   border: 1px solid #e3e9d8;
@@ -5751,4 +5773,99 @@ a.attach-chip {
 }
 .hidden-action {
   opacity: 0.55;
+}
+.clear-clips {
+  float: right;
+  font-size: 10px;
+  font-weight: 500;
+  color: #b5493d;
+}
+
+/* Characters, props and sets: hover tools on each tile. */
+.asset-library {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.library-body > .asset-library > .asset-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  margin-right: -10px;
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #d9ddcf transparent;
+}
+.asset-controls {
+  grid-template-columns: 1fr;
+}
+.asset-tile {
+  position: relative;
+  min-width: 0;
+}
+.asset-tile > .asset-card {
+  width: 100%;
+}
+.asset-tile.selected .asset-art {
+  outline: 2px solid #4c6146;
+  outline-offset: -2px;
+}
+.asset-tools {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.asset-tile:hover .asset-tools,
+.asset-tools:focus-within {
+  opacity: 1;
+}
+.asset-tools button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: #ffffffe3;
+  color: #5b7048;
+  box-shadow: 0 2px 5px #2c3b2610;
+}
+.asset-tools button.danger {
+  color: #b5493d;
+}
+.asset-art-loading {
+  align-self: stretch;
+  width: 100%;
+  background: linear-gradient(100deg, #0000 30%, #ffffff80 50%, #0000 70%)
+    #e8eadf;
+  background-size: 200% 100%;
+  animation: asset-art-shimmer 1.4s linear infinite;
+}
+@keyframes asset-art-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.asset-art svg.asset-art-icon {
+  width: 34px;
+  height: 34px;
+  align-self: center;
+  padding: 0;
+  color: #a3ab98;
+}
+.library-body > .asset-library > .asset-grid {
+  overflow-x: hidden;
+}
+.asset-card > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

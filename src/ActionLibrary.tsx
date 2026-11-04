@@ -20,23 +20,7 @@ import {
   type ActionSort,
   type ActionSource,
 } from "./actionLibrary";
-
-const HIDDEN_KEY = "scene-maker-hidden-actions";
-function readHidden() {
-  try {
-    const value = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]");
-    return new Set<string>(Array.isArray(value) ? value : []);
-  } catch {
-    return new Set<string>();
-  }
-}
-function writeHidden(hidden: Set<string>) {
-  try {
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden]));
-  } catch {
-    // Hiding is a per-browser convenience; without storage it lasts the session.
-  }
-}
+import { useHiddenItems } from "./hiddenItems";
 
 /** The Actions library: recorded, stylized and the creator's own actions,
  * filtered by source, category, use and text, sorted several ways. Own
@@ -57,7 +41,7 @@ export function ActionLibrary({
   motions: Motion[];
   search: string;
   mine: ReadonlySet<string>;
-  /** This scene's own actions, which can be deleted here. */
+  /** The creator's own actions, which can be deleted from their library. */
   deletable: ReadonlySet<string>;
   usage: ReadonlyMap<string, number>;
   initialSource?: ActionSource;
@@ -72,10 +56,10 @@ export function ActionLibrary({
     [sort, setSort] = useState<ActionSort>("grouped"),
     [usedOnly, setUsedOnly] = useState(false),
     [showHidden, setShowHidden] = useState(false),
-    [hidden, setHidden] = useState(readHidden),
     [selecting, setSelecting] = useState(false),
     [selected, setSelected] = useState<Set<string>>(new Set()),
-    [confirm, setConfirm] = useState<string[] | null>(null);
+    [confirm, setConfirm] = useState<string[] | null>(null),
+    [hidden, toggleHidden] = useHiddenItems("scene-maker-hidden-actions");
   const items = useMemo(
     () =>
       queryActions(motions, {
@@ -107,15 +91,6 @@ export function ActionLibrary({
     items.some((item) => item.motion.id === id),
   );
   const chosenDeletable = chosen.filter((id) => deletable.has(id));
-  const toggleHidden = (ids: string[], hide: boolean) => {
-    const next = new Set(hidden);
-    for (const id of ids) {
-      if (hide) next.add(id);
-      else next.delete(id);
-    }
-    setHidden(next);
-    writeHidden(next);
-  };
   const toggleSelected = (id: string) => {
     const next = new Set(selected);
     if (next.has(id)) next.delete(id);
@@ -352,7 +327,10 @@ export function ActionLibrary({
                 ? `${affected(confirm)} clip${affected(confirm) > 1 ? "s" : ""} in this scene play${affected(confirm) > 1 ? "" : "s"} ${confirm.length > 1 ? "them" : "it"} and will be removed too.`
                 : "No clip in this scene uses it."}
             </p>
-            <p className="muted">Undo (Ctrl/Cmd+Z) brings it back.</p>
+            <p className="muted">
+              Other projects that already use it keep it. Undo (Ctrl/Cmd+Z)
+              restores this scene.
+            </p>
             <div className="row confirm-actions">
               <button className="secondary" onClick={() => setConfirm(null)}>
                 Keep

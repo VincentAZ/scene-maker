@@ -344,7 +344,11 @@ describe("directed dialogue performances", () => {
     expect(prompt).toContain("speakerId");
     expect(prompt).toContain("targetId");
     expect(prompt).toContain("seat");
-    expect(prompt).toContain("Athletic jump");
+    // The full library of recordings, without the retired stylized clips.
+    expect(prompt).toContain("Forward jump");
+    expect(prompt).toContain("captured-79-69");
+    expect(prompt).not.toContain("Athletic jump");
+    expect(prompt).not.toContain("authored-");
     expect(prompt).toContain("I will sit and take a sip.");
     // Leo answers once Mila's recorded Sit down and Take a sip finish.
     expect(dialogueTiming(result, result.transcript[1])!.start).toBeCloseTo(

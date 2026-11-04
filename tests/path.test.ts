@@ -337,5 +337,8 @@ describe("authored walking paths", () => {
     expect(rig.quaternion.clone().normalize().angleTo(rotation)).toBeLessThan(
       1e-6,
     );
-  });
+    // Baking evaluates the full recorded-stride pose (hand and foot contact
+    // solves included) at every 60 fps sample and source-frame boundary of
+    // the 8 s route: about 2.5 s alone, past the 5 s default on a loaded runner.
+  }, 15000);
 });

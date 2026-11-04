@@ -7,7 +7,9 @@ import {
 import {
   commandSchema,
   applyCommands,
-  starterScene,
+  blankScene,
+  retiredAssetIds,
+  type Command,
   validateScene,
   uid,
   duration,
@@ -138,15 +140,32 @@ export const conversationHistorySchema = z
     }),
   )
   .max(20);
-export function newProject(name: string, template: "empty" | "cafe"): Scene {
-  const s = starterScene();
+/** Every new project starts on the plain studio stage: the cartoon café
+ * template is retired, and "cafe" is still accepted from older plans. */
+export function newProject(name: string, _template: "empty" | "cafe"): Scene {
+  const s = blankScene();
   s.name = name;
-  if (template === "empty") {
-    s.entities = [];
-    s.environment = "studio";
-    s.mission = "";
-  }
   return s;
+}
+/** The assistant may only add what the library offers: no retired built-ins,
+ * no code-built sets, and no props or characters composed from shapes. */
+function checkOffered(commands: Command[]) {
+  for (const command of commands) {
+    if (command.type === "add" && retiredAssetIds.has(command.assetId))
+      throw Error(
+        "That built-in is retired. Use one of the creator's imports, or ask them to import a model.",
+      );
+    if (command.type === "createAsset")
+      throw Error(
+        "Shape-built and recolored cartoon assets are retired. Ask the creator to import a model instead.",
+      );
+    if (
+      command.type === "scene" &&
+      command.changes.environment &&
+      command.changes.environment !== "studio"
+    )
+      throw Error("The code-built sets are retired; use the studio stage.");
+  }
 }
 export function copyProject(scene: Scene, name: string): Scene {
   return validateScene({
@@ -171,6 +190,7 @@ export function validatePlan(
   for (const step of plan.steps) {
     if (["newProject", "copyProject", "openProject"].includes(step.type))
       visited.set(current.id, structuredClone(current));
+    if (step.type === "edit") checkOffered(step.commands);
     if (step.type === "edit")
       current = applyCommands(current, step.commands, {
         deferInteractionTiming: pendingRoutes.has(current.id),

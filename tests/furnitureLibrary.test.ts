@@ -10,6 +10,7 @@ import {
   allAssets,
   applyCommands,
   assetSchema,
+  retiredAssetIds,
   starterScene,
   validateScene,
 } from "../shared/scene";
@@ -64,16 +65,40 @@ it("loads every shipped furniture model at metre scale, grounded and centered, w
     ).toBe("PNG");
 });
 
-it("resolves overlapping prop names and every furnished set through the offline assistant", () => {
+it("offers no retired furniture or furnished set to the offline assistant, and resolves overlapping import names", () => {
   const scene = starterScene();
   for (const asset of [...furnitureAssets, ...setAssets]) {
-    const commands = offlineCommands(scene, `Add ${asset.name}`).commands;
-    expect(commands, asset.name).toEqual([{ type: "add", assetId: asset.id }]);
+    expect(retiredAssetIds.has(asset.id), asset.name).toBe(true);
+    expect(
+      offlineCommands(scene, `Add ${asset.name}`).commands,
+      asset.name,
+    ).toEqual([]);
   }
   for (const asset of setAssets)
-    expect(offlineCommands(scene, `Switch to ${asset.name}`).commands).toEqual([
-      { type: "add", assetId: asset.id },
-    ]);
+    expect(
+      offlineCommands(scene, `Switch to ${asset.name}`).commands,
+      asset.name,
+    ).toEqual([]);
+  // The longest matching name among the creator's imports wins.
+  const prop = (id: string, name: string) =>
+    assetSchema.parse({
+      id,
+      name,
+      category: "props",
+      style: "Imported",
+      color: "#8a6f52",
+      url: `/uploads/${id}.glb`,
+    });
+  scene.customAssets.push(
+    prop("imported-chair", "Chair"),
+    prop("imported-desk-chair", "Desk chair"),
+  );
+  expect(offlineCommands(scene, "Add Desk chair").commands).toEqual([
+    { type: "add", assetId: "imported-desk-chair" },
+  ]);
+  expect(offlineCommands(scene, "Add Chair").commands).toEqual([
+    { type: "add", assetId: "imported-chair" },
+  ]);
   for (const url of [
     "/library/furniture/missing.glb",
     "/library/furniture/../desk.glb",

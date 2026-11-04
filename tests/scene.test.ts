@@ -5,6 +5,8 @@ import {
   validateScene,
   allAssets,
   allMotions,
+  assetSchema,
+  offeredAssets,
   characters,
   actionRoles,
 } from "../shared/scene";
@@ -21,14 +23,17 @@ const recordedSourceMap = await recordedSources();
 describe("creator scene workflows", () => {
   it("ships rigged characters, props, sets and distinct actions", () => {
     const s = starterScene();
+    // Old projects still resolve every built-in, but only the plain studio
+    // stage is still offered.
     expect(allAssets(s).length).toBeGreaterThanOrEqual(32);
-    // Every action is a recording: the motion-capture takes and the
-    // authored stylized clips, each with its own id. Every role a seat,
-    // ladder, prop or dialogue line relies on names exactly one recording.
+    expect(offeredAssets(s).map((a) => a.id)).toEqual(["studio"]);
+    // Every action is a motion-capture recording, each with its own id; the
+    // retired stylized clips are not offered. Every role a seat, ladder, prop
+    // or dialogue line relies on names exactly one recording.
     expect(capturedMotions.length).toBeGreaterThanOrEqual(74);
-    expect(allMotions(s).length).toBe(
-      capturedMotions.length + libraryMotions.length,
-    );
+    expect(allMotions(s).length).toBe(capturedMotions.length);
+    for (const stylized of libraryMotions)
+      expect(allMotions(s).some((m) => m.id === stylized.id)).toBe(false);
     expect(new Set(allMotions(s).map((m) => m.id)).size).toBe(
       allMotions(s).length,
     );
@@ -257,8 +262,23 @@ describe("creator scene workflows", () => {
     expect(
       offlineCommands(s, "build a photorealistic alien").commands,
     ).toHaveLength(0);
-    expect(offlineCommands(s, "Add a coffee cup").commands).toEqual([
-      { type: "add", assetId: "cup" },
+    // The retired cup is not offered; the creator's imported one is.
+    expect(offlineCommands(s, "Add a coffee cup").commands).toEqual([]);
+    const imported = {
+      ...s,
+      customAssets: [
+        assetSchema.parse({
+          id: "imported-cup",
+          name: "Coffee cup",
+          category: "props",
+          style: "Imported",
+          color: "#f2efe8",
+          url: "/uploads/cup.glb",
+        }),
+      ],
+    };
+    expect(offlineCommands(imported, "Add a coffee cup").commands).toEqual([
+      { type: "add", assetId: "imported-cup" },
     ]);
     const interaction = offlineCommands(
       s,

@@ -1073,3 +1073,9 @@ Rebuilt `captured-stand-walk-stop-party-review` in `.data/private-runtime`. Base
 
 ### D54 — Settings copied on request
 Copied `/home/vincent/Repos/scene-maker/.data/connections.json` (read-only source) to `.data/private-runtime/connections.json`, mode 600, without displaying it. Verified only section names and per-provider connected status.
+
+### D55 — Retired every cartoon built-in (creator: "NUKE THEM ALL")
+`retiredAssetIds` covers every built-in except the plain studio stage: block and Quaternius characters, procedural props, Kenney furniture, furnished and code-built sets. The library, new projects (`blankScene`), the offline helper and the live assistant (`offeredAssets`, `checkOffered` in `validatePlan`, rewritten prompt) no longer offer them; "Create a character" and "Create something new" (cartoon recolours and shape-built props) are gone. Assets are retired, not deleted: old projects still render them, and `starterScene` stays as a test fixture. The 17 stylized clips left `allMotions`; old clips migrate through `stylizedAliases` (Stand up maps to "Get up from the ground", since the recorded Stand up needs a targeted Sit down). Consequence: with no built-in chair or ladder, targeted Sit down and Climb need an imported prop with seat/ladder metadata, which has no UI yet.
+
+### D56 — Library tools for characters, props and sets
+`AssetLibrary`: sort, "In this scene", per-browser hide, select with bulk hide/delete. Deleting an import runs `deleteAsset` (its actors and the actions recorded on it go too; Undo restores the scene) and adds the id to `library-removed.json`, which `readStudioLibrary` skips, so other projects keep their copy but the library stops offering it. Action deletion uses the same list. Imported models get a rendered thumbnail (`modelThumbnail.ts`) instead of the drawn placeholder. Library controls are pinned; only the list scrolls. "Remove all actions" added to Details.

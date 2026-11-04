@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { starterScene, applyCommands, type Scene } from "../shared/scene";
+import {
+  starterScene,
+  applyCommands,
+  assetSchema,
+  type Scene,
+} from "../shared/scene";
 import {
   validatePlan,
   type AssistantReply,
@@ -11,6 +16,7 @@ import {
   type StudioPorts,
 } from "../src/studioRunner";
 import { ProjectSaveQueue } from "../src/projectSave";
+import { characterDraft } from "../shared/characterDesign";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -123,18 +129,29 @@ describe("ordered assistant workflows", () => {
     expect(s.events).toEqual([]);
   });
 
-  it("saves the previous project, creates and directs a character, then exports the new scene", async () => {
-    const s = studio();
+  it("saves the previous project, directs an imported character in a copy, then exports it", async () => {
+    const original = starterScene();
+    original.customAssets.push(
+      assetSchema.parse({
+        id: "imported-dancer",
+        name: "Dancer",
+        category: "characters",
+        style: "Imported",
+        color: "#6b6b6b",
+        url: "/uploads/dancer.glb",
+      }),
+    );
+    const s = studio(original);
     const initial = s.ports.getScene();
     const plan = reply(
       {
         response: "Ready",
         steps: [
-          { type: "newProject", name: "Moonwalk", template: "empty" },
+          { type: "copyProject", name: "Moonwalk" },
           {
             type: "edit",
             commands: [
-              { type: "add", id: "dancer", assetId: "mila" },
+              { type: "add", id: "dancer", assetId: "imported-dancer" },
               { type: "chain", id: "dancer", motionId: "walk" },
             ],
           },
@@ -153,8 +170,58 @@ describe("ordered assistant workflows", () => {
       "export:Moonwalk",
     ]);
     expect(s.stored.get(initial.id)?.entities).toHaveLength(5);
-    expect(s.ports.getScene().entities[0].clips[0].motionId).toBe("walk");
+    const dancer = s.ports.getScene().entities.find((e) => e.id === "dancer");
+    expect(dancer?.clips[0].motionId).toBe("walk");
     expect(s.ports.getScene().id).not.toBe(initial.id);
+  });
+  it("starts every new project on a blank studio stage, even from the retired café template", async () => {
+    for (const template of ["empty", "cafe"] as const) {
+      const s = studio();
+      await runStudioPlan(
+        reply(
+          {
+            response: "Ready",
+            steps: [{ type: "newProject", name: "Fresh", template }],
+          },
+          s.ports.getScene(),
+        ),
+        s.ports,
+      );
+      expect(s.ports.getScene()).toMatchObject({
+        name: "Fresh",
+        environment: "studio",
+        entities: [],
+        customAssets: [],
+        mission: "",
+      });
+    }
+  });
+  it("rejects retired built-ins, shape-built assets and code-built sets before any effects", () => {
+    const scene = starterScene();
+    for (const command of [
+      { type: "add", id: "dancer", assetId: "mila" },
+      { type: "add", assetId: "furniture-chair" },
+      {
+        type: "createAsset",
+        asset: characterDraft("quaternius-casual-female", "Cleo"),
+      },
+      { type: "scene", changes: { environment: "park" } },
+    ])
+      expect(
+        () =>
+          reply(
+            {
+              response: "Ready",
+              steps: [
+                { type: "newProject", name: "Moonwalk", template: "empty" },
+                { type: "edit", commands: [command] },
+                { type: "save" },
+              ],
+            } as AssistantPlan,
+            scene,
+          ),
+        JSON.stringify(command),
+      ).toThrow("retired");
   });
   it("does not switch or export when the old project cannot be saved", async () => {
     const s = studio();

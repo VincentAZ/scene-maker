@@ -9,7 +9,7 @@ import {
   validateScene,
   type Asset,
 } from "../shared/scene";
-import { libraryMotions } from "../shared/motionLibrary";
+import { capturedMotions } from "../shared/motionLibrary";
 import {
   emptyStudioLibrary,
   studioLibraryAssets,
@@ -201,13 +201,15 @@ describe("private studio library helpers", () => {
   });
 
   it("deduplicates bundled IDs and shared dependencies within and across selections", () => {
+    // A recording bundled with the studio (the stylized clips are retired).
     const scene = starterScene(),
-      library = fixture();
+      library = fixture(),
+      bundled = capturedMotions.find((m) => m.id === "wave")!;
     library.assets.push({
       ...asset("mila", "characters"),
       name: "Not bundled Mila",
     });
-    library.motions.push(libraryMotions[0], imported("another-greeting"));
+    library.motions.push(bundled, imported("another-greeting"));
     expect(
       studioLibraryAssets(scene, library).filter(
         (entry) => entry.id === "mila",
@@ -215,13 +217,13 @@ describe("private studio library helpers", () => {
     ).toHaveLength(1);
     expect(
       studioLibraryMotions(scene, library).filter(
-        (entry) => entry.id === libraryMotions[0].id,
+        (entry) => entry.id === bundled.id,
       ),
     ).toHaveLength(1);
     expect(
       studioLibraryCommands(scene, library, {
         assetIds: ["mila"],
-        motionIds: ["idle", libraryMotions[0].id],
+        motionIds: ["idle", bundled.id],
       }),
     ).toEqual([]);
     const commands = studioLibraryCommands(scene, library, {

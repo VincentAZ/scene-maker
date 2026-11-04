@@ -19,7 +19,7 @@ import { setMotionSources } from "../src/rig";
 import * as T from "three";
 import { disposeObject } from "../src/world";
 
-it("finds the calm standing loop of the bundled source by measurement, not by name", async () => {
+it("finds the calm standing loop of an imported source by measurement, not by name", async () => {
   const bytes = await readFile("public" + motionSource.url);
   const gltf = await new GLTFLoader().parseAsync(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
@@ -27,8 +27,20 @@ it("finds the calm standing loop of the bundled source by measurement, not by na
   );
   const source = prepareImportedAsset(motionSource, gltf);
   try {
-    const walk = libraryMotions.find((m) => m.animationName === "Walk")!;
-    const found = standingPerformance(starterScene(), source, walk)!;
+    // The bundled stylized takes are retired and never chosen on their own.
+    const retiredWalk = libraryMotions.find((m) => m.animationName === "Walk")!;
+    expect(
+      standingPerformance(starterScene(), source, retiredWalk),
+    ).toBeUndefined();
+    // The same file stands in for a creator's import carrying its own takes.
+    const takes = libraryMotions.map((m) => ({
+      ...m,
+      id: "user-" + m.id,
+      sourceAssetId: "user-source",
+    }));
+    const scene = { ...starterScene(), customMotions: takes };
+    const walk = takes.find((m) => m.animationName === "Walk")!;
+    const found = standingPerformance(scene, source, walk)!;
     expect(found).toBeDefined();
     expect(found.motion.animationName).toBe("Idle");
     expect(found.travel).toBeLessThan(0.15);
@@ -54,13 +66,12 @@ it("finds the calm standing loop of the bundled source by measurement, not by na
     );
     // Gestures and falls on the same source are stationary too but not calm
     // standing loops; they must not be chosen as a waiting performance.
+    const measure = standingPerformance(scene, source, {
+      ...walk,
+      id: "gait",
+    })!;
     for (const name of ["Victory", "Defeat", "Death", "Punch"]) {
-      const other = libraryMotions.find((m) => m.animationName === name)!;
-      const measure = standingPerformance(
-        { ...starterScene(), customMotions: [] },
-        source,
-        { ...walk, id: "gait" },
-      )!;
+      const other = takes.find((m) => m.animationName === name)!;
       expect(measure.motion.id).not.toBe(other.id);
     }
   } finally {

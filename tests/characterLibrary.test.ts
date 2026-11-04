@@ -13,6 +13,8 @@ import {
   starterScene,
   boneNames,
   allAssets,
+  offeredAssets,
+  retiredAssetIds,
 } from "../shared/scene";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning, nativeRootMotion } from "../src/rig";
@@ -157,15 +159,19 @@ it(
   },
 );
 
-it("keeps catalogue file access bounded and exposes collections and assistant names", () => {
+it("keeps catalogue file access bounded and no longer offers the retired characters to the assistant", () => {
   const scene = starterScene();
+  // Old projects still resolve every bundled character...
   expect(
     allAssets(scene).filter((a) => a.category === "characters"),
   ).toHaveLength(46);
+  // ...but none is offered, and the offline helper will not add one.
+  expect(
+    offeredAssets(scene).filter((a) => a.category === "characters"),
+  ).toEqual([]);
   for (const asset of libraryCharacters) {
-    expect(offlineCommands(scene, `Add ${asset.name}`).commands).toContainEqual(
-      { type: "add", assetId: asset.id },
-    );
+    expect(retiredAssetIds.has(asset.id), asset.name).toBe(true);
+    expect(offlineCommands(scene, `Add ${asset.name}`).commands).toEqual([]);
     expect(characterCollection(asset)).toBeTruthy();
   }
   for (const url of [
@@ -180,8 +186,19 @@ it("keeps catalogue file access bounded and exposes collections and assistant na
   expect(offlineCommands(scene, "Add a different character").commands).toEqual(
     [],
   );
-  expect(offlineCommands(scene, "Add Dr Amara").commands).toContainEqual({
-    type: "add",
-    assetId: "quaternius-doctor-female-young",
-  });
+  expect(offlineCommands(scene, "Add Dr Amara").commands).toEqual([]);
+  // The creator's own import is what the helper adds.
+  scene.customAssets.push(
+    assetSchema.parse({
+      id: "imported-amara",
+      name: "Dr Amara",
+      category: "characters",
+      style: "Imported",
+      color: "#6b6b6b",
+      url: "/uploads/amara.glb",
+    }),
+  );
+  expect(offlineCommands(scene, "Add Dr Amara").commands).toEqual([
+    { type: "add", assetId: "imported-amara" },
+  ]);
 });

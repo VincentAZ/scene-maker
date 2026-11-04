@@ -24,12 +24,14 @@ function fixture() {
     { type: "add", id: "other", assetId: "leo" },
   ]);
 }
+/** An imported gait route on a recorded take other than the studio strides
+ * (the CMU casual walk), so switching gaits visibly changes source identity. */
 const route = (): Motion => ({
   id: "imported-route",
-  name: "Authored walking route",
+  name: "Casual walking route",
   kind: "imported",
-  sourceAssetId: "quaternius-action-source",
-  animationName: "Walk_Carry",
+  sourceAssetId: "cmu-capture-141-19",
+  animationName: "141_19",
   duration: 12,
   distance: 0,
   poses: [],
@@ -42,6 +44,11 @@ const route = (): Motion => ({
     ],
   },
 });
+/** The recorded running stride a route can be switched to. */
+const runStride = {
+  sourceAssetId: capturedRouteGaits[1].sourceAssetId!,
+  animationName: capturedRouteGaits[1].animationName!,
+};
 const roundTrip = (scene: Scene) =>
   validateScene(JSON.parse(JSON.stringify(scene)));
 /** A legacy formula-gait route, as older callers and saved scenes send it. */
@@ -203,7 +210,7 @@ describe("imported dialogue routes", () => {
     expect(motion).toMatchObject({
       kind: "imported",
       sourceAssetId: route().sourceAssetId,
-      animationName: "Walk_Carry",
+      animationName: route().animationName,
       path: route().path,
       duration: 5,
     });
@@ -214,7 +221,7 @@ describe("imported dialogue routes", () => {
 
     const edited = setDialoguePath(routed, "actor", clipId, {
       ...route(),
-      animationName: "Run",
+      ...runStride,
       duration: 40,
       path: {
         smooth: true,
@@ -227,8 +234,7 @@ describe("imported dialogue routes", () => {
     expect(edited.customMotions).toHaveLength(1);
     expect(edited.customMotions[0]).toMatchObject({
       id: motion.id,
-      sourceAssetId: motion.sourceAssetId,
-      animationName: "Run",
+      ...runStride,
       duration: 5,
     });
     expect(edited.entities[0].clips[0]).toEqual(clip);
@@ -261,7 +267,7 @@ describe("imported dialogue routes", () => {
     ]);
     const edited = setDialoguePath(scene, "actor", clip.id, {
       ...original,
-      animationName: "Run",
+      ...runStride,
       duration: 30,
     });
     const changedClip = edited.entities[0].clips[0];
@@ -278,8 +284,7 @@ describe("imported dialogue routes", () => {
     expect(
       edited.customMotions.find((m) => m.id === changedClip.motionId),
     ).toMatchObject({
-      sourceAssetId: original.sourceAssetId,
-      animationName: "Run",
+      ...runStride,
       duration: 5,
     });
   });
@@ -287,7 +292,7 @@ describe("imported dialogue routes", () => {
   it("does not make arbitrary imported takes routable and still validates imported route sources", () => {
     const spoken = appendSpeech(fixture(), "actor", {
       dialogue: "Hello there.",
-      performance: [{ motionId: "authored-walk", duration: 5 }],
+      performance: [{ motionId: "captured-141-19", duration: 5 }],
     });
     expect(pathableClip(spoken, spoken.transcript[0])).toBeNull();
     expect(() =>
@@ -498,7 +503,7 @@ describe("route timing normalization", () => {
         result.customMotions.every(
           (m) =>
             m.sourceAssetId === route().sourceAssetId &&
-            m.animationName === "Walk_Carry",
+            m.animationName === route().animationName,
         ),
       ).toBe(true);
       expect(

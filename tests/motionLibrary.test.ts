@@ -5,18 +5,18 @@ import JSZip from "jszip";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   capturedMotions,
+  capturedRouteGaits,
   libraryMotions,
   motionCollections,
   motionDetails,
   motionSource,
 } from "../shared/motionLibrary";
-import { libraryCharacters } from "../shared/characterLibrary";
 import {
   allMotions,
   applyCommands,
   starterScene,
   boneNames,
-  motionSchema,
+  validateScene,
   type Asset,
 } from "../shared/scene";
 import { actionPreview } from "../shared/actionPreview";
@@ -24,11 +24,7 @@ import {
   prepareImportedAsset,
   requiredMotionSources,
 } from "../src/importedAsset";
-import {
-  applyAnimatedEntityPose,
-  createCharacter,
-  disposeObject,
-} from "../src/world";
+import { applyAnimatedEntityPose, disposeObject } from "../src/world";
 import {
   nativeRootMotion,
   setMotionSources,
@@ -114,82 +110,115 @@ it("previews original imported performances on their own skeleton at native timi
   ).toEqual([]);
 });
 
-it("shares all 17 actual authored motions across every bundled body and the procedural rig without drift or missing dependencies", async () => {
-  const source = await load(motionSource);
-  expect(source.userData.animations).toHaveLength(17);
-  const actors = [...libraryCharacters];
-  for (const asset of actors) {
-    const group = await load(asset);
-    setMotionSources(group, new Map([[motionSource.id, source]]));
-    let scene = applyCommands(starterScene(), [
-      { type: "clear" },
-      { type: "add", assetId: asset.id, position: [0, 0, 0] },
-    ]);
-    const actor = scene.entities[0];
-    for (const motion of libraryMotions) {
-      motionSchema.parse(motion);
-      actor.clips = [
-        {
-          id: "authored",
-          motionId: motion.id,
-          duration: motion.duration,
-          transition: "cut",
-        },
-      ];
-      scene = { ...scene, entities: [{ ...actor }] };
-      expect(requiredMotionSources(scene, actor).map((a) => a.id)).toEqual([
-        motionSource.id,
-      ]);
-      const sample = (t: number) => {
-        applyAnimatedEntityPose(group, scene.entities[0], scene, t);
-        group.updateMatrixWorld(true);
-        expect(
-          group.userData.motionWarning,
-          asset.name + " " + motion.name,
-        ).toBe("");
-        group.traverse((o) =>
-          expect(o.matrixWorld.elements.every(Number.isFinite)).toBe(true),
-        );
-      };
-      sample(motion.duration * 0.3);
-      const before = boneNames.map((n) => point(group.userData.bones[n]));
-      sample(motion.duration * 0.7);
-      sample(motion.duration + 1);
-      sample(0);
-      sample(motion.duration * 0.3);
-      for (const [i, n] of boneNames.entries())
-        expect(
-          point(group.userData.bones[n]).distanceTo(before[i]),
-          asset.name + " " + motion.name + " " + n,
-        ).toBeLessThan(1e-6);
-    }
-    disposeObject(group);
-  }
-  const scene = starterScene(),
-    actor = scene.entities[0],
-    target = createCharacter((await import("../shared/scene")).characters[0]);
-  setMotionSources(target, new Map([[motionSource.id, source]]));
-  for (const motion of libraryMotions) {
-    actor.clips = [
-      { id: "action", motionId: motion.id, duration: motion.duration },
-    ];
-    applyAnimatedEntityPose(
-      target,
-      actor,
-      { ...scene, entities: [{ ...actor }] },
-      motion.duration * 0.6,
+it("no longer offers the 17 stylized clips, and plays old clips that used them as recordings", () => {
+  const scene = starterScene();
+  expect(libraryMotions).toHaveLength(17);
+  for (const motion of libraryMotions)
+    expect(
+      allMotions(scene).some((m) => m.id === motion.id),
+      motion.name,
+    ).toBe(false);
+  expect(
+    allMotions(scene).some((m) => m.sourceAssetId === motionSource.id),
+  ).toBe(false);
+  // An old project's clips migrate to the closest recording on load.
+  const legacy = starterScene(),
+    actor = legacy.entities[0];
+  actor.clips = libraryMotions.map((motion, i) => ({
+    id: "authored-" + i,
+    motionId: motion.id,
+    duration: motion.duration,
+    transition: "cut" as const,
+  }));
+  const migrated = validateScene(legacy),
+    played = migrated.entities[0].clips.map((c) =>
+      allMotions(migrated).find((m) => m.id === c.motionId),
     );
-    expect(target.userData.motionWarning, motion.name).toBe("");
-  }
-  disposeObject(target);
-  disposeObject(source);
+  for (const motion of played)
+    expect(motion?.sourceAssetId).toMatch(/^cmu-capture-/);
+  const byOld = Object.fromEntries(
+    libraryMotions.map((motion, i) => [motion.id, played[i]!.id]),
+  );
+  expect(byOld).toMatchObject({
+    "authored-idle": "idle",
+    "authored-sit-down": "sit",
+    // The stylized Stand up was a pose; the recorded one needs a seat.
+    "authored-stand-up": "captured-139-16",
+    "authored-pick-up": "pick",
+    "authored-victory": "captured-79-69",
+    "authored-defeat": "captured-79-71",
+    "authored-punch": "captured-143-23",
+  });
+  // Walks and runs become routes on the recorded stride, like the retired
+  // formula gaits.
+  for (const [old, gait] of [
+    ["authored-walk", capturedRouteGaits[0]],
+    ["authored-run", capturedRouteGaits[1]],
+  ] as const)
+    expect(played[libraryMotions.findIndex((m) => m.id === old)]).toMatchObject(
+      {
+        sourceAssetId: gait.sourceAssetId,
+        animationName: gait.animationName,
+        path: { points: [[0, 0, 0], expect.any(Array)] },
+      },
+    );
+  expect(
+    requiredMotionSources(migrated, migrated.entities[0]),
+  ).not.toContainEqual(expect.objectContaining({ id: motionSource.id }));
+  // So do project copies of a stylized clip: a standalone copy becomes the
+  // recording, a drawn route keeps its path on the recorded stride.
+  const victory = libraryMotions.find((m) => m.animationName === "Victory")!,
+    walk = libraryMotions.find((m) => m.animationName === "Walk")!;
+  const copies = starterScene();
+  copies.customMotions.push(
+    { ...victory, id: "my-victory" },
+    {
+      ...walk,
+      id: "my-route",
+      path: {
+        points: [
+          [0, 0, 0],
+          [0, 0, 3],
+        ],
+        smooth: false,
+      },
+    },
+  );
+  copies.entities[0].clips = [
+    { id: "a", motionId: "my-victory", duration: 3 },
+    { id: "b", motionId: "my-route", duration: 3 },
+  ];
+  const copied = validateScene(copies);
+  expect(copied.entities[0].clips.map((c) => c.motionId)).toEqual([
+    "captured-79-69",
+    "my-route",
+  ]);
+  expect(copied.customMotions.map((m) => m.id)).toEqual(["my-route"]);
+  expect(copied.customMotions[0]).toMatchObject({
+    sourceAssetId: capturedRouteGaits[0].sourceAssetId,
+    animationName: capturedRouteGaits[0].animationName,
+    path: {
+      points: [
+        [0, 0, 0],
+        [0, 0, 3],
+      ],
+    },
+  });
 });
 it("preserves anatomical origins and rotations when sharing source motions onto the same body, including roll and shoulder helpers", async () => {
+  // The stylized clips are retired; their source stands in for a creator's
+  // import carrying its own takes.
   const source = await load(motionSource),
     target = await load({ ...motionSource, id: "receiver" });
-  setMotionSources(target, new Map([[motionSource.id, source]]));
-  for (const motion of libraryMotions) {
+  setMotionSources(target, new Map([["user-source", source]]));
+  const takes = libraryMotions.map((m) => ({
+    ...m,
+    id: "user-" + m.id,
+    sourceAssetId: "user-source",
+  }));
+  for (const motion of takes) {
     const scene = starterScene();
+    scene.customMotions = takes;
     scene.entities = scene.entities.slice(0, 1);
     const actor = scene.entities[0];
     actor.position = [0, 0, 0];
@@ -268,7 +297,9 @@ it("offers named actions and separate, validated previews without modifying the 
     actionPreview(colored, libraryMotions[0], colored.entities[0].id).actor
       .color,
   ).toBe("#b85b58");
-  for (const motion of libraryMotions) {
+  for (const motion of capturedMotions.filter((m) =>
+    ["wave", "bow", "dance"].includes(m.id),
+  )) {
     expect(offlineCommands(scene, `Mila ${motion.name}`).commands).toEqual([
       { type: "chain", id: scene.entities[0].id, motionId: motion.id },
     ]);
@@ -286,6 +317,25 @@ it("offers named actions and separate, validated previews without modifying the 
       },
     ]);
     expect(() => validatePlan(plan, scene, () => scene)).not.toThrow();
+  }
+  // The retired stylized clips are neither chained nor previewed.
+  for (const motion of libraryMotions) {
+    const offered = JSON.stringify([
+      offlineCommands(scene, `Mila ${motion.name}`).commands,
+      offlinePlan(scene, `Preview ${motion.name}`, scene.entities[0].id, {})
+        .steps,
+    ]);
+    expect(offered, motion.name).not.toContain(motion.id);
+    expect(() =>
+      validatePlan(
+        {
+          response: "",
+          steps: [{ type: "previewAction", motionId: motion.id }],
+        },
+        scene,
+        () => scene,
+      ),
+    ).toThrow("existing action");
   }
   expect(() =>
     applyCommands(scene, [
@@ -313,39 +363,35 @@ it("offers named actions and separate, validated previews without modifying the 
     ),
   ).toThrow("final step");
 });
-it("packages the authored source exactly once, with its license and no extra cast member", async () => {
-  const scene = starterScene();
-  scene.entities[0].clips = [
+it("packages an old project that used stylized clips with recordings only, without the retired source", async () => {
+  const legacy = starterScene();
+  legacy.entities[0].clips = [
     { id: "a", motionId: libraryMotions[0].id, duration: 3 },
     { id: "b", motionId: libraryMotions[1].id, duration: 2 },
   ];
-  const read: typeof fetch = async (input) =>
-    new Response(
+  const scene = validateScene(legacy);
+  const fetched: string[] = [];
+  const read: typeof fetch = async (input) => {
+    fetched.push(String(input));
+    return new Response(
       await fs.readFile(
         String(input).startsWith("/library/") ? "public" + input : "." + input,
       ),
     );
+  };
   const zip = await JSZip.loadAsync(
     await productionPackage(scene, new ArrayBuffer(0), read),
   );
+  expect(zip.file("assets/actions/quaternius-actions.glb")).toBeNull();
+  expect(fetched).not.toContain(motionSource.url);
+  const packaged = JSON.parse(await zip.file("scene.json")!.async("string"));
+  expect(packaged.entities).toEqual(scene.entities);
   expect(
-    await zip
-      .file("assets/actions/quaternius-actions.glb")!
-      .async("uint8array"),
-  ).toEqual(new Uint8Array(await fs.readFile("public" + motionSource.url)));
-  expect(
-    await zip.file("assets/actions/LICENSE.txt")!.async("string"),
-  ).toContain("CC0");
-  expect(
-    JSON.parse(await zip.file("scene.json")!.async("string")).entities,
-  ).toEqual(scene.entities);
-  await expect(
-    productionPackage(scene, new ArrayBuffer(0), async (input, options) =>
-      String(input) === motionSource.url
-        ? new Response("", { status: 404 })
-        : read(input, options),
-    ),
-  ).rejects.toThrow("action library");
+    packaged.entities[0].clips.map((c: { motionId: string }) => c.motionId),
+  ).toEqual(["idle", expect.stringMatching(/^recorded-route-/)]);
+  expect(packaged.customMotions[0]).toMatchObject({
+    sourceAssetId: capturedRouteGaits[0].sourceAssetId,
+  });
 });
 it("files every recorded take under a library collection and separates stylized and user actions", () => {
   const groups = motionCollections.filter(

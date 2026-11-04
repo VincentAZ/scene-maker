@@ -13,9 +13,27 @@ import {
 } from "../shared/studioLibrary";
 import { dataDir, listProjects, readProject } from "./storage";
 
+const removedFile = () => path.join(dataDir, "library-removed.json");
+/** Imports the creator removed from their library. Projects that still use
+ * one keep it; the library just stops offering it. */
+export function readRemovedFromLibrary(): Set<string> {
+  try {
+    const ids = JSON.parse(fs.readFileSync(removedFile(), "utf8"));
+    return new Set(Array.isArray(ids) ? ids.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+export function removeFromLibrary(ids: string[]) {
+  const removed = readRemovedFromLibrary();
+  for (const id of ids) removed.add(id);
+  fs.writeFileSync(removedFile(), JSON.stringify([...removed], null, 2));
+}
+
 /** Read-only, private catalog of the newest available saved definitions. */
 export function readStudioLibrary(): StudioLibrary {
   const library = emptyStudioLibrary();
+  const removed = readRemovedFromLibrary();
   const projects: Scene[] = [];
   for (const project of listProjects()) {
     try {
@@ -36,7 +54,7 @@ export function readStudioLibrary(): StudioLibrary {
   );
   for (const project of projects) {
     for (const asset of project.customAssets) {
-      if (assetIds.has(asset.id)) continue;
+      if (assetIds.has(asset.id) || removed.has(asset.id)) continue;
       if (asset.url?.startsWith("/uploads/")) {
         try {
           if (
@@ -62,7 +80,7 @@ export function readStudioLibrary(): StudioLibrary {
   );
   for (const project of projects) {
     for (const motion of project.customMotions) {
-      if (motionIds.has(motion.id)) continue;
+      if (motionIds.has(motion.id) || removed.has(motion.id)) continue;
       if (motion.kind === "imported") {
         const source = sources.get(motion.sourceAssetId!);
         if (source?.category !== "characters" || !source.url) continue;

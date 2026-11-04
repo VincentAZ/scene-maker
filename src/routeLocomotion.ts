@@ -88,7 +88,7 @@ const sourceKey = (motion: Motion) =>
       ])
     : motion.kind;
 
-/** Keep recorded and bundled locomotion, and original uploaded clips. Unnamed uploads remain selectable: a filename cannot tell us whether
+/** Keep recorded locomotion and original uploaded clips. Unnamed uploads remain selectable: a filename cannot tell us whether
  * Take001 is a gait. Route copies are deduplicated by their original source. */
 export function routeLocomotions(
   scene: Scene,
@@ -103,7 +103,8 @@ export function routeLocomotions(
       !!motion.animationName &&
       source?.category === "characters" &&
       !!source.url &&
-      (source.id !== motionSource.id || !!namedRouteMovement(motion))
+      // The retired stylized clips' reference rig is never offered.
+      source.id !== motionSource.id
     );
   });
   imported.push(...capturedRouteGaits);
@@ -133,8 +134,8 @@ export function matchingRouteLocomotion(
   );
 }
 
-/** Prefer the actor's established/native gait; otherwise use a captured stride
- * before an authored or procedural fallback. */
+/** Prefer the actor's established/native gait; otherwise use the recorded
+ * stride, then the studio action of the same name. */
 export function defaultRouteLocomotion(
   scene: Scene,
   actor: Entity,
@@ -166,7 +167,6 @@ export function defaultRouteLocomotion(
     matching.find((motion) =>
       capturedRouteGaits.some((gait) => gait.id === motion.id),
     ) ||
-    matching.find((motion) => motion.id === `authored-${movement}`) ||
     available.find((motion) => motion.id === movement)!
   );
 }

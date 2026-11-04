@@ -1,8 +1,36 @@
 import { describe, it, expect } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import { assistant, conversation, modelFor, type Config } from "../server/ai";
-import { starterScene, applyCommands } from "../shared/scene";
+import {
+  starterScene,
+  applyCommands,
+  assetSchema,
+  type Scene,
+} from "../shared/scene";
 import { characterDraft } from "../shared/characterDesign";
+// The creator's own imports: the only characters and props still offered.
+const imported = (s: Scene) => {
+  s.customAssets.push(
+    assetSchema.parse({
+      id: "imported-lead",
+      name: "Claudia",
+      category: "characters",
+      style: "Imported",
+      color: "#6b6b6b",
+      url: "/uploads/lead.glb",
+    }),
+    assetSchema.parse({
+      id: "imported-chair",
+      name: "Chair",
+      category: "props",
+      style: "Imported",
+      color: "#8a6f52",
+      url: "/uploads/chair.glb",
+      seat: { position: [0, 0.48, 0], width: 0.4, depth: 0.4 },
+    }),
+  );
+  return s;
+};
 const config: Config = {
   assistant: "openai",
   providers: { openai: { key: "test", model: "test" } },
@@ -23,11 +51,11 @@ function model(output: unknown) {
 }
 describe("live AI contract with deterministic model responses", () => {
   it("accepts a targeted seat, gestures, standing and travel in an ordered SDK plan", async () => {
-    const scene = starterScene();
+    const scene = imported(starterScene());
     const commands = [
       { type: "clear" },
-      { type: "add", assetId: "mila", id: "seated" },
-      { type: "add", assetId: "furniture-chair", id: "seat" },
+      { type: "add", assetId: "imported-lead", id: "seated" },
+      { type: "add", assetId: "imported-chair", id: "seat" },
       { type: "chain", id: "seated", motionId: "sit", targetId: "seat" },
       { type: "chain", id: "seated", motionId: "talk" },
       { type: "chain", id: "seated", motionId: "stand" },
@@ -79,7 +107,7 @@ describe("live AI contract with deterministic model responses", () => {
     );
     expect(result.steps).toEqual(steps);
   });
-  it("validates a skinned character recipe and a following performance in one SDK plan", async () => {
+  it("rejects a shape-built or recolored character recipe in an SDK plan", async () => {
     const asset = characterDraft("quaternius-casual-female", "Cleo");
     asset.design!.glasses = true;
     asset.design!.backpack = true;
@@ -99,22 +127,32 @@ describe("live AI contract with deterministic model responses", () => {
           { type: "export", format: "package" },
         ],
       });
-    const result = await assistant(
-      config,
-      scene,
-      "Create Cleo with glasses and a backpack, wave, then export",
-      undefined,
-      () => fake,
-    );
-    const edit = result.steps[0];
-    if (edit.type !== "edit") throw Error("Expected creation and direction");
-    const next = applyCommands(scene, edit.commands);
-    expect(next.customAssets.at(-1)?.design).toEqual(asset.design);
-    expect(next.entities.at(-1)?.clips[0].motionId).toBe("wave");
-    expect(result.steps.slice(1)).toEqual([
-      { type: "save" },
-      { type: "export", format: "package" },
-    ]);
+    await expect(
+      assistant(
+        config,
+        scene,
+        "Create Cleo with glasses and a backpack, wave, then export",
+        undefined,
+        () => fake,
+      ),
+    ).rejects.toThrow("retired");
+  });
+  it("rejects retired built-ins and code-built sets in an SDK plan", async () => {
+    for (const command of [
+      { type: "add", assetId: "mila" },
+      { type: "add", assetId: "cup" },
+      { type: "add", assetId: "furniture-lounge-sofa" },
+      { type: "scene", changes: { environment: "cafe" } },
+    ]) {
+      const fake = model({
+        response: "Done.",
+        steps: [{ type: "edit", commands: [command] }],
+      });
+      await expect(
+        assistant(config, starterScene(), "Add it", undefined, () => fake),
+        JSON.stringify(command),
+      ).rejects.toThrow("retired");
+    }
   });
   it("includes follow-up history and binds opened projects to the revision used for planning", async () => {
     const current = starterScene(),
@@ -211,7 +249,7 @@ describe("live AI contract with deterministic model responses", () => {
     ]);
   });
   it("parses a real SDK structured response and validates commands before editing", async () => {
-    const s = starterScene(),
+    const s = imported(starterScene()),
       fake = model({
         response: "A new friend joins your scene.",
         steps: [
@@ -220,7 +258,7 @@ describe("live AI contract with deterministic model responses", () => {
             commands: [
               {
                 type: "add",
-                assetId: "ava",
+                assetId: "imported-lead",
                 name: "Alex",
                 position: [2, 0, 1],
               },
@@ -242,6 +280,10 @@ describe("live AI contract with deterministic model responses", () => {
     if (edit.type !== "edit") throw Error("Expected an edit");
     expect(applyCommands(s, edit.commands).entities.at(-1)?.name).toBe("Alex");
     expect(fake.doGenerateCalls[0].responseFormat?.type).toBe("json");
+    // The live AI is offered the creator's imports, not the retired built-ins.
+    const prompt = JSON.stringify(fake.doGenerateCalls[0].prompt);
+    expect(prompt).toContain("imported-lead");
+    expect(prompt).not.toContain("quaternius-casual-female");
   });
   it("rejects hallucinated object IDs before returning a successful assistant response", async () => {
     const fake = model({

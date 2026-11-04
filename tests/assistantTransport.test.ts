@@ -2,9 +2,25 @@ import { expect, it } from "vitest";
 import { createOpenAI } from "@ai-sdk/openai";
 import { assistant, type Config } from "../server/ai";
 import { normalizeAssistantSchema } from "../server/assistantSchema";
-import { starterScene } from "../shared/scene";
+import { assetSchema, starterScene } from "../shared/scene";
 import { assistantPlanSchema } from "../shared/studio";
 import { providerErrorMessage } from "../server/providerErrors";
+
+// Built-in characters are retired; the assistant adds the creator's import.
+function importedScene() {
+  const scene = starterScene();
+  scene.customAssets.push(
+    assetSchema.parse({
+      id: "imported-ava",
+      name: "Ava",
+      category: "characters",
+      style: "Imported",
+      color: "#6b6b6b",
+      url: "/uploads/ava.glb",
+    }),
+  );
+  return scene;
+}
 
 it("sends a provider-compatible schema through the real OpenAI adapter", async () => {
   const plan = {
@@ -12,7 +28,9 @@ it("sends a provider-compatible schema through the real OpenAI adapter", async (
     steps: [
       {
         type: "edit",
-        commands: [{ type: "add", assetId: "ava", position: [2, 0, 1] }],
+        commands: [
+          { type: "add", assetId: "imported-ava", position: [2, 0, 1] },
+        ],
       },
     ],
   };
@@ -58,7 +76,7 @@ it("sends a provider-compatible schema through the real OpenAI adapter", async (
   };
   const reply = await assistant(
     config,
-    starterScene(),
+    importedScene(),
     "Add Ava",
     undefined,
     () => provider("gpt-6-luna"),
@@ -92,12 +110,32 @@ it("refuses to silently weaken mixed tuples", () => {
 });
 
 it.each([
-  [400, "invalid_json_schema", "secret-key user-private-prompt", "app compatibility error"],
-  [401, "invalid_api_key", "secret-key user-private-prompt", "rejected the API key"],
+  [
+    400,
+    "invalid_json_schema",
+    "secret-key user-private-prompt",
+    "app compatibility error",
+  ],
+  [
+    401,
+    "invalid_api_key",
+    "secret-key user-private-prompt",
+    "rejected the API key",
+  ],
   [403, "", "secret-key user-private-prompt", "permission"],
-  [404, "model_not_found", "secret-key user-private-prompt", "model is unavailable"],
+  [
+    404,
+    "model_not_found",
+    "secret-key user-private-prompt",
+    "model is unavailable",
+  ],
   [429, "insufficient_quota", "secret-key user-private-prompt", "API credit"],
-  [429, "rate_limit_exceeded", "secret-key user-private-prompt", "request limit"],
+  [
+    429,
+    "rate_limit_exceeded",
+    "secret-key user-private-prompt",
+    "request limit",
+  ],
   [503, "", "secret-key user-private-prompt", "temporarily unavailable"],
   // Anthropic reports exhausted credit as a plain 400 invalid_request_error.
   [
@@ -159,7 +197,10 @@ it("quotes the provider's request id for unexplained rejections and finds wrappe
       responseHeaders: { "request-id": "req_123abc", "x-secret": "hidden" },
       responseBody: JSON.stringify({
         type: "error",
-        error: { type: "invalid_request_error", message: "secret-key user-private-prompt" },
+        error: {
+          type: "invalid_request_error",
+          message: "secret-key user-private-prompt",
+        },
         request_id: "req_123abc",
       }),
     },
@@ -173,7 +214,10 @@ it("quotes the provider's request id for unexplained rejections and finds wrappe
       name: "AI_APICallError",
       statusCode: 400,
       responseBody: JSON.stringify({
-        error: { type: "invalid_request_error", message: "prompt is too long: 9 tokens > 8 maximum" },
+        error: {
+          type: "invalid_request_error",
+          message: "prompt is too long: 9 tokens > 8 maximum",
+        },
       }),
     }),
   ).toBe(true);
@@ -192,7 +236,7 @@ it("uses a small Claude envelope, sends thinking effort and validates the decode
         steps: [
           {
             type: "edit",
-            commands: [{ type: "add", assetId: "ava", position }],
+            commands: [{ type: "add", assetId: "imported-ava", position }],
           },
         ],
       };
@@ -229,7 +273,7 @@ it("uses a small Claude envelope, sends thinking effort and validates the decode
   };
   const reply = await assistant(
     config,
-    starterScene(),
+    importedScene(),
     "Add Ava",
     undefined,
     () => provider("claude-fable-5-1"),
@@ -243,7 +287,7 @@ it("uses a small Claude envelope, sends thinking effort and validates the decode
   expect(request.thinking.type).toBe("adaptive");
   position = [2, 0];
   await expect(
-    assistant(config, starterScene(), "Add Ava", undefined, () =>
+    assistant(config, importedScene(), "Add Ava", undefined, () =>
       provider("claude-fable-5-1"),
     ),
   ).rejects.toThrow();

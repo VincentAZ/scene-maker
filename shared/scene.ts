@@ -8,6 +8,7 @@ import { characterDesignSchema, supportsGlasses } from "./characterDesign";
 import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
 import {
   libraryMotions,
+  motionSource,
   capturedMotions,
   capturedRoleAliases,
   capturedRouteGaits,
@@ -490,6 +491,10 @@ export const commandSchema = z.discriminatedUnion("type", [
     motionId: z.string(),
   }),
   z.object({
+    type: z.literal("deleteAsset"),
+    assetId: z.string(),
+  }),
+  z.object({
     type: z.literal("reorderClip"),
     id: z.string(),
     clipId: z.string(),
@@ -607,9 +612,17 @@ export const assets = [
   ...setAssets,
 ];
 export const allAssets = (s: Scene) => [...assets, ...s.customAssets];
+/** The only built-in still offered is the plain studio stage. The cartoon
+ * characters, low-poly props and furniture, and code-built or furnished sets
+ * are retired: a project that uses one still renders it, but the library,
+ * new projects and the assistant no longer add them. */
+export const retiredAssetIds: ReadonlySet<string> = new Set(
+  assets.filter((a) => a.id !== "studio").map((a) => a.id),
+);
+export const offeredAssets = (s: Scene) =>
+  allAssets(s).filter((a) => !retiredAssetIds.has(a.id));
 export const allMotions = (s: Scene) => [
   ...capturedMotions,
-  ...libraryMotions,
   ...s.customMotions,
 ];
 export const resolveMotionSource = (s: Scene, id: string | undefined) =>
@@ -784,9 +797,7 @@ export function applyCommands(
         (c) => c.id !== cmd.clipId && c.routeWait !== cmd.clipId,
       );
     }
-    if (cmd.type === "deleteMotion") {
-      const motion = s.customMotions.find((m) => m.id === cmd.motionId);
-      if (!motion) throw Error("Only your own actions can be deleted.");
+    const dropMotion = (motion: Motion) => {
       s.customMotions = s.customMotions.filter((m) => m !== motion);
       for (const e of s.entities) {
         const removed = new Set(
@@ -804,6 +815,11 @@ export function applyCommands(
             !removed.has(c.id) && !(c.routeWait && removed.has(c.routeWait)),
         );
       }
+    };
+    if (cmd.type === "deleteMotion") {
+      const motion = s.customMotions.find((m) => m.id === cmd.motionId);
+      if (!motion) throw Error("Only your own actions can be deleted.");
+      dropMotion(motion);
       // An animation-only source goes with its last action.
       const source = s.customAssets.find((a) => a.id === motion.sourceAssetId);
       if (
@@ -812,6 +828,21 @@ export function applyCommands(
         !s.customMotions.some((m) => m.sourceAssetId === source.id)
       )
         s.customAssets = s.customAssets.filter((a) => a !== source);
+    }
+    if (cmd.type === "deleteAsset") {
+      const asset = s.customAssets.find((a) => a.id === cmd.assetId);
+      if (!asset) throw Error("Only your own imports can be deleted.");
+      // Its actors and the actions recorded on its skeleton go with it.
+      for (const motion of s.customMotions.filter(
+        (m) => m.sourceAssetId === asset.id,
+      ))
+        dropMotion(motion);
+      const actors = new Set(
+        s.entities.filter((e) => e.assetId === asset.id).map((e) => e.id),
+      );
+      s.entities = s.entities.filter((e) => !actors.has(e.id));
+      detachTargets(actors);
+      s.customAssets = s.customAssets.filter((a) => a !== asset);
     }
     if (cmd.type === "reorderClip") {
       const e = find(cmd.id),
@@ -1002,6 +1033,27 @@ export function applyCommands(
  * - formula-gait routes use the recorded stride (backward ones the recorded
  *   backward walk);
  * - assistant-made keyframe actions are replaced by recorded standing. */
+/** The retired stylized clips and the recording each one now plays. */
+const stylizedAliases: Record<string, string> = {
+  "authored-idle": "idle",
+  "authored-walk": "walk",
+  "authored-run": "run",
+  "authored-jump": "jump",
+  "authored-roll": "jump",
+  "authored-walk-carry": "walk",
+  "authored-run-carry": "run",
+  "authored-sit-down": "sit",
+  // Stand up requires a targeted Sit down; the stylized one was a pose.
+  "authored-stand-up": "captured-139-16",
+  "authored-pick-up": "pick",
+  "authored-victory": "captured-79-69",
+  "authored-defeat": "captured-79-71",
+  "authored-death": "captured-79-73",
+  "authored-recieve-hit": "captured-79-73",
+  "authored-punch": "captured-143-23",
+  "authored-sword-slash": "captured-143-23",
+  "authored-shoot-one-handed": "idle",
+};
 function migrateLegacyMotions(scene: Scene) {
   const legacy = new Set<string>(actionRoles);
   const replaced = new Map<string, string>();
@@ -1021,6 +1073,36 @@ function migrateLegacyMotions(scene: Scene) {
       ? capturedMotions.find((m) => m.animationName === "143_39")!
       : capturedRouteGaits[kind === "run" ? 1 : 0];
   scene.customMotions = scene.customMotions.flatMap((motion) => {
+    // Copies of the retired stylized clips: routes take a recorded stride,
+    // everything else the closest recording.
+    if (
+      motion.kind === "imported" &&
+      motion.sourceAssetId === motionSource.id
+    ) {
+      if (!motion.path) {
+        const stylized = libraryMotions.find(
+          (m) => m.animationName === motion.animationName,
+        );
+        replaced.set(motion.id, stylizedAliases[stylized?.id ?? ""] ?? "idle");
+        return [];
+      }
+      const gait = stride(
+        /run/i.test(motion.animationName ?? "") ? "run" : "walk",
+      );
+      return [
+        {
+          ...motion,
+          sourceAssetId: gait.sourceAssetId,
+          animationName: gait.animationName,
+          path: {
+            ...motion.path,
+            ...(gait.path?.sourceRange
+              ? { sourceRange: { ...gait.path.sourceRange } }
+              : { sourceRange: undefined }),
+          },
+        },
+      ];
+    }
     if (motion.kind === "imported") return [motion];
     if (motion.path && !performed.has(motion.id)) return [motion];
     if (motion.kind === "custom" || !motion.path) {
@@ -1057,6 +1139,7 @@ function migrateLegacyMotions(scene: Scene) {
       clip.motionId =
         replaced.get(clip.motionId) ??
         capturedRoleAliases[clip.motionId] ??
+        stylizedAliases[clip.motionId] ??
         clip.motionId;
       if (!legacy.has(clip.motionId) || clip.playbackRate !== undefined)
         continue;
@@ -1350,6 +1433,24 @@ export const duration = (s: Scene) =>
     12,
     ...s.entities.map((e) => e.clips.reduce((t, c) => t + c.duration, 0)),
   );
+/** A new creator project: the plain studio stage, no cast. */
+export function blankScene(): Scene {
+  return {
+    version: 1,
+    id: uid(),
+    revision: 0,
+    name: "Untitled scene",
+    environment: "studio",
+    animationCollisions: true,
+    lighting: "daylight",
+    mission: "",
+    entities: [],
+    customAssets: [],
+    customMotions: [],
+    transcript: [],
+  };
+}
+/** The retired cartoon café scene, kept as a fixture for tests. */
 export function starterScene(): Scene {
   let s: Scene = {
     version: 1,

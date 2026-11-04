@@ -56,12 +56,10 @@ import { ActionPreview } from "./ActionPreview";
 import { ImportedClipTiming } from "./ImportedClipTiming";
 import { motionDetails } from "../shared/motionLibrary";
 import { ActionLibrary } from "./ActionLibrary";
+import { AssetLibrary } from "./AssetLibrary";
 import { CharacterCreator } from "./CharacterCreator";
-import { characterCollection, libraryEntry } from "../shared/characterLibrary";
-import {
-  furnitureCollections,
-  furnitureEntry,
-} from "../shared/furnitureLibrary";
+import { libraryEntry } from "../shared/characterLibrary";
+import { furnitureEntry } from "../shared/furnitureLibrary";
 import { setLayout } from "../shared/setLayouts";
 import { seatProfile, nearestSeat } from "../shared/seating";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
@@ -105,7 +103,8 @@ import {
   type Asset,
   type Command,
   type Motion,
-  starterScene,
+  blankScene,
+  retiredAssetIds,
   allAssets,
   allMotions,
   resolveMotionSource,
@@ -156,15 +155,6 @@ import {
 import { api, download } from "./api";
 import { importableFile } from "./importFile";
 type Tab = "characters" | "props" | "environments" | "motions";
-const characterFilters = [
-  "All",
-  "Everyday",
-  "Professionals",
-  "Adventure",
-  "Fantasy",
-  "Mannequins",
-  "My assets",
-];
 type Message = {
   role: "user" | "assistant";
   text: string;
@@ -199,7 +189,7 @@ export default function App() {
     seek: setTime,
     publish: publishTime,
   } = usePlayhead();
-  const [scene, setScene] = useState<Scene>(starterScene),
+  const [scene, setScene] = useState<Scene>(blankScene),
     [ready, setReady] = useState(false),
     [studioLibrary, setStudioLibrary] =
       useState<StudioLibrary>(emptyStudioLibrary),
@@ -595,7 +585,7 @@ export default function App() {
               `/api/projects/${list.find((p) => p.id === id)?.id || list[0].id}`,
             ),
           );
-        else loaded = starterScene();
+        else loaded = blankScene();
         const recovery = localStorage.getItem("scene-maker-recovery");
         if (recovery) {
           try {
@@ -1586,11 +1576,8 @@ export default function App() {
       (a) =>
         a.category === tab &&
         !a.motionOnly &&
+        !retiredAssetIds.has(a.id) &&
         (filter !== "My assets" || privateAssetIds.has(a.id)) &&
-        (["All", "My assets"].includes(filter) ||
-          (tab === "characters"
-            ? characterCollection(a)
-            : furnitureEntry(a)?.collection || "Essentials") === filter) &&
         (
           a.name +
           " " +
@@ -1607,18 +1594,41 @@ export default function App() {
         Number(!!(libraryEntry(b) || furnitureEntry(b) || setLayout(b.id))) -
         Number(!!(libraryEntry(a) || furnitureEntry(a) || setLayout(a.id))),
     );
-  const collectionFilters =
-    tab === "characters"
-      ? characterFilters
-      : tab === "props"
-        ? ["All", ...furnitureCollections, "Essentials", "My assets"]
-        : ["All", "My assets"];
   const libraryMotionList = studioLibraryMotions(scene, studioLibrary);
-  const ownMotionIds = new Set(scene.customMotions.map((motion) => motion.id));
   const motionUsage = new Map<string, number>();
   for (const entity of scene.entities)
     for (const clip of entity.clips)
       motionUsage.set(clip.motionId, (motionUsage.get(clip.motionId) ?? 0) + 1);
+  const assetUsage = new Map<string, number>();
+  for (const entity of scene.entities)
+    assetUsage.set(entity.assetId, (assetUsage.get(entity.assetId) ?? 0) + 1);
+  /** Delete the creator's own imports: from this scene (Undo restores it)
+   * and from their library, so other projects stop offering them. */
+  async function deleteFromLibrary(ids: string[], kind: "asset" | "motion") {
+    const current = sceneRef.current;
+    const inScene = ids.filter((id) =>
+      kind === "asset"
+        ? current.customAssets.some((a) => a.id === id)
+        : current.customMotions.some((m) => m.id === id),
+    );
+    try {
+      if (inScene.length)
+        execute(
+          inScene.map((id) =>
+            kind === "asset"
+              ? { type: "deleteAsset" as const, assetId: id }
+              : { type: "deleteMotion" as const, motionId: id },
+          ),
+        );
+      await api("/api/library/remove", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+      await refreshStudioLibrary();
+    } catch (error) {
+      report((error as Error).message);
+    }
+  }
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1732,36 +1742,6 @@ export default function App() {
               />
               <span>⌕</span>
             </div>
-            {tab !== "motions" && (
-              <select
-                className="collection-picker"
-                aria-label={
-                  tab === "characters"
-                    ? "Character collection"
-                    : "Asset collection"
-                }
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                {collectionFilters.map((f) => (
-                  <option key={f}>{f}</option>
-                ))}
-              </select>
-            )}
-            {tab !== "motions" && (
-              <div className="filters">
-                {collectionFilters.map((f) => (
-                  <button
-                    key={f}
-                    className={filter === f ? "active" : ""}
-                    aria-pressed={filter === f}
-                    onClick={() => setFilter(f)}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            )}
             <div className="section-caption">
               <span>
                 {tab === "characters"
@@ -1776,19 +1756,13 @@ export default function App() {
                 {tab === "motions" ? libraryMotionList.length : filtered.length}
               </span>
             </div>
-            {tab === "environments" && (
-              <p className="set-library-note">
-                Furnished sets bring editable props. Switching sets replaces
-                that furniture; your cast and props you added stay.
-              </p>
-            )}
             {tab === "motions" ? (
               <ActionLibrary
                 key={filter === "My actions" ? "mine" : "all"}
                 motions={libraryMotionList}
                 search={search}
                 mine={privateMotionIds}
-                deletable={ownMotionIds}
+                deletable={privateMotionIds}
                 usage={motionUsage}
                 initialSource={filter === "My actions" ? "mine" : "all"}
                 subtitle={(m) =>
@@ -1810,65 +1784,45 @@ export default function App() {
                     report((error as Error).message);
                   }
                 }}
-                onDelete={(ids) =>
-                  execute(
-                    ids.map((motionId) => ({
-                      type: "deleteMotion" as const,
-                      motionId,
-                    })),
-                  )
-                }
+                onDelete={(ids) => void deleteFromLibrary(ids, "motion")}
                 onImport={() => {
                   setImportCategory("characters");
                   setModal("import");
                 }}
               />
             ) : (
-              <div className="asset-grid">
-                {filtered.map((a) => (
-                  <button
-                    className="asset-card"
-                    key={a.id}
-                    data-asset-id={a.id}
-                    title={`Drag ${a.name} into the scene, or click to add`}
-                    onPointerDown={(event) =>
-                      viewport.current?.startAssetDrag(a, event.nativeEvent)
-                    }
-                    onDragStart={(event) => event.preventDefault()}
-                    onClick={() => {
-                      if (!viewport.current?.suppressAssetClick()) add(a);
-                    }}
-                  >
-                    <div className={`asset-art ${a.category}`}>
-                      <AssetArt asset={a} />
-                      <span className="add-badge">
-                        <Plus size={13} />
-                      </span>
-                      {a.url && !libraryEntry(a) && !furnitureEntry(a) && (
-                        <span className="imported-badge">YOURS</span>
-                      )}
-                    </div>
-                    <strong>{a.name}</strong>
-                    <span>
-                      {a.category === "characters"
-                        ? a.style
-                        : a.category === "environments"
-                          ? setLayout(a.id)
-                            ? `${setLayout(a.id)!.props.length} editable props`
-                            : "Scene backdrop"
-                          : seatProfile(a)
-                            ? "Ready for sitting"
-                            : furnitureEntry(a)?.collection || "Scene prop"}
-                    </span>
-                  </button>
-                ))}
-                {!filtered.length && (
-                  <div className="empty-state">
-                    No assets here yet. Try another search or import one of your
-                    own.
-                  </div>
-                )}
-              </div>
+              <AssetLibrary
+                key={tab}
+                assets={filtered}
+                noun={tab === "environments" ? "sets" : tab}
+                mine={privateAssetIds}
+                usage={assetUsage}
+                dependents={(ids) => ({
+                  actors: scene.entities.filter((e) => ids.includes(e.assetId))
+                    .length,
+                  actions: scene.customMotions.filter((m) =>
+                    ids.includes(m.sourceAssetId ?? ""),
+                  ).length,
+                })}
+                subtitle={(a) =>
+                  a.category === "characters"
+                    ? a.style
+                    : a.category === "environments"
+                      ? setLayout(a.id)
+                        ? `${setLayout(a.id)!.props.length} editable props`
+                        : "Scene backdrop"
+                      : seatProfile(a)
+                        ? "Ready for sitting"
+                        : furnitureEntry(a)?.collection || "Scene prop"
+                }
+                onAdd={(a) => {
+                  if (!viewport.current?.suppressAssetClick()) add(a);
+                }}
+                onDragStart={(a, event) =>
+                  viewport.current?.startAssetDrag(a, event.nativeEvent)
+                }
+                onDelete={(ids) => void deleteFromLibrary(ids, "asset")}
+              />
             )}
             {tab === "motions" && (
               <button
@@ -1887,34 +1841,6 @@ export default function App() {
                 <span>
                   Draw a path
                   <small>Draw freely or plan a walk to an object</small>
-                </span>
-                <Plus size={14} />
-              </button>
-            )}
-            {tab !== "motions" && (
-              <button
-                className="create-asset"
-                onClick={() => {
-                  if (tab === "characters") {
-                    setModal("character");
-                    return;
-                  }
-                  setRightTab("assistant");
-                  setPanel(true);
-                  setPrompt("Add a ");
-                  document.getElementById("assistant-prompt")?.focus();
-                }}
-              >
-                <Sparkles size={16} />
-                <span>
-                  {tab === "characters"
-                    ? "Create a character"
-                    : "Create something new"}
-                  <small>
-                    {tab === "characters"
-                      ? "Choose a look. Make it yours."
-                      : "A little imagination goes a long way"}
-                  </small>
                 </span>
                 <Plus size={14} />
               </button>
@@ -2713,8 +2639,8 @@ export default function App() {
                   <div className="suggestions">
                     <span>LET’S START WITH SOMETHING</span>
                     {[
-                      "Add a coffee cup",
-                      "Have Mila walk then wave",
+                      "Import a character of my own",
+                      "Have my character walk then wave",
                       "Set the scene at moonlight",
                     ].map((text, i) => (
                       <button key={text} onClick={() => ask(text)}>
@@ -3006,6 +2932,23 @@ export default function App() {
                       <h3>
                         Their next moves{" "}
                         <span className="count">{entity.clips.length}</span>
+                        {entity.clips.length > 0 && (
+                          <button
+                            className="text-button clear-clips"
+                            title="Remove every action from this character. Undo restores them."
+                            onClick={() =>
+                              execute([
+                                {
+                                  type: "update",
+                                  id: entity.id,
+                                  changes: { clips: [] },
+                                },
+                              ])
+                            }
+                          >
+                            Remove all actions
+                          </button>
+                        )}
                       </h3>
                       <div className="clip-list">
                         {entity.clips.map((c, i) => {
@@ -3544,7 +3487,7 @@ export default function App() {
               onClick={async () => {
                 try {
                   await saveOrThrow();
-                  const next = starterScene();
+                  const next = blankScene();
                   next.name = "Untitled story";
                   loadScene(next);
                 } catch (e) {

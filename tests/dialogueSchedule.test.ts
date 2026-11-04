@@ -3,11 +3,11 @@ import { appendSpeech, dialogueTiming } from "../shared/conversation";
 import { retimeDialogueAfterChange } from "../shared/dialogueSchedule";
 import {
   applyCommands,
+  assetSchema,
   starterScene,
   validateScene,
   type Scene,
 } from "../shared/scene";
-import { motionSource } from "../shared/motionLibrary";
 
 function fixture() {
   let scene = applyCommands(starterScene(), [
@@ -58,6 +58,17 @@ it.each([2, 9])(
 
 it("keeps an intentional inter-speaker pause and does not change imported source speed or range", () => {
   const before = fixture();
+  // A take on the creator's own import (the stylized source is retired).
+  before.customAssets.push(
+    assetSchema.parse({
+      id: "imported-source",
+      name: "Imported take",
+      category: "characters",
+      style: "Imported",
+      color: "#6b6b6b",
+      url: "/uploads/take.glb",
+    }),
+  );
   before.customMotions.push({
     id: "capture",
     name: "Capture",
@@ -65,7 +76,7 @@ it("keeps an intentional inter-speaker pause and does not change imported source
     duration: 4,
     distance: 0,
     poses: [],
-    sourceAssetId: motionSource.id,
+    sourceAssetId: "imported-source",
     animationName: "Walk",
   });
   const b = before.entities[1];

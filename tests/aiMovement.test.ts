@@ -9,14 +9,17 @@ import {
 import { withAutomaticMovement } from "../shared/aiMovement";
 import { savePathCommands } from "../shared/path";
 import { appendSpeech, setDialoguePath } from "../shared/conversation";
+import { capturedRouteGaits } from "../shared/motionLibrary";
 
 function fixture(imported = false) {
   const scene = starterScene();
   scene.entities = [scene.entities[0]];
   scene.entities[0].clips = [];
-  const gait = allMotions(scene).find(
-    (m) => m.id === (imported ? "authored-walk" : "walk"),
-  )!;
+  // The imported case routes the recorded walking stride (its own source
+  // interval) rather than the studio Walk action.
+  const gait = imported
+    ? capturedRouteGaits[0]
+    : allMotions(scene).find((m) => m.id === "walk")!;
   const motion: Motion = {
     ...gait,
     id: "ai-route",
@@ -31,6 +34,9 @@ function fixture(imported = false) {
       ],
       smooth: true,
       endHeading: 0.4,
+      ...(gait.path?.sourceRange
+        ? { sourceRange: { ...gait.path.sourceRange } }
+        : {}),
     },
   };
   const next = applyCommands(scene, [

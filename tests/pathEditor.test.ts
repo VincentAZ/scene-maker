@@ -5,7 +5,13 @@ import * as T from "three";
 import { createRoot, type Root } from "react-dom/client";
 import { PathEditor } from "../src/PathEditor";
 import { starterScene, validateScene, type Motion } from "../shared/scene";
-import { libraryMotions } from "../shared/motionLibrary";
+import {
+  capturedMotions,
+  capturedRouteGaits,
+} from "../shared/motionLibrary";
+
+/** A recorded walk other than the studio stride, as an imported gait choice. */
+const casualWalk = capturedMotions.find((m) => m.id === "captured-141-19")!;
 import type { PointAction } from "../shared/path";
 import { loadImportedAsset } from "../src/importedAsset";
 import { locomotionProfile, locomotionScale } from "../src/locomotion";
@@ -319,13 +325,13 @@ describe("PathEditor imported locomotion", () => {
 
   it("saves the selected original gait identity, including the recorded take behind Run", async () => {
     await render();
-    await changeSelect("Route locomotion", "authored-walk-carry");
+    await changeSelect("Route locomotion", casualWalk.id);
     await click("Save path");
     expect(onSave.mock.lastCall?.[0]).toMatchObject({
       id: route().id,
       kind: "imported",
-      sourceAssetId: "quaternius-action-source",
-      animationName: "Walk_Carry",
+      sourceAssetId: "cmu-capture-141-19",
+      animationName: "141_19",
       duration: 12,
       path: route().path,
     });
@@ -342,9 +348,8 @@ describe("PathEditor imported locomotion", () => {
   });
 
   it("reopens imported routes by source identity and keeps the gait through replanning", async () => {
-    const original = libraryMotions.find(
-      (motion) => motion.id === "authored-run",
-    )!;
+    // The recorded running stride: its identity includes its source interval.
+    const original = capturedRouteGaits[1];
     const onPlan = vi.fn(() => route());
     await render({
       motion: {
@@ -352,12 +357,16 @@ describe("PathEditor imported locomotion", () => {
         kind: "imported",
         sourceAssetId: original.sourceAssetId,
         animationName: original.animationName,
+        path: {
+          ...route().path!,
+          sourceRange: { ...original.path!.sourceRange! },
+        },
       },
       onPlan,
     });
     expect(
       query<HTMLSelectElement>('select[aria-label="Route locomotion"]').value,
-    ).toBe("authored-run");
+    ).toBe("captured-running-stride");
     const destination = query<HTMLSelectElement>(
       'select[aria-label="Route destination"]',
     );
@@ -372,7 +381,8 @@ describe("PathEditor imported locomotion", () => {
     await click("Save path");
     expect(onSave.mock.lastCall?.[0]).toMatchObject({
       kind: "imported",
-      animationName: "Run",
+      sourceAssetId: original.sourceAssetId,
+      animationName: original.animationName,
     });
   });
 
@@ -390,7 +400,7 @@ describe("PathEditor imported locomotion", () => {
       },
       locomotionCycle: () => ({ distance: 1.5, duration: 1 }),
     });
-    await changeSelect("Route locomotion", "authored-walk");
+    await changeSelect("Route locomotion", casualWalk.id);
     await click("Use natural pace");
     await click("Save path");
     expect(onSave.mock.lastCall?.[0].duration).toBe(4);
@@ -409,9 +419,8 @@ function deferred<T>() {
 }
 
 it("preserves a selected source interval through edits and saves exact imported natural pace", async () => {
-  const original = libraryMotions.find((m) => m.id === "authored-walk")!;
   const motion: Motion = {
-    ...original,
+    ...casualWalk,
     id: "window-route",
     duration: 8,
     path: {
@@ -453,7 +462,8 @@ it("preserves a selected source interval through edits and saves exact imported 
   await changeInput("Point 1 across", "0.2");
   await click("Save path");
   expect(onSave.mock.lastCall![0].path.sourceProgress).toBeUndefined();
-  await changeSelect("Route locomotion", "authored-walk");
+  // Choosing the whole original take drops the saved interval and step scale.
+  await changeSelect("Route locomotion", casualWalk.id);
   await click("Save path");
   expect(onSave.mock.lastCall![0].path.sourceRange).toBeUndefined();
   expect(onSave.mock.lastCall![0].path.strideScale).toBeUndefined();
@@ -545,8 +555,8 @@ describe("PathEditor production gait measurement", () => {
   it("ignores and disposes a stale source after changing gait", async () => {
     const stale = deferred<T.Group>(),
       current = deferred<T.Group>();
-    const oldSource = measuredSource("Walk"),
-      nextSource = measuredSource("Run");
+    const oldSource = measuredSource("35_01"),
+      nextSource = measuredSource("35_17");
     const geometry = new T.BoxGeometry(),
       material = new T.MeshBasicMaterial();
     oldSource.add(new T.Mesh(geometry, material));
@@ -556,7 +566,8 @@ describe("PathEditor production gait measurement", () => {
       .mockReturnValueOnce(current.promise);
     await render({ motion: undefined, locomotionCycle: undefined });
     await click("Add point");
-    await changeSelect("Route locomotion", "authored-run");
+    // From the default walking stride to studio Run (the whole 35_17 take).
+    await changeSelect("Route locomotion", "run");
     await act(async () => current.resolve(nextSource));
     const duration = query<HTMLInputElement>(
       'input[aria-label="Route duration"]',
@@ -573,7 +584,7 @@ describe("PathEditor production gait measurement", () => {
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
     ).toBe(duration);
     await click("Add to sequence");
-    expect(onSave.mock.lastCall?.[0].animationName).toBe("Run");
+    expect(onSave.mock.lastCall?.[0].animationName).toBe("35_17");
   });
 
   it("does not load assets or silently guess when an explicit override has no cycle", async () => {

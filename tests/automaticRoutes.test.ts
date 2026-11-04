@@ -7,6 +7,7 @@ import {
   characters,
   starterScene,
   validateScene,
+  type Motion,
   type Scene,
 } from "../shared/scene";
 import { compilePath, pathToWorld, savePathCommands } from "../shared/path";
@@ -543,9 +544,8 @@ it("uses space after a moving obstacle has vacated it instead of excluding its e
 });
 
 it("validates a detour at the selected pace rather than rejecting its unscaled native duration", async () => {
-  const { libraryMotions } = await import("../shared/motionLibrary");
   const f = fixture(),
-    gait = libraryMotions.find((m) => m.animationName === "Walk")!;
+    gait = stride;
   const cycle = { distance: 1, duration: 100 };
   const clipId = f.scene.entities[0].clips[0].id;
   expect(() =>
@@ -959,8 +959,7 @@ it.each([
     const { readFile } = await import("node:fs/promises");
     const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
     const { prepareImportedAsset } = await import("../src/importedAsset");
-    const { motionSource: sourceAsset, libraryMotions } =
-      await import("../shared/motionLibrary");
+    const { capturedMotionSources } = await import("../shared/motionLibrary");
     const { setMotionSources } = await import("../src/rig");
     const { locomotionProfile, locomotionScale } =
       await import("../src/locomotion");
@@ -968,6 +967,11 @@ it.each([
     const f = fixture();
     f.scene.entities[0].clips = [];
     f.scene.customMotions = [];
+    // A private copy of the recorded walking stride's take: the windowed case
+    // shifts its tracks, which must not leak into the shared recorded sources.
+    const sourceAsset = capturedMotionSources.find(
+      (a) => a.id === stride.sourceAssetId,
+    )!;
     const bytes = await readFile("public" + sourceAsset.url);
     const gltf = await new GLTFLoader().parseAsync(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
@@ -975,15 +979,21 @@ it.each([
     );
     const source = prepareImportedAsset(sourceAsset, gltf);
     const group = f.objects.get("actor")!;
-    setMotionSources(group, new Map([[sourceAsset.id, source]]));
-    let locomotion = libraryMotions.find((m) => m.animationName === "Walk")!;
-    const native = T.AnimationClip.findByName(
+    setMotionSources(
+      group,
+      new Map([...recordedSourceMap, [sourceAsset.id, source]]),
+    );
+    let locomotion: Motion = stride;
+    const native = importedClip(
       source.userData.animations,
-      "Walk",
+      stride.animationName!,
     )!;
     if (window) {
+      // Move the stride's source interval 5 s into a longer take and adapt
+      // its step length, as a trimmed imported take would be.
       native.tracks.forEach((track) => track.shift(5));
       native.duration += 5;
+      const range = stride.path!.sourceRange!;
       locomotion = {
         ...locomotion,
         path: {
@@ -992,7 +1002,7 @@ it.each([
             [0, 0, 1],
           ],
           smooth: false,
-          sourceRange: { start: 5, end: native.duration },
+          sourceRange: { start: range.start + 5, end: range.end + 5 },
           strideScale: 1.05,
         },
       };
@@ -1052,7 +1062,7 @@ it.each([
     )!;
     expect(moved.kind).toBe("imported");
     expect(moved.sourceAssetId).toBe(sourceAsset.id);
-    expect(moved.animationName).toBe("Walk");
+    expect(moved.animationName).toBe(stride.animationName);
     expect(moved.path?.sourceRange).toEqual(locomotion.path?.sourceRange);
     expect(moved.path?.strideScale).toBe(locomotion.path?.strideScale);
     expect(
