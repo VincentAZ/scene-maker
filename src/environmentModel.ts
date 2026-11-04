@@ -1,10 +1,10 @@
 import * as T from "three";
-import type { Asset, Scene } from "../shared/scene";
+import { allAssets, type Asset, type Scene } from "../shared/scene";
 import { loadImportedAsset } from "./importedAsset";
 import { createEnvironment, disposeObject } from "./world";
 
 export const environmentAsset = (scene: Scene) =>
-  scene.customAssets.find((asset) => asset.id === scene.environmentAssetId);
+  allAssets(scene).find((asset) => asset.id === scene.environmentAssetId);
 
 // Include the URL, not just the scene revision or asset ID: an asset can be
 // replaced while a previous download is still in flight.

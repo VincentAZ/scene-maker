@@ -15,6 +15,7 @@ import {
   motionSources,
 } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
+import { contentAssets, contentURL } from "./contentLibrary";
 import { thinkingLevels } from "./thinking";
 import { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE } from "./clipTiming";
 export const providers = [
@@ -269,7 +270,8 @@ export const assetSchema = z
           /^\/uploads\/[a-zA-Z0-9_.-]+\.glb$/.test(url) ||
           motionSources.some((source) => url === source.url) ||
           libraryAssetURLs.has(url) ||
-          furnitureURLs.has(url),
+          furnitureURLs.has(url) ||
+          (contentURL.test(url) && !url.includes("..")),
         "Choose an uploaded file or an existing library asset.",
       )
       .optional(),
@@ -280,7 +282,14 @@ export const assetSchema = z
     motionOnly: z.boolean().optional(),
     thumbnail: z
       .string()
-      .regex(/^\/uploads\/[a-zA-Z0-9_-]+\.png$/)
+      .regex(/^\/(uploads|content)\/[a-zA-Z0-9_./-]+\.(png|jpg|webp)$/)
+      .refine((url) => !url.includes(".."))
+      .optional(),
+    /** A photographic 360° set: the environment map under /content/. */
+    hdri: z
+      .string()
+      .regex(/^\/content\/[a-zA-Z0-9_./-]+\.(hdr|exr|jpg)$/)
+      .refine((url) => !url.includes(".."))
       .optional(),
     design: characterDesignSchema.optional(),
     parts: z.array(shapeSchema).max(256).optional(),
@@ -603,7 +612,7 @@ export const environments: Asset[] = [
   category: "environments",
   description: "A complete set, ready for your story.",
 }));
-export const assets = [
+const legacyAssets = [
   ...characters,
   ...libraryCharacters,
   ...props,
@@ -611,13 +620,14 @@ export const assets = [
   ...environments,
   ...setAssets,
 ];
+export const assets = [...legacyAssets, ...contentAssets];
 export const allAssets = (s: Scene) => [...assets, ...s.customAssets];
 /** The only built-in still offered is the plain studio stage. The cartoon
  * characters, low-poly props and furniture, and code-built or furnished sets
  * are retired: a project that uses one still renders it, but the library,
  * new projects and the assistant no longer add them. */
 export const retiredAssetIds: ReadonlySet<string> = new Set(
-  assets.filter((a) => a.id !== "studio").map((a) => a.id),
+  legacyAssets.filter((a) => a.id !== "studio").map((a) => a.id),
 );
 export const offeredAssets = (s: Scene) =>
   allAssets(s).filter((a) => !retiredAssetIds.has(a.id));
@@ -676,8 +686,9 @@ export function applyCommands(
       if (!a) throw Error("Asset not found.");
       if (a.category === "environments") {
         clearDressing();
-        s.environment = a.url ? "studio" : (a.style as Scene["environment"]);
-        if (a.url) s.environmentAssetId = a.id;
+        s.environment =
+          a.url || a.hdri ? "studio" : (a.style as Scene["environment"]);
+        if (a.url || a.hdri) s.environmentAssetId = a.id;
         else delete s.environmentAssetId;
         const layout = setLayout(a.id);
         if (layout) {

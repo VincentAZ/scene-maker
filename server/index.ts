@@ -95,6 +95,14 @@ app.use(
   "/library",
   express.static(path.resolve("public/library"), { fallthrough: false }),
 );
+// The realistic library, downloaded by scripts/build-content.mjs.
+app.use(
+  "/content",
+  express.static(path.resolve(process.env.SCENE_MAKER_CONTENT || "content"), {
+    fallthrough: false,
+    maxAge: "7d",
+  }),
+);
 app.use(
   "/uploads",
   express.static(path.join(dataDir, "uploads"), {

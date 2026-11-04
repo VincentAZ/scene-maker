@@ -49,6 +49,11 @@ if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.j
   echo "Installing Scene Maker dependencies…"
   npm install >>"$LOG" 2>&1
 fi
+# The realistic library (characters, props, sets) is downloaded, not stored in git: fetch what is missing.
+if ! "$NODE" scripts/build-content.mjs --check >/dev/null 2>&1; then
+  echo "Downloading the Scene Maker library (first start can take several minutes)…"
+  SCENE_MAKER_DATA="$DATA" "$NODE" scripts/build-content.mjs >>"$LOG" 2>&1 || echo "Some library items could not be downloaded. See $LOG" >&2
+fi
 COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 if [ ! -f dist/index.html ] || [ "$(cat dist/.commit 2>/dev/null)" != "$COMMIT" ]; then
   echo "Building Scene Maker…"

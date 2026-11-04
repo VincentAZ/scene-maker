@@ -28,6 +28,7 @@ export default defineConfig({
       "/engine": "http://127.0.0.1:4311",
       "/exports": "http://127.0.0.1:4311",
       "/library": "http://127.0.0.1:4311",
+      "/content": "http://127.0.0.1:4311",
     },
   },
 });
