@@ -21,6 +21,11 @@ import {
   applyAnimatedEntityPose,
 } from "../src/world";
 import { configureRigContacts, type RigContacts } from "../src/ik";
+import {
+  interactionPairs,
+  sceneCollisionWarning,
+  sceneObstacles,
+} from "../src/assetManipulation";
 import { applyInteractions } from "../src/interactions";
 import { offlineCommands } from "../server/ai";
 import { recordedSources, withRecordedSources } from "./recordedSources";
@@ -111,6 +116,35 @@ describe("targeted ladder choreography", () => {
       }
     },
   );
+  it("keeps the knees and body in front of the rungs for the whole climb", () => {
+    const { scene, actor, ladder } = fixture();
+    const { objects, sample } = renderer(scene),
+      rig = objects.get(actor.id)!,
+      frame = objects.get(ladder.id)!;
+    const bones = rig.userData.bones as Record<string, T.Object3D>;
+    const end = scene.entities[0].clips[0].duration + 0.5;
+    for (let time = 0; time <= end; time += 0.05) {
+      sample(time);
+      for (const [name, bone] of Object.entries(bones)) {
+        const local = frame.worldToLocal(
+          bone.getWorldPosition(new T.Vector3()),
+        );
+        // Between the rails and above the floor, every joint (knees included)
+        // stays on the climber's side of the rung plane.
+        if (Math.abs(local.x) > defaultLadder.width / 2 || local.y < 0.1)
+          continue;
+        expect(local.z, `${name} at ${time.toFixed(2)}`).toBeGreaterThan(0.02);
+      }
+    }
+  });
+  it("does not report the ladder a character is climbing as a collision", () => {
+    const { scene } = fixture();
+    const { objects, sample } = renderer(scene);
+    sample(3);
+    const obstacles = sceneObstacles(scene, objects);
+    expect(sceneCollisionWarning(obstacles)).toContain("overlaps");
+    expect(sceneCollisionWarning(obstacles, interactionPairs(scene))).toBe("");
+  });
   it("moves only one contact at a time and preserves the others throughout each step", () => {
     const { actor, ladder, scene } = fixture();
     const asset = allAssets(scene).find((a) => a.id === ladder.assetId)!;

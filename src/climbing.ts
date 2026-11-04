@@ -58,8 +58,9 @@ export function applyClimbContacts(
           new T.Vector3(...sample.contacts[key]),
           sample.grip,
         );
+        // Elbows point out; knees turn out a little, as a climber's do.
         const pole = new T.Vector3(
-          hand ? (side === "left" ? 1 : -1) : 0,
+          (side === "left" ? 1 : -1) * (hand ? 1 : 0.3),
           hand ? -0.15 : 0,
           hand ? -0.3 : 1,
         ).applyQuaternion(heading);

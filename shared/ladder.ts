@@ -123,6 +123,10 @@ export type LadderSample = {
   grip: number;
   swing: Record<Limb, boolean>;
 };
+/** Hips behind the rung plane and below the feet' mean height while climbing
+ * (per metre of actor scale), measured so knees clear the rungs. */
+const CLIMB_STANDOFF = 0.42,
+  CLIMB_DROP = 0.44;
 export function sampleLadder(plan: LadderPlan, value: number): LadderSample {
   const progress = Math.max(0, Math.min(1, value)),
     { ladder, profile, actorScale, handLead, steps } = plan;
@@ -164,15 +168,26 @@ export function sampleLadder(plan: LadderPlan, value: number): LadderSample {
       z / ladder.scale,
     ]);
   }
-  const settle = ease((progress - 0.9) / 0.1);
+  // The upper stance straightens the legs first, then brings the hips in.
+  const settleUp = ease((progress - 0.9) / 0.08),
+    settleIn = ease((progress - 0.91) / 0.09);
   const footHeight = (contacts.leftFoot[1] + contacts.rightFoot[1]) / 2;
+  // While stepping, the hips hang back and low enough that a knee raised to
+  // the next rung stays in front of the rungs instead of passing through
+  // them; the upper stance (both feet on one rung, legs straight) moves in.
   const climbRoot = ladderPoint(ladder, [
     0,
     0,
-    ((0.28 - 0.1 * settle) * actorScale) / ladder.scale,
+    ((CLIMB_STANDOFF - (CLIMB_STANDOFF - 0.18) * settleIn) * actorScale) /
+      ladder.scale,
   ]);
-  climbRoot[1] = footHeight - (0.35 - 0.22 * settle) * actorScale;
-  const base = ladderPoint(ladder, [0, 0, (0.28 * actorScale) / ladder.scale]);
+  climbRoot[1] =
+    footHeight - (CLIMB_DROP - (CLIMB_DROP - 0.13) * settleUp) * actorScale;
+  const base = ladderPoint(ladder, [
+    0,
+    0,
+    (CLIMB_STANDOFF * actorScale) / ladder.scale,
+  ]);
   const root =
     progress < 0.18
       ? mixPoint(plan.from, base, approach)

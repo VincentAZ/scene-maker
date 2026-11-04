@@ -8,6 +8,7 @@ import { gizmoEditing } from "./gizmoEditing";
 import {
   sceneObstacles,
   sceneCollisionWarning,
+  interactionPairs,
   type TransformMode,
 } from "./assetManipulation";
 import { visibleEntity, type Position } from "./placement";
@@ -519,6 +520,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
               undefined,
               context.current?.environment.root,
             ),
+            interactionPairs(live.current.scene),
           );
         }
         interactionWarning = [

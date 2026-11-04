@@ -147,8 +147,13 @@ export class TransformCollisionGuard {
   }
 }
 
-/** Detection only: animation stays deterministic, including authored contacts. */
-export function sceneCollisionWarning(obstacles: CollisionObstacle[]): string {
+/** Detection only: animation stays deterministic, including authored contacts.
+ * `touching` lists pairs that are meant to be in contact (an actor and the
+ * seat, ladder or prop its own actions target), keyed "a|b" in either order. */
+export function sceneCollisionWarning(
+  obstacles: CollisionObstacle[],
+  touching: ReadonlySet<string> = new Set(),
+): string {
   const empty = emptyCollider();
   for (let i = 0; i < obstacles.length; i++) {
     const source = obstacles[i];
@@ -156,11 +161,26 @@ export function sceneCollisionWarning(obstacles: CollisionObstacle[]): string {
     const blocked = collisionBetween(
       empty,
       source.collider,
-      obstacles.slice(i + 1),
+      obstacles
+        .slice(i + 1)
+        .filter((other) => !touching.has(`${source.id}|${other.id}`)),
       false,
     );
     if (blocked)
       return `Collision: ${source.name} overlaps ${blocked}. Adjust placement or the route; playback does not resolve contacts.`;
   }
   return "";
+}
+
+/** Actor/target pairs that touch by design: the chair a character sits on,
+ * the ladder it climbs, the prop it picks up or drinks from. */
+export function interactionPairs(scene: Scene): Set<string> {
+  const pairs = new Set<string>();
+  for (const entity of scene.entities)
+    for (const clip of entity.clips)
+      if (clip.targetId) {
+        pairs.add(`${entity.id}|${clip.targetId}`);
+        pairs.add(`${clip.targetId}|${entity.id}`);
+      }
+  return pairs;
 }
