@@ -291,6 +291,20 @@ export const assetSchema = z
       .regex(/^\/content\/[a-zA-Z0-9_./-]+\.(hdr|exr|jpg)$/)
       .refine((url) => !url.includes(".."))
       .optional(),
+    /** How a photographic set is shown: the visible panorama, projected onto
+     * the floor from the photographer's height (m) within a dome radius (m),
+     * turned by a yaw in degrees. */
+    backdrop: z
+      .object({
+        image: z
+          .string()
+          .regex(/^\/content\/[a-zA-Z0-9_./-]+\.jpg$/)
+          .refine((url) => !url.includes("..")),
+        height: z.number().min(0.3).max(10),
+        radius: z.number().min(3).max(90),
+        rotation: z.number().min(-360).max(360),
+      })
+      .optional(),
     design: characterDesignSchema.optional(),
     parts: z.array(shapeSchema).max(256).optional(),
     seat: z
@@ -1226,16 +1240,17 @@ export function validateScene(
   )
     throw Error("Duplicate IDs in scene.");
   if (s.environmentAssetId) {
-    const environment = s.customAssets.find(
+    // An imported model, or a photographic library set.
+    const environment = [...s.customAssets, ...contentAssets].find(
       (asset) => asset.id === s.environmentAssetId,
     );
     if (
       !environment ||
       environment.category !== "environments" ||
-      !environment.url
+      !(environment.url || environment.hdri)
     )
       throw Error(
-        "The imported environment must reference a custom environment asset with a model URL.",
+        "The imported environment must reference a custom environment asset with a model URL, or a photographic library set.",
       );
     if (s.environment !== "studio")
       throw Error("Imported environments use the studio base.");

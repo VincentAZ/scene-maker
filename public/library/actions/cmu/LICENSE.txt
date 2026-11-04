@@ -1,7 +1,7 @@
 CMU Graphics Lab Motion Capture Database
 https://mocap.cs.cmu.edu/
 https://mocap.cs.cmu.edu/faqs.php
-Terms checked 2026-11-01.
+Terms checked 2026-11-01; rechecked 2026-11-04.
 
 CMU permits copying, modification, and redistribution of this motion data,
 including inclusion in commercially sold products. The motion data itself
@@ -18,3 +18,19 @@ These files were converted from ASF/AMC by Scene Maker. Original 60 or
 inside a stated source interval. Uncaptured finger/thumb channels are
 excluded; the visible capsule skeleton is a visualization, not a body scan.
 See shared/captured-motion-catalogue.json for source URLs, hashes and mappings.
+
+------------------------------------------------------------------------
+
+100STYLE Dataset (files named 100STYLE_<style>.glb)
+Ian Mason, Sebastian Starke and Taku Komura, "Real-Time Style Modelling of
+Human Locomotion via Feature-Wise Transformations and Local Motion Phases"
+(2022). https://zenodo.org/records/8127870 (DOI 10.5281/zenodo.8127870)
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0),
+https://creativecommons.org/licenses/by/4.0/ . Terms checked 2026-11-04.
+
+These files were converted from the dataset's BVH captures (100STYLE.zip,
+<style>/<style>_FW.bvh) by Scene Maker: the 60 Hz joint rotations and root
+path are kept as recorded, positions are converted from centimetres to
+metres, and each file is an excerpt that keeps only the original samples
+inside a stated source interval. The capsule skeleton is a visualization.
+Changes were made; the original authors do not endorse this product.

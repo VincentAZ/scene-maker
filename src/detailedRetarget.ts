@@ -241,6 +241,30 @@ function neckChain(group: T.Group, rig: DetailRig) {
     })),
   };
 }
+/** The receiving hand when `bone` is the source's only joint between its
+ * forearm and hand and the receiver's forearm carries nothing but its hand
+ * (no twist/roll branch that could have received the segment instead). */
+function wristSegment(source: T.Group, target: T.Group, bone: T.Bone) {
+  for (const side of ["left", "right"]) {
+    const forearm = source.userData.bones?.[side + "Forearm"],
+      hand = source.userData.bones?.[side + "Hand"],
+      targetForearm = target.userData.bones?.[side + "Forearm"],
+      targetHand = target.userData.bones?.[side + "Hand"];
+    if (
+      forearm &&
+      hand &&
+      targetHand &&
+      bone.parent === forearm &&
+      hand.parent === bone &&
+      targetHand.parent === targetForearm &&
+      targetForearm.children.every(
+        (child: T.Object3D) =>
+          child === targetHand || !(child instanceof T.Bone),
+      )
+    )
+      return targetHand as T.Bone;
+  }
+}
 type Pair = {
   source: Joint;
   target: Joint;
@@ -663,6 +687,18 @@ function planFor(
       ["position", "quaternion"].includes(path.propertyName)
     ) {
       report.transferred.push(track.name); // composed into body travel/world rotations
+    } else if (
+      node instanceof T.Bone &&
+      wristSegment(source, target, node) &&
+      path.propertyName === "quaternion"
+    ) {
+      // A wrist segment between forearm and hand (CMU lwrist/rwrist) on a
+      // receiver whose forearm holds only its hand: the hand's transferred
+      // world rotation already contains it.
+      report.composed.push({
+        channel: track.name,
+        target: wristSegment(source, target, node)!.name,
+      });
     } else {
       if (atBind) report.unchanged.push(track.name);
       else
@@ -697,19 +733,10 @@ export function applyRetargetNotice(
         .map((c) => c.channel)
         .join(", ")}). Use the original rig for these channels.`
     : "";
-  target.userData.motionNotice = [
-    unsupported,
-    ...(["chest", "neck"] as const).map((role) =>
-      report?.composed.some(
-        ({ target: name }) =>
-          name === rigs.get(target)?.byKey.get(role)?.bone.name,
-      )
-        ? `Upper and lower ${role} motion share one ${role} joint on this character.`
-        : "",
-    ),
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Two source segments composed onto one target joint (most characters have
+  // one neck bone where captures have two) is handled and not actionable, so
+  // only channels that could not be transferred reach the creator.
+  target.userData.motionNotice = unsupported;
 }
 /** Full hierarchy solver. World orientation deltas preserve different bind axes;
  * translations preserve target proportions rather than copying source lengths. */

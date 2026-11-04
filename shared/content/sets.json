@@ -1,1 +1,342 @@
-[]
+[
+  {
+    "id": "photo-corner-cafe",
+    "name": "Corner café",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A cosy coffee shop with sofas, small tables and warm lamps on a wooden floor.",
+    "thumbnail": "/content/sets/photo-corner-cafe.png",
+    "hdri": "/content/sets/photo-corner-cafe.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-corner-cafe.jpg",
+      "height": 1.55,
+      "radius": 6,
+      "rotation": 155
+    },
+    "credit": {
+      "author": "Sergej Majboroda",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/comfy_cafe"
+    }
+  },
+  {
+    "id": "photo-lodge-restaurant",
+    "name": "Lodge restaurant",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A bright restaurant under timber trusses, with long tables and a terracotta floor.",
+    "thumbnail": "/content/sets/photo-lodge-restaurant.png",
+    "hdri": "/content/sets/photo-lodge-restaurant.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-lodge-restaurant.jpg",
+      "height": 1.6,
+      "radius": 11,
+      "rotation": -144
+    },
+    "credit": {
+      "author": "Greg Zaal, Jarod Guest",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/warm_restaurant"
+    }
+  },
+  {
+    "id": "photo-living-room",
+    "name": "Living room",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A sunny Italian living room with a sofa, armchairs and a rug on a terrazzo floor.",
+    "thumbnail": "/content/sets/photo-living-room.png",
+    "hdri": "/content/sets/photo-living-room.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-living-room.jpg",
+      "height": 1.55,
+      "radius": 8,
+      "rotation": 115
+    },
+    "credit": {
+      "author": "Greg Zaal",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/reading_room"
+    }
+  },
+  {
+    "id": "photo-loft-apartment",
+    "name": "Loft apartment",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A white loft with an open kitchen, a bed under tall windows and a pale floor.",
+    "thumbnail": "/content/sets/photo-loft-apartment.png",
+    "hdri": "/content/sets/photo-loft-apartment.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-loft-apartment.jpg",
+      "height": 1.55,
+      "radius": 6,
+      "rotation": -18
+    },
+    "credit": {
+      "author": "Sergej Majboroda",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/brown_photostudio_02"
+    }
+  },
+  {
+    "id": "photo-small-office",
+    "name": "Small office",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A working office with desks, monitors and office chairs under a wooden ceiling.",
+    "thumbnail": "/content/sets/photo-small-office.png",
+    "hdri": "/content/sets/photo-small-office.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-small-office.jpg",
+      "height": 1.5,
+      "radius": 6,
+      "rotation": 108
+    },
+    "credit": {
+      "author": "Greg Zaal",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/poly_haven_studio"
+    }
+  },
+  {
+    "id": "photo-warehouse",
+    "name": "Empty warehouse",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A large, empty industrial hall with a bare concrete floor and strip lights.",
+    "thumbnail": "/content/sets/photo-warehouse.png",
+    "hdri": "/content/sets/photo-warehouse.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-warehouse.jpg",
+      "height": 1.7,
+      "radius": 16,
+      "rotation": 155
+    },
+    "credit": {
+      "author": "Sergej Majboroda",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/empty_warehouse_01"
+    }
+  },
+  {
+    "id": "photo-carpentry-workshop",
+    "name": "Carpentry workshop",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A timber workshop with racks of planks, workbenches and saws.",
+    "thumbnail": "/content/sets/photo-carpentry-workshop.png",
+    "hdri": "/content/sets/photo-carpentry-workshop.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-carpentry-workshop.jpg",
+      "height": 1.6,
+      "radius": 9,
+      "rotation": 108
+    },
+    "credit": {
+      "author": "Greg Zaal",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/carpentry_shop_01"
+    }
+  },
+  {
+    "id": "photo-school-stage",
+    "name": "School stage",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "The wooden stage of a school hall, in front of black stage curtains.",
+    "thumbnail": "/content/sets/photo-school-stage.png",
+    "hdri": "/content/sets/photo-school-stage.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-school-stage.jpg",
+      "height": 1.6,
+      "radius": 8,
+      "rotation": 18
+    },
+    "credit": {
+      "author": "Dimitrios Savva, Jarod Guest",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/school_hall"
+    }
+  },
+  {
+    "id": "photo-underground-car-park",
+    "name": "Underground car park",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A concrete parking garage with pillars, painted arrows and parked cars.",
+    "thumbnail": "/content/sets/photo-underground-car-park.png",
+    "hdri": "/content/sets/photo-underground-car-park.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-underground-car-park.jpg",
+      "height": 1.6,
+      "radius": 16,
+      "rotation": 108
+    },
+    "credit": {
+      "author": "Greg Zaal, Rico Cilliers",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/parking_garage"
+    }
+  },
+  {
+    "id": "photo-residential-street",
+    "name": "Residential street",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "A quiet street of brick houses and parked cars on an overcast day.",
+    "thumbnail": "/content/sets/photo-residential-street.png",
+    "hdri": "/content/sets/photo-residential-street.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-residential-street.jpg",
+      "height": 1.7,
+      "radius": 20,
+      "rotation": 90
+    },
+    "credit": {
+      "author": "Andreas Mischok",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/urban_street_03"
+    }
+  },
+  {
+    "id": "photo-city-park",
+    "name": "City park",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "A shady city park with a gravel square, a fountain and huge old fig trees.",
+    "thumbnail": "/content/sets/photo-city-park.png",
+    "hdri": "/content/sets/photo-city-park.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-city-park.jpg",
+      "height": 1.7,
+      "radius": 25,
+      "rotation": -18
+    },
+    "credit": {
+      "author": "Andreas Mischok",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/palermo_park"
+    }
+  },
+  {
+    "id": "photo-backyard-garden",
+    "name": "Backyard garden",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "A wide lawn with flower beds and thatched gazebos under a clear sky.",
+    "thumbnail": "/content/sets/photo-backyard-garden.png",
+    "hdri": "/content/sets/photo-backyard-garden.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-backyard-garden.jpg",
+      "height": 1.7,
+      "radius": 25,
+      "rotation": 72
+    },
+    "credit": {
+      "author": "Dimitrios Savva, Jarod Guest",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/suburban_garden"
+    }
+  },
+  {
+    "id": "photo-woodland",
+    "name": "Woodland",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "An open grove of bare trees on a flat, leafy forest floor at low sun.",
+    "thumbnail": "/content/sets/photo-woodland.png",
+    "hdri": "/content/sets/photo-woodland.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-woodland.jpg",
+      "height": 1.7,
+      "radius": 20,
+      "rotation": 18
+    },
+    "credit": {
+      "author": "Dimitrios Savva, Jarod Guest",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/forest_grove"
+    }
+  },
+  {
+    "id": "photo-sandy-beach",
+    "name": "Sandy beach",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "A broad Mediterranean beach of fine sand, with pines and hills behind.",
+    "thumbnail": "/content/sets/photo-sandy-beach.png",
+    "hdri": "/content/sets/photo-sandy-beach.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-sandy-beach.jpg",
+      "height": 1.7,
+      "radius": 40,
+      "rotation": -72
+    },
+    "credit": {
+      "author": "Andreas Mischok",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/spiaggia_di_mondello"
+    }
+  },
+  {
+    "id": "photo-parking-lot",
+    "name": "Parking lot",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "A large, nearly empty parking lot with painted bays in the afternoon sun.",
+    "thumbnail": "/content/sets/photo-parking-lot.png",
+    "hdri": "/content/sets/photo-parking-lot.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-parking-lot.jpg",
+      "height": 1.7,
+      "radius": 40,
+      "rotation": 61
+    },
+    "credit": {
+      "author": "Sergej Majboroda",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/mall_parking_lot"
+    }
+  },
+  {
+    "id": "photo-night-street",
+    "name": "Night street",
+    "category": "environments",
+    "style": "Night",
+    "description": "A cobbled side street at night, lit by warm street lamps, with parked cars.",
+    "thumbnail": "/content/sets/photo-night-street.png",
+    "hdri": "/content/sets/photo-night-street.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-night-street.jpg",
+      "height": 1.6,
+      "radius": 12,
+      "rotation": -54
+    },
+    "credit": {
+      "author": "Greg Zaal, Jenelle van Heerden",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/cobblestone_street_night"
+    }
+  },
+  {
+    "id": "photo-night-square",
+    "name": "Town square at night",
+    "category": "environments",
+    "style": "Night",
+    "description": "A paved city square at night, ringed by lit apartment blocks and bare trees.",
+    "thumbnail": "/content/sets/photo-night-square.png",
+    "hdri": "/content/sets/photo-night-square.hdr",
+    "backdrop": {
+      "image": "/content/sets/photo-night-square.jpg",
+      "height": 1.7,
+      "radius": 30,
+      "rotation": 90
+    },
+    "credit": {
+      "author": "Greg Zaal",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/hansaplatz"
+    }
+  }
+]

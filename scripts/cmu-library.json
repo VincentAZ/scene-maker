@@ -442,5 +442,411 @@
     "name": "Get up from the ground",
     "category": "Climbing",
     "description": "Gets up from the ground to standing."
+  },
+  {
+    "trial": "139_02",
+    "name": "Shift weight",
+    "category": "Standing",
+    "description": "Stands relaxed, shifting weight from foot to foot."
+  },
+  {
+    "trial": "137_28",
+    "excerpt": [17, 24],
+    "name": "Hands on hips",
+    "category": "Standing",
+    "description": "Waits with both hands on the hips."
+  },
+  {
+    "trial": "77_04",
+    "excerpt": [0, 10],
+    "name": "Look around",
+    "category": "Standing",
+    "description": "Shifts stance and looks around warily."
+  },
+  {
+    "trial": "69_16",
+    "excerpt": [0, 4.7],
+    "name": "Turn around",
+    "category": "Standing",
+    "description": "Turns on the spot to face the other way."
+  },
+  {
+    "trial": "80_43",
+    "excerpt": [1, 13.5],
+    "name": "Clap",
+    "category": "Gestures",
+    "description": "Claps the hands in front of the chest."
+  },
+  {
+    "trial": "18_08",
+    "excerpt": [8.5, 17.38],
+    "name": "Explain",
+    "category": "Talking",
+    "description": "Explains something with small, natural hand gestures."
+  },
+  {
+    "trial": "18_10",
+    "name": "Furious",
+    "category": "Emotions",
+    "description": "Quarrels with angry, sweeping arm gestures.",
+    "travels": true
+  },
+  {
+    "trial": "76_05",
+    "name": "Swat at a bug",
+    "category": "Everyday",
+    "description": "Swats at a pesky insect flying around."
+  },
+  {
+    "trial": "86_15",
+    "excerpt": [14, 26],
+    "name": "Talk while seated",
+    "category": "Sitting",
+    "description": "Sits on a high seat and talks with expressive hand gestures."
+  },
+  {
+    "trial": "13_04",
+    "excerpt": [12.5, 17.5],
+    "name": "Chin in hand",
+    "category": "Sitting",
+    "description": "Sits on a low stool thinking, chin resting in one hand."
+  },
+  {
+    "trial": "22_03",
+    "name": "Head in hands",
+    "category": "Sitting",
+    "description": "Sits slumped on a seat with the face buried in both hands."
+  },
+  {
+    "trial": "81_04",
+    "name": "Brisk walk",
+    "category": "Walking",
+    "description": "Walks forward at a brisk pace.",
+    "travels": true
+  },
+  {
+    "trial": "104_35",
+    "name": "Slow walk",
+    "category": "Walking",
+    "description": "Walks forward slowly and calmly.",
+    "travels": true
+  },
+  {
+    "trial": "82_09",
+    "name": "Confident walk",
+    "category": "Walking",
+    "description": "Starts from standing and walks off confidently.",
+    "travels": true
+  },
+  {
+    "trial": "82_12",
+    "name": "Happy walk",
+    "category": "Walking",
+    "description": "Walks quickly with a light, happy step.",
+    "travels": true
+  },
+  {
+    "trial": "69_20",
+    "name": "Walk and turn right",
+    "category": "Walking",
+    "description": "Walks forward and turns 90 degrees to the right.",
+    "travels": true
+  },
+  {
+    "trial": "16_17",
+    "name": "Walk and turn left",
+    "category": "Walking",
+    "description": "Walks forward and turns 90 degrees to the left.",
+    "travels": true
+  },
+  {
+    "trial": "143_14",
+    "name": "Step over",
+    "category": "Walking",
+    "description": "Walks up and steps over a low obstacle.",
+    "travels": true
+  },
+  {
+    "trial": "127_04",
+    "name": "Walk into a run",
+    "category": "Running",
+    "description": "Starts walking and speeds up into a run.",
+    "travels": true
+  },
+  {
+    "trial": "16_08",
+    "name": "Jog to a stop",
+    "category": "Running",
+    "description": "Jogs forward and stops suddenly.",
+    "travels": true
+  },
+  {
+    "trial": "115_06",
+    "name": "Lift a box",
+    "category": "Objects",
+    "description": "Bends the knees, lifts a box from the floor and holds it. No box is included."
+  },
+  {
+    "trial": "69_69",
+    "name": "Pick up and carry",
+    "category": "Objects",
+    "description": "Bends to pick something up and holds it in front. No object is included."
+  },
+  {
+    "trial": "69_70",
+    "name": "Pick up and move",
+    "category": "Objects",
+    "description": "Squats to pick something up, carries it and sets it down elsewhere.",
+    "travels": true
+  },
+  {
+    "trial": "81_05",
+    "name": "Push something heavy",
+    "category": "Objects",
+    "description": "Leans in and pushes a heavy object across the floor.",
+    "travels": true
+  },
+  {
+    "trial": "81_07",
+    "name": "Pull something heavy",
+    "category": "Objects",
+    "description": "Grabs a heavy object low and drags it backwards.",
+    "travels": true
+  },
+  {
+    "trial": "62_07",
+    "excerpt": [4, 14],
+    "name": "Hammer a nail",
+    "category": "Everyday",
+    "description": "Bends over and hammers a nail. No hammer is included."
+  },
+  {
+    "trial": "80_15",
+    "excerpt": [0.5, 16],
+    "name": "Put on a coat",
+    "category": "Everyday",
+    "description": "Puts on a coat one arm at a time. No coat is included."
+  },
+  {
+    "trial": "80_22",
+    "excerpt": [0.5, 12],
+    "name": "Put on a hat",
+    "category": "Everyday",
+    "description": "Puts on a hat and adjusts it. No hat is included."
+  },
+  {
+    "trial": "80_18",
+    "excerpt": [2, 14],
+    "name": "Vacuum",
+    "category": "Everyday",
+    "description": "Pushes a vacuum cleaner back and forth. No vacuum is included."
+  },
+  {
+    "trial": "77_08",
+    "excerpt": [0, 7.5],
+    "name": "Examine the ground",
+    "category": "Everyday",
+    "description": "Crouches to look closely at something on the ground and stands up."
+  },
+  {
+    "trial": "113_08",
+    "excerpt": [0, 8],
+    "name": "Lie down",
+    "category": "Climbing",
+    "description": "Gets down onto the floor and lies on the back."
+  },
+  {
+    "trial": "93_03",
+    "name": "Charleston",
+    "category": "Dance",
+    "description": "A few bouncy Charleston steps."
+  },
+  {
+    "trial": "93_06",
+    "name": "Lindy hop",
+    "category": "Dance",
+    "description": "Swinging Lindy hop steps."
+  },
+  {
+    "trial": "90_32",
+    "name": "Moonwalk",
+    "category": "Dance",
+    "description": "Glides backwards in a moonwalk.",
+    "travels": true
+  },
+  {
+    "trial": "10_01",
+    "name": "Kick a ball",
+    "category": "Sports",
+    "description": "Steps up and kicks a ball. No ball is included.",
+    "travels": true
+  },
+  {
+    "trial": "124_01",
+    "name": "Pitch",
+    "category": "Sports",
+    "description": "Winds up and pitches a baseball. No ball is included."
+  },
+  {
+    "trial": "124_07",
+    "excerpt": [0, 8],
+    "name": "Swing a bat",
+    "category": "Sports",
+    "description": "Takes a batting stance and swings. No bat is included."
+  },
+  {
+    "trial": "124_03",
+    "name": "Shoot a basket",
+    "category": "Sports",
+    "description": "Dribbles and shoots a basketball. No ball is included."
+  },
+  {
+    "trial": "64_01",
+    "name": "Golf swing",
+    "category": "Sports",
+    "description": "Addresses the ball and makes a full golf swing. No club is included."
+  },
+  {
+    "trial": "64_11",
+    "name": "Putt",
+    "category": "Sports",
+    "description": "Lines up and makes a short golf putt. No club is included."
+  },
+  {
+    "trial": "13_17",
+    "excerpt": [4, 12],
+    "name": "Shadow boxing",
+    "category": "Sports",
+    "description": "Bobs, weaves and throws punches."
+  },
+  {
+    "trial": "141_11",
+    "name": "Throw and catch",
+    "category": "Sports",
+    "description": "Throws a ball and catches it coming back. No ball is included."
+  },
+  {
+    "trial": "77_21",
+    "excerpt": [0, 12],
+    "name": "Warm-up stretches",
+    "category": "Sports",
+    "description": "Stretches the arms and legs before exercise."
+  },
+  {
+    "trial": "13_29",
+    "excerpt": [3, 9],
+    "name": "Jumping jacks",
+    "category": "Sports",
+    "description": "Does jumping jacks and side twists."
+  },
+  {
+    "source": "100STYLE",
+    "file": "Proud/Proud_FW.bvh",
+    "key": "100STYLE_Proud",
+    "excerpt": [10.48, 13.98],
+    "name": "Proud walk",
+    "category": "Walking",
+    "description": "Walks tall with a straight back and a slight swing of the arms.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "HandsInPockets/HandsInPockets_FW.bvh",
+    "key": "100STYLE_HandsInPockets",
+    "excerpt": [9.92, 13.42],
+    "name": "Hands in pockets",
+    "category": "Walking",
+    "description": "Strolls with both hands in the pockets.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "ArmsBehindBack/ArmsBehindBack_FW.bvh",
+    "key": "100STYLE_ArmsBehindBack",
+    "excerpt": [9.32, 12.82],
+    "name": "Hands behind back",
+    "category": "Walking",
+    "description": "Walks with the hands clasped behind the back.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "ArmsFolded/ArmsFolded_FW.bvh",
+    "key": "100STYLE_ArmsFolded",
+    "excerpt": [10.03, 13.53],
+    "name": "Arms folded walk",
+    "category": "Walking",
+    "description": "Walks with the arms folded across the chest.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "Akimbo/Akimbo_FW.bvh",
+    "key": "100STYLE_Akimbo",
+    "excerpt": [8.5, 12],
+    "name": "Hands on hips walk",
+    "category": "Walking",
+    "description": "Walks with both hands on the hips.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "Depressed/Depressed_FW.bvh",
+    "key": "100STYLE_Depressed",
+    "excerpt": [11.73, 15.23],
+    "name": "Downcast walk",
+    "category": "Walking",
+    "description": "Walks slowly with the head bowed and the arms hanging.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "OnPhoneRight/OnPhoneRight_FW.bvh",
+    "key": "100STYLE_OnPhoneRight",
+    "excerpt": [8.77, 12.27],
+    "name": "Walk on the phone",
+    "category": "Walking",
+    "description": "Walks holding a phone to the right ear. No phone is included.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "Tiptoe/Tiptoe_FW.bvh",
+    "key": "100STYLE_Tiptoe",
+    "excerpt": [9.37, 12.87],
+    "name": "Tiptoe",
+    "category": "Walking",
+    "description": "Walks quietly on the toes with the heels raised.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "InTheDark/InTheDark_FW.bvh",
+    "key": "100STYLE_InTheDark",
+    "excerpt": [138.88, 142.38],
+    "name": "Walk in the dark",
+    "category": "Walking",
+    "description": "Feels the way forward as if in darkness.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "CrowdAvoidance/CrowdAvoidance_FW.bvh",
+    "key": "100STYLE_CrowdAvoidance",
+    "excerpt": [115.85, 119.35],
+    "name": "Weave through a crowd",
+    "category": "Walking",
+    "description": "Walks turning the shoulders now and then to slip past people.",
+    "travels": true
+  },
+  {
+    "source": "100STYLE",
+    "file": "Strutting/Strutting_FW.bvh",
+    "key": "100STYLE_Strutting",
+    "excerpt": [122.77, 126.27],
+    "name": "Strut",
+    "category": "Walking",
+    "description": "Walks with a swagger, leaning back with loose arms.",
+    "travels": true
   }
 ]

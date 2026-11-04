@@ -69,16 +69,17 @@ it("offers no retired furniture or furnished set to the offline assistant, and r
   const scene = starterScene();
   for (const asset of [...furnitureAssets, ...setAssets]) {
     expect(retiredAssetIds.has(asset.id), asset.name).toBe(true);
+    // A same-named realistic item may be added instead; never the retired one.
     expect(
       offlineCommands(scene, `Add ${asset.name}`).commands,
       asset.name,
-    ).toEqual([]);
+    ).not.toContainEqual(expect.objectContaining({ assetId: asset.id }));
   }
   for (const asset of setAssets)
     expect(
       offlineCommands(scene, `Switch to ${asset.name}`).commands,
       asset.name,
-    ).toEqual([]);
+    ).not.toContainEqual(expect.objectContaining({ assetId: asset.id }));
   // The longest matching name among the creator's imports wins.
   const prop = (id: string, name: string) =>
     assetSchema.parse({

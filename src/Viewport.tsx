@@ -34,6 +34,12 @@ import {
   loadPlanningMotionSources,
 } from "./importedAsset";
 import { EnvironmentModel, environmentModelKey } from "./environmentModel";
+import {
+  applyStageLighting,
+  backdropHome,
+  keepInsideBackdrop,
+  loadPhotoSet,
+} from "./hdriBackdrop";
 import { libraryEntry } from "../shared/characterLibrary";
 import type { SeatBody } from "../shared/seating";
 import type { PathFrame } from "../shared/path";
@@ -601,11 +607,13 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           if (
             child !== content &&
             !(child instanceof T.Light) &&
+            !child.userData.film &&
             child.visible
           ) {
             child.visible = false;
             hidden.push(child);
           }
+        cinema.renderer.toneMappingExposure = renderer.toneMappingExposure;
         try {
           cinema.renderer.render(world, film);
         } finally {
@@ -630,7 +638,41 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         navigationPending: () => !!navigationJob,
         dragging,
         editing,
-        environment: new EnvironmentModel(content),
+        environment: new EnvironmentModel(content, undefined, {
+          load: (asset) => loadPhotoSet(asset, renderer),
+          // A photographic set replaces the stage around the cast; open it at
+          // eye level inside the photographed place.
+          show: (photo) => {
+            const previous = world.getObjectByName("SceneMakerBackdrop");
+            if (previous) world.remove(previous);
+            if (photo) world.add(photo.group);
+            applyStageLighting(
+              world,
+              renderer,
+              live.current.scene.lighting,
+              photo,
+            );
+            if (photo) {
+              // Spend any orbit inertia first so it cannot turn the new view.
+              controls.enableDamping = false;
+              controls.update();
+              controls.enableDamping = true;
+              const home = backdropHome(photo.backdrop);
+              camera.position.copy(home.position);
+              controls.target.copy(home.target);
+              controls.maxDistance = home.maxDistance;
+              controls.minAzimuthAngle = -home.azimuth;
+              controls.maxAzimuthAngle = home.azimuth;
+              controls.minPolarAngle = home.minPolar;
+            } else {
+              controls.minPolarAngle = 0;
+              controls.maxDistance = 25;
+              controls.minAzimuthAngle = -Infinity;
+              controls.maxAzimuthAngle = Infinity;
+            }
+            controls.update();
+          },
+        }),
         placedKeys: new Map(),
         pending: new Map(),
         sources: new Map(),
@@ -736,6 +778,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           live.current.onInteractionWarning(interactionWarning);
         }
         if (controls.enabled) controls.update();
+        const photo = context.current?.environment.photo;
+        if (photo) keepInsideBackdrop(camera.position, photo.backdrop);
         // The paused preview stays identical between planning batches. Avoid
         // competing GPU draws while computing, but redraw staging, selection,
         // scrubbing, resizing and camera gestures immediately.
@@ -833,25 +877,12 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         )
           readyKey.current = ctx.currentKey;
       };
-      const color =
-        props.scene.lighting === "moonlight"
-          ? "#8c9eae"
-          : props.scene.lighting === "daylight"
-            ? "#dce1dc"
-            : "#d8d4c7";
-      ctx.world.background = new T.Color(color);
-      ctx.world.fog = new T.Fog(color, 19, 38);
-      const sun = ctx.world.children.find(
-        (o) => o instanceof T.DirectionalLight,
-      ) as T.DirectionalLight;
-      sun.color.set(
-        props.scene.lighting === "moonlight"
-          ? "#a6c5ef"
-          : props.scene.lighting === "daylight"
-            ? "#ffffff"
-            : "#fff0ce",
+      applyStageLighting(
+        ctx.world,
+        ctx.renderer,
+        props.scene.lighting,
+        ctx.environment.photo,
       );
-      sun.intensity = props.scene.lighting === "moonlight" ? 1.2 : 4;
       // Remove objects whose entity left or whose model inputs changed; keep
       // the rest so a color or asset edit never rebuilds the whole cast.
       for (const [id, obj] of [...ctx.objects]) {
@@ -1148,7 +1179,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         },
         reset() {
           const c = context.current;
-          if (c) {
+          if (c?.environment.photo) {
+            const home = backdropHome(c.environment.photo.backdrop);
+            c.camera.position.copy(home.position);
+            c.controls.target.copy(home.target);
+          } else if (c) {
             c.camera.position.set(8, 6.5, 10);
             c.controls.target.set(0, 0.85, -0.5);
           }

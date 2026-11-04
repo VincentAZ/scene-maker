@@ -1,1 +1,662 @@
-[]
+[
+  {
+    "id": "rocketbox-female-adult-01",
+    "name": "Emma",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-01.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-01.png",
+    "description": "A blonde woman in a pink blouse, jeans and flats.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_01"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-04",
+    "name": "Hanna",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-04.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-04.png",
+    "description": "A blonde woman in a brown leather jacket, cargo trousers and boots.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_04"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-06",
+    "name": "Amira",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-06.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-06.png",
+    "description": "A woman in a white headscarf and an olive tunic over trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_06"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-08",
+    "name": "Sofia",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-08.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-08.png",
+    "description": "A brunette woman in a grey print T-shirt and ripped jeans.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_08"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-11",
+    "name": "Lucia",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-11.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-11.png",
+    "description": "A dark-haired woman in a brown knit dress with a belt and tall boots.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_11"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-12",
+    "name": "Mia",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-12.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-12.png",
+    "description": "A young woman in a black zip hoodie, denim shorts and trainers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_12"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-15",
+    "name": "Claire",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-15.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-15.png",
+    "description": "A woman with long auburn hair in a blue blouse, black skirt and boots.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_15"
+    }
+  },
+  {
+    "id": "rocketbox-female-adult-17",
+    "name": "Grace",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-adult-17.glb",
+    "thumbnail": "/content/characters/rocketbox-female-adult-17.png",
+    "description": "A blonde woman in a green T-shirt and light jeans.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Adult_17"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-03",
+    "name": "Richard",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-03.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-03.png",
+    "description": "A grey-haired older man in a tweed jacket and dark trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_03"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-04",
+    "name": "Marcus",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-04.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-04.png",
+    "description": "A man with curly hair in a black jacket over a hoodie and work trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_04"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-10",
+    "name": "Kenji",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-10.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-10.png",
+    "description": "A young man in a red track jacket, black track trousers and trainers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_10"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-12",
+    "name": "Daniel",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-12.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-12.png",
+    "description": "A man in a denim jacket over a white T-shirt and jeans.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_12"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-13",
+    "name": "Thomas",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-13.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-13.png",
+    "description": "A balding man in an argyle sweater vest and jeans.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_13"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-15",
+    "name": "Omar",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-15.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-15.png",
+    "description": "A bearded man in a white kurta, trousers and a prayer cap.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_15"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-17",
+    "name": "Arjun",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-17.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-17.png",
+    "description": "A bearded man in a blue and white sports jacket and jeans.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_17"
+    }
+  },
+  {
+    "id": "rocketbox-male-adult-18",
+    "name": "Kwame",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-adult-18.glb",
+    "thumbnail": "/content/characters/rocketbox-male-adult-18.png",
+    "description": "A man in a grey hoodie with the hood up and black trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Male_Adult_18"
+    }
+  },
+  {
+    "id": "rocketbox-female-party-02",
+    "name": "Zara",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-party-02.glb",
+    "thumbnail": "/content/characters/rocketbox-female-party-02.png",
+    "description": "A woman with curly hair in a patterned top, black mini skirt and sandals, dressed for an evening out.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Adults/Female_Party_02"
+    }
+  },
+  {
+    "id": "rocketbox-business-female-01",
+    "name": "Nia — Executive",
+    "category": "characters",
+    "style": "Business",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-business-female-01.glb",
+    "thumbnail": "/content/characters/rocketbox-business-female-01.png",
+    "description": "A woman in a black trouser suit and white shirt.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Business_Female_01"
+    }
+  },
+  {
+    "id": "rocketbox-business-female-02",
+    "name": "Margaret — Manager",
+    "category": "characters",
+    "style": "Business",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-business-female-02.glb",
+    "thumbnail": "/content/characters/rocketbox-business-female-02.png",
+    "description": "An older woman with glasses in a burgundy blazer and dark trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Business_Female_02"
+    }
+  },
+  {
+    "id": "rocketbox-business-female-03",
+    "name": "Elena — Accountant",
+    "category": "characters",
+    "style": "Business",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-business-female-03.glb",
+    "thumbnail": "/content/characters/rocketbox-business-female-03.png",
+    "description": "A woman in a brown skirt suit and heels.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Business_Female_03"
+    }
+  },
+  {
+    "id": "rocketbox-business-male-01",
+    "name": "James — Executive",
+    "category": "characters",
+    "style": "Business",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-business-male-01.glb",
+    "thumbnail": "/content/characters/rocketbox-business-male-01.png",
+    "description": "A man in a black suit with a red tie.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Business_Male_01"
+    }
+  },
+  {
+    "id": "rocketbox-business-male-04",
+    "name": "Viktor — Office worker",
+    "category": "characters",
+    "style": "Business",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-business-male-04.glb",
+    "thumbnail": "/content/characters/rocketbox-business-male-04.png",
+    "description": "A bald man in a grey waistcoat, shirt and dark trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Business_Male_04"
+    }
+  },
+  {
+    "id": "rocketbox-business-male-05",
+    "name": "Andre — Lawyer",
+    "category": "characters",
+    "style": "Business",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-business-male-05.glb",
+    "thumbnail": "/content/characters/rocketbox-business-male-05.png",
+    "description": "A man in a checked charcoal suit with a purple shirt and tie.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Business_Male_05"
+    }
+  },
+  {
+    "id": "rocketbox-medical-female-02",
+    "name": "Laura — Doctor",
+    "category": "characters",
+    "style": "Medical",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-medical-female-02.glb",
+    "thumbnail": "/content/characters/rocketbox-medical-female-02.png",
+    "description": "A doctor in a white coat with a stethoscope.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Female_02"
+    }
+  },
+  {
+    "id": "rocketbox-medical-female-01",
+    "name": "Rosa — Nurse",
+    "category": "characters",
+    "style": "Medical",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-medical-female-01.glb",
+    "thumbnail": "/content/characters/rocketbox-medical-female-01.png",
+    "description": "A nurse in a white tunic and trousers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Female_01"
+    }
+  },
+  {
+    "id": "rocketbox-medical-male-03",
+    "name": "Henry — Doctor",
+    "category": "characters",
+    "style": "Medical",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-medical-male-03.glb",
+    "thumbnail": "/content/characters/rocketbox-medical-male-03.png",
+    "description": "An older doctor in a white coat with a stethoscope.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_03"
+    }
+  },
+  {
+    "id": "rocketbox-medical-male-04",
+    "name": "David — Surgeon",
+    "category": "characters",
+    "style": "Medical",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-medical-male-04.glb",
+    "thumbnail": "/content/characters/rocketbox-medical-male-04.png",
+    "description": "A surgeon in green scrubs, cap and face mask.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Medical_Male_04"
+    }
+  },
+  {
+    "id": "rocketbox-chef-female-01",
+    "name": "Mei — Chef",
+    "category": "characters",
+    "style": "Service",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-chef-female-01.glb",
+    "thumbnail": "/content/characters/rocketbox-chef-female-01.png",
+    "description": "A chef in a white jacket, apron and cap.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Chef_Female_01"
+    }
+  },
+  {
+    "id": "rocketbox-delivery-male-01",
+    "name": "Lukas — Courier",
+    "category": "characters",
+    "style": "Service",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-delivery-male-01.glb",
+    "thumbnail": "/content/characters/rocketbox-delivery-male-01.png",
+    "description": "A bearded man in a beanie, red flannel shirt, jeans and work boots.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Delivery_Male_01"
+    }
+  },
+  {
+    "id": "rocketbox-gardener-male-01",
+    "name": "Frank — Gardener",
+    "category": "characters",
+    "style": "Service",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-gardener-male-01.glb",
+    "thumbnail": "/content/characters/rocketbox-gardener-male-01.png",
+    "description": "A gardener in brown overalls, gloves and yellow rubber boots.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Gardener_Male_01"
+    }
+  },
+  {
+    "id": "rocketbox-police-male-01",
+    "name": "Rashid — Police officer",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-police-male-01.glb",
+    "thumbnail": "/content/characters/rocketbox-police-male-01.png",
+    "description": "A police officer in a light blue uniform and cap with a duty belt.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Police_Male_01"
+    }
+  },
+  {
+    "id": "rocketbox-police-male-03",
+    "name": "Ben — Police officer",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-police-male-03.glb",
+    "thumbnail": "/content/characters/rocketbox-police-male-03.png",
+    "description": "A police officer in a dark uniform and peaked cap.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Police_Male_03"
+    }
+  },
+  {
+    "id": "rocketbox-security-female-01",
+    "name": "Nadia — Security guard",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-security-female-01.glb",
+    "thumbnail": "/content/characters/rocketbox-security-female-01.png",
+    "description": "A security guard in a black uniform and cap.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Security_Female_01"
+    }
+  },
+  {
+    "id": "rocketbox-pilot-male-01",
+    "name": "Michael — Pilot",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-pilot-male-01.glb",
+    "thumbnail": "/content/characters/rocketbox-pilot-male-01.png",
+    "description": "An airline captain in a black uniform with gold stripes and a cap.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Pilot_Male_01"
+    }
+  },
+  {
+    "id": "rocketbox-pilot-female-02",
+    "name": "Aisha — Pilot",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-pilot-female-02.glb",
+    "thumbnail": "/content/characters/rocketbox-pilot-female-02.png",
+    "description": "A pilot in a white short-sleeved shirt, dark trousers and a white cap.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Pilot_Female_02"
+    }
+  },
+  {
+    "id": "rocketbox-fire-male-06",
+    "name": "Carlos — Firefighter",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-fire-male-06.glb",
+    "thumbnail": "/content/characters/rocketbox-fire-male-06.png",
+    "description": "A firefighter in tan turnout gear and a helmet.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Fire_Male_06"
+    }
+  },
+  {
+    "id": "rocketbox-construction-female-01",
+    "name": "Kate — Construction worker",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-construction-female-01.glb",
+    "thumbnail": "/content/characters/rocketbox-construction-female-01.png",
+    "description": "A construction worker in blue overalls, a hi-vis vest and a hard hat.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Construction_Female_01"
+    }
+  },
+  {
+    "id": "rocketbox-construction-male-03",
+    "name": "Samuel — Construction worker",
+    "category": "characters",
+    "style": "Uniformed",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-construction-male-03.glb",
+    "thumbnail": "/content/characters/rocketbox-construction-male-03.png",
+    "description": "A construction worker in blue overalls, a tool belt and a hard hat.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Construction_Male_03"
+    }
+  },
+  {
+    "id": "rocketbox-sports-female-02",
+    "name": "Yuna — Athlete",
+    "category": "characters",
+    "style": "Sports",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-sports-female-02.glb",
+    "thumbnail": "/content/characters/rocketbox-sports-female-02.png",
+    "description": "A woman in a grey tank top, track trousers and trainers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Sports_Female_02"
+    }
+  },
+  {
+    "id": "rocketbox-sports-male-02",
+    "name": "Leo — Footballer",
+    "category": "characters",
+    "style": "Sports",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-sports-male-02.glb",
+    "thumbnail": "/content/characters/rocketbox-sports-male-02.png",
+    "description": "A footballer in a striped kit, socks and boots.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Sports_Male_02"
+    }
+  },
+  {
+    "id": "rocketbox-sports-male-04",
+    "name": "Ryan — Runner",
+    "category": "characters",
+    "style": "Sports",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-sports-male-04.glb",
+    "thumbnail": "/content/characters/rocketbox-sports-male-04.png",
+    "description": "A runner in a blue vest, white shorts and running shoes.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Professions/Sports_Male_04"
+    }
+  },
+  {
+    "id": "rocketbox-female-child-01",
+    "name": "Lily",
+    "category": "characters",
+    "style": "Children",
+    "body": "feminine",
+    "url": "/content/characters/rocketbox-female-child-01.glb",
+    "thumbnail": "/content/characters/rocketbox-female-child-01.png",
+    "description": "A blonde girl in a pink T-shirt and jeans.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Children/Female_Child_01"
+    }
+  },
+  {
+    "id": "rocketbox-male-child-01",
+    "name": "Noah",
+    "category": "characters",
+    "style": "Children",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-child-01.glb",
+    "thumbnail": "/content/characters/rocketbox-male-child-01.png",
+    "description": "A boy in a blue sweatshirt, jeans and trainers.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Children/Male_Child_01"
+    }
+  },
+  {
+    "id": "rocketbox-male-child-02",
+    "name": "Kofi",
+    "category": "characters",
+    "style": "Children",
+    "body": "masculine",
+    "url": "/content/characters/rocketbox-male-child-02.glb",
+    "thumbnail": "/content/characters/rocketbox-male-child-02.png",
+    "description": "A boy in an orange number T-shirt, shorts and sandals.",
+    "credit": {
+      "author": "Microsoft",
+      "license": "MIT",
+      "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Children/Male_Child_02"
+    }
+  }
+]

@@ -1,1 +1,1136 @@
-[]
+[
+  {
+    "id": "ph-dining-chair-leather",
+    "name": "Leather dining chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-dining-chair-leather.glb",
+    "thumbnail": "/content/props/ph-dining-chair-leather.png",
+    "description": "A tufted dark leather dining chair on square wooden legs. 0.43 × 0.58 m, 0.97 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/dining_chair_02"
+    },
+    "seat": {
+      "position": [
+        0.0032,
+        0.4528,
+        0.1082
+      ],
+      "width": 0.39,
+      "depth": 0.33
+    }
+  },
+  {
+    "id": "ph-painted-wooden-chair",
+    "name": "White wooden kitchen chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-painted-wooden-chair.glb",
+    "thumbnail": "/content/props/ph-painted-wooden-chair.png",
+    "description": "A worn, white-painted wooden kitchen chair. 0.43 × 0.54 m, 0.96 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/painted_wooden_chair_01"
+    },
+    "seat": {
+      "position": [
+        -0.0009,
+        0.4471,
+        0.0449
+      ],
+      "width": 0.4,
+      "depth": 0.44
+    }
+  },
+  {
+    "id": "ph-school-chair",
+    "name": "School chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-school-chair.glb",
+    "thumbnail": "/content/props/ph-school-chair.png",
+    "description": "A blue moulded plastic classroom chair on a steel frame. 0.57 × 0.68 m, 1.01 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Ethan Place",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/SchoolChair_01"
+    },
+    "seat": {
+      "position": [
+        0.0021,
+        0.5023,
+        0.1126
+      ],
+      "width": 0.46,
+      "depth": 0.42
+    }
+  },
+  {
+    "id": "ph-plastic-patio-chair",
+    "name": "Plastic patio chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-plastic-patio-chair.glb",
+    "thumbnail": "/content/props/ph-plastic-patio-chair.png",
+    "description": "A white stackable monobloc garden chair. 0.64 × 0.63 m, 0.88 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/plastic_monobloc_chair_01"
+    },
+    "seat": {
+      "position": [
+        -0.0009,
+        0.4443,
+        0.0538
+      ],
+      "width": 0.45,
+      "depth": 0.47
+    }
+  },
+  {
+    "id": "ph-cafe-chair",
+    "name": "Folding café chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-cafe-chair.glb",
+    "thumbnail": "/content/props/ph-cafe-chair.png",
+    "description": "A slatted wooden folding chair on a black metal frame, from a street café set. 0.57 × 0.66 m, 0.86 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/outdoor_table_chair_set_01"
+    },
+    "seat": {
+      "position": [
+        0.0479,
+        0.3971,
+        0.1356
+      ],
+      "width": 0.4,
+      "depth": 0.35
+    }
+  },
+  {
+    "id": "ph-armchair-upholstered",
+    "name": "Upholstered armchair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-armchair-upholstered.glb",
+    "thumbnail": "/content/props/ph-armchair-upholstered.png",
+    "description": "A classic carved armchair with pale grey upholstery. 0.85 × 0.77 m, 1.07 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/ArmChair_01"
+    },
+    "seat": {
+      "position": [
+        0.0008,
+        0.4952,
+        0.0429
+      ],
+      "width": 0.56,
+      "depth": 0.55
+    }
+  },
+  {
+    "id": "ph-armchair-green",
+    "name": "Green antique armchair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-armchair-green.glb",
+    "thumbnail": "/content/props/ph-armchair-green.png",
+    "description": "An antique carved-wood armchair upholstered in green velvet. 0.67 × 0.66 m, 1.06 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/GreenChair_01"
+    },
+    "seat": {
+      "position": [
+        -0.0015,
+        0.4678,
+        0.0622
+      ],
+      "width": 0.54,
+      "depth": 0.49
+    }
+  },
+  {
+    "id": "ph-armchair-leather",
+    "name": "Leather lounge armchair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-armchair-leather.glb",
+    "thumbnail": "/content/props/ph-armchair-leather.png",
+    "description": "A modern armchair with black leather cushions on a light wooden frame. 0.82 × 0.99 m, 1.02 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Vibrant Nordic",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/modern_arm_chair_01"
+    },
+    "seat": {
+      "position": [
+        -0.0002,
+        0.5413,
+        0.1483
+      ],
+      "width": 0.63,
+      "depth": 0.54
+    }
+  },
+  {
+    "id": "ph-lounge-chair",
+    "name": "Mid-century lounge chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-lounge-chair.glb",
+    "thumbnail": "/content/props/ph-lounge-chair.png",
+    "description": "A swivelling mid-century lounge chair in worn brown leather. 1.01 × 1.19 m, 1.17 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/mid_century_lounge_chair"
+    },
+    "seat": {
+      "position": [
+        0.0007,
+        0.4702,
+        0.3152
+      ],
+      "width": 0.6,
+      "depth": 0.53
+    }
+  },
+  {
+    "id": "ph-rocking-chair",
+    "name": "Wooden rocking chair",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-rocking-chair.glb",
+    "thumbnail": "/content/props/ph-rocking-chair.png",
+    "description": "A traditional dark wooden rocking chair. 0.71 × 0.83 m, 0.99 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Jorge Camacho",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/Rockingchair_01"
+    },
+    "seat": {
+      "position": [
+        0.0009,
+        0.4276,
+        0.1067
+      ],
+      "width": 0.5,
+      "depth": 0.43
+    }
+  },
+  {
+    "id": "ph-wooden-stool",
+    "name": "Wooden stool",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-wooden-stool.glb",
+    "thumbnail": "/content/props/ph-wooden-stool.png",
+    "description": "A weathered round wooden stool with turned legs. 0.43 × 0.44 m, 0.44 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wooden_stool_01"
+    },
+    "seat": {
+      "position": [
+        0.0023,
+        0.4182,
+        -0.0038
+      ],
+      "width": 0.3,
+      "depth": 0.3
+    }
+  },
+  {
+    "id": "ph-painted-stool",
+    "name": "Painted wooden stool",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-painted-stool.glb",
+    "thumbnail": "/content/props/ph-painted-stool.png",
+    "description": "A square stool with chipped grey paint. 0.38 × 0.41 m, 0.58 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/painted_wooden_stool"
+    },
+    "seat": {
+      "position": [
+        0.0026,
+        0.5789,
+        -0.002
+      ],
+      "width": 0.38,
+      "depth": 0.4
+    }
+  },
+  {
+    "id": "ph-workshop-stool",
+    "name": "Workshop stool",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-workshop-stool.glb",
+    "thumbnail": "/content/props/ph-workshop-stool.png",
+    "description": "A round wooden-topped stool on black steel legs. 0.45 × 0.47 m, 0.46 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/metal_stool_02"
+    },
+    "seat": {
+      "position": [
+        0.001,
+        0.4539,
+        0.0015
+      ],
+      "width": 0.36,
+      "depth": 0.36
+    }
+  },
+  {
+    "id": "ph-wooden-bench",
+    "name": "Wooden settle bench",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-wooden-bench.glb",
+    "thumbnail": "/content/props/ph-wooden-bench.png",
+    "description": "A red-painted wooden bench with a back and a shelf underneath. 1.16 × 0.5 m, 0.89 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/painted_wooden_bench"
+    },
+    "seat": {
+      "position": [
+        -0.0025,
+        0.6514,
+        0.0083
+      ],
+      "width": 1.05,
+      "depth": 0.47
+    }
+  },
+  {
+    "id": "ph-sofa-classic",
+    "name": "Classic two-seat sofa",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-sofa-classic.glb",
+    "thumbnail": "/content/props/ph-sofa-classic.png",
+    "description": "A carved-frame two-seat sofa with cream cushions. 1.57 × 0.66 m, 0.8 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/Sofa_01"
+    },
+    "seat": {
+      "position": [
+        -0.0057,
+        0.3617,
+        0.044
+      ],
+      "width": 1.33,
+      "depth": 0.46
+    }
+  },
+  {
+    "id": "ph-sofa-leather",
+    "name": "Black leather sofa",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-sofa-leather.glb",
+    "thumbnail": "/content/props/ph-sofa-leather.png",
+    "description": "A buttoned black leather two-seat sofa. 1.81 × 0.82 m, 0.71 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/sofa_02"
+    },
+    "seat": {
+      "position": [
+        0.0014,
+        0.4089,
+        0.1489
+      ],
+      "width": 1.28,
+      "depth": 0.47
+    }
+  },
+  {
+    "id": "ph-sofa-ornate",
+    "name": "Ornate three-seat sofa",
+    "category": "props",
+    "style": "Seating",
+    "url": "/content/props/ph-sofa-ornate.glb",
+    "thumbnail": "/content/props/ph-sofa-ornate.png",
+    "description": "A large carved leather sofa with patterned cushions. 2.73 × 0.93 m, 1.12 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Fran Calvente",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/sofa_03"
+    },
+    "seat": {
+      "position": [
+        -0.0006,
+        0.5641,
+        0.1875
+      ],
+      "width": 1.68,
+      "depth": 0.42
+    }
+  },
+  {
+    "id": "ph-dining-table",
+    "name": "Dining table with cloth",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-dining-table.glb",
+    "thumbnail": "/content/props/ph-dining-table.png",
+    "description": "A long wooden dining table covered with a checked tablecloth. 2.26 × 1.39 m, 0.88 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Aron Łyczek",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/dining_table"
+    }
+  },
+  {
+    "id": "ph-wooden-table",
+    "name": "Wooden kitchen table",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-wooden-table.glb",
+    "thumbnail": "/content/props/ph-wooden-table.png",
+    "description": "A simple wooden table on four straight legs. 1.13 × 0.71 m, 0.8 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Serhii Khromov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wooden_table_02"
+    }
+  },
+  {
+    "id": "ph-round-table",
+    "name": "Round side table",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-round-table.glb",
+    "thumbnail": "/content/props/ph-round-table.png",
+    "description": "A round dark wooden table on a cabinet base. 0.8 × 0.8 m, 0.75 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/round_wooden_table_02"
+    }
+  },
+  {
+    "id": "ph-cafe-table",
+    "name": "Folding café table",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-cafe-table.glb",
+    "thumbnail": "/content/props/ph-cafe-table.png",
+    "description": "A slatted wooden folding table on a black metal frame. 0.69 × 0.69 m, 0.73 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/outdoor_table_chair_set_01"
+    }
+  },
+  {
+    "id": "ph-coffee-table",
+    "name": "Modern coffee table",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-coffee-table.glb",
+    "thumbnail": "/content/props/ph-coffee-table.png",
+    "description": "A low coffee table with a stone top on a wooden frame. 1.2 × 0.6 m, 0.39 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Amin",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/modern_coffee_table_01"
+    }
+  },
+  {
+    "id": "ph-coffee-table-chest",
+    "name": "Painted chest coffee table",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-coffee-table-chest.glb",
+    "thumbnail": "/content/props/ph-coffee-table-chest.png",
+    "description": "A turquoise-painted carved coffee table with drawers. 1.54 × 0.97 m, 0.52 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Fernando Quinn",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/CoffeeTable_01"
+    }
+  },
+  {
+    "id": "ph-office-desk",
+    "name": "Metal office desk",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-office-desk.glb",
+    "thumbnail": "/content/props/ph-office-desk.png",
+    "description": "A grey steel office desk with drawers. 2 × 0.95 m, 0.79 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/metal_office_desk"
+    }
+  },
+  {
+    "id": "ph-school-desk",
+    "name": "School desk",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-school-desk.glb",
+    "thumbnail": "/content/props/ph-school-desk.png",
+    "description": "A small wooden-topped classroom desk on a steel frame. 0.71 × 0.55 m, 0.88 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Ethan Place",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/SchoolDesk_01"
+    }
+  },
+  {
+    "id": "ph-side-table",
+    "name": "Wooden side table",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-side-table.glb",
+    "thumbnail": "/content/props/ph-side-table.png",
+    "description": "A light wooden side table with a lower shelf. 0.55 × 0.45 m, 0.55 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/side_table_01"
+    }
+  },
+  {
+    "id": "ph-nightstand",
+    "name": "Painted nightstand",
+    "category": "props",
+    "style": "Tables",
+    "url": "/content/props/ph-nightstand.glb",
+    "thumbnail": "/content/props/ph-nightstand.png",
+    "description": "A small blue-grey painted nightstand with a drawer. 0.5 × 0.51 m, 0.62 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/painted_wooden_nightstand"
+    }
+  },
+  {
+    "id": "ph-tea-cup",
+    "name": "Porcelain tea cup",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-tea-cup.glb",
+    "thumbnail": "/content/props/ph-tea-cup.png",
+    "description": "A Victorian porcelain tea cup with floral decals and gold trim. 0.13 × 0.11 m, 0.07 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock, Rico Cilliers, Jurita Burger",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/tea_set_01"
+    },
+    "grip": [
+      0.061,
+      0.054,
+      0
+    ],
+    "mouth": [
+      -0.013,
+      0.067,
+      -0.03
+    ]
+  },
+  {
+    "id": "ph-teapot",
+    "name": "Porcelain teapot",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-teapot.glb",
+    "thumbnail": "/content/props/ph-teapot.png",
+    "description": "A Victorian porcelain teapot with floral decals. 0.27 × 0.16 m, 0.16 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock, Rico Cilliers, Jurita Burger",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/tea_set_01"
+    }
+  },
+  {
+    "id": "ph-goblet",
+    "name": "Brass goblet",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-goblet.glb",
+    "thumbnail": "/content/props/ph-goblet.png",
+    "description": "An engraved vintage brass goblet. 0.14 × 0.14 m, 0.27 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Tina",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/brass_goblets"
+    },
+    "grip": [
+      0.009,
+      0.074,
+      0
+    ],
+    "mouth": [
+      0,
+      0.266,
+      -0.039
+    ]
+  },
+  {
+    "id": "ph-wine-bottle",
+    "name": "Red wine bottle",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-wine-bottle.glb",
+    "thumbnail": "/content/props/ph-wine-bottle.png",
+    "description": "A Bordeaux bottle of red wine with a paper label. 0.07 × 0.07 m, 0.3 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Rico Cilliers, Jurita Burger",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wine_bottles_01"
+    },
+    "grip": [
+      0.036,
+      0.104,
+      0
+    ],
+    "mouth": [
+      0,
+      0.298,
+      -0.007
+    ]
+  },
+  {
+    "id": "ph-thermos",
+    "name": "Thermos flask",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-thermos.glb",
+    "thumbnail": "/content/props/ph-thermos.png",
+    "description": "A green vintage plastic thermos flask with a handle. 0.14 × 0.11 m, 0.32 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "PierreB3D",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/plastic_thermos"
+    },
+    "grip": [
+      0.064,
+      0.222,
+      0
+    ],
+    "mouth": [
+      -0.016,
+      0.32,
+      -0.024
+    ]
+  },
+  {
+    "id": "ph-milk-jug",
+    "name": "Ceramic milk jug",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-milk-jug.glb",
+    "thumbnail": "/content/props/ph-milk-jug.png",
+    "description": "A white glazed jug with a painted tulip bouquet. 0.28 × 0.17 m, 0.21 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/jug_01"
+    },
+    "grip": [
+      0.121,
+      0.111,
+      0
+    ],
+    "mouth": [
+      -0.021,
+      0.211,
+      -0.048
+    ]
+  },
+  {
+    "id": "ph-kettle",
+    "name": "Vintage kettle",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-kettle.glb",
+    "thumbnail": "/content/props/ph-kettle.png",
+    "description": "A worn chrome electric kettle. 0.32 × 0.25 m, 0.3 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "SV Garip",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/vintage_electric_kettle"
+    }
+  },
+  {
+    "id": "ph-wooden-bowl",
+    "name": "Wooden bowl",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-wooden-bowl.glb",
+    "thumbnail": "/content/props/ph-wooden-bowl.png",
+    "description": "A rough hand-carved wooden bowl. 0.31 × 0.31 m, 0.09 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Oliver Harries",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wooden_bowl_01"
+    }
+  },
+  {
+    "id": "ph-cutting-board",
+    "name": "Cutting board",
+    "category": "props",
+    "style": "Kitchen",
+    "url": "/content/props/ph-cutting-board.glb",
+    "thumbnail": "/content/props/ph-cutting-board.png",
+    "description": "A well-used wooden cutting board. 0.45 × 0.25 m, 0.04 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wooden_cutting_board"
+    }
+  },
+  {
+    "id": "ph-bananas",
+    "name": "Bunch of bananas",
+    "category": "props",
+    "style": "Food",
+    "url": "/content/props/ph-bananas.glb",
+    "thumbnail": "/content/props/ph-bananas.png",
+    "description": "A bunch of ripe bananas. 0.13 × 0.22 m, 0.18 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Alexander Shulha",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/bananas"
+    }
+  },
+  {
+    "id": "ph-apple",
+    "name": "Red apple",
+    "category": "props",
+    "style": "Food",
+    "url": "/content/props/ph-apple.glb",
+    "thumbnail": "/content/props/ph-apple.png",
+    "description": "A shiny red apple. 0.1 × 0.1 m, 0.09 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Oliver Harries",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/food_apple_01"
+    }
+  },
+  {
+    "id": "ph-croissant",
+    "name": "Croissant",
+    "category": "props",
+    "style": "Food",
+    "url": "/content/props/ph-croissant.glb",
+    "thumbnail": "/content/props/ph-croissant.png",
+    "description": "A golden baked croissant. 0.2 × 0.08 m, 0.06 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Greg Zaal, Dario Barresi",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/croissant"
+    }
+  },
+  {
+    "id": "ph-carrot-cake",
+    "name": "Carrot cake",
+    "category": "props",
+    "style": "Food",
+    "url": "/content/props/ph-carrot-cake.glb",
+    "thumbnail": "/content/props/ph-carrot-cake.png",
+    "description": "A ring-shaped carrot cake with cream frosting. 0.23 × 0.23 m, 0.1 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Greg Zaal, James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/carrot_cake"
+    }
+  },
+  {
+    "id": "ph-strawberry-cake",
+    "name": "Strawberry chocolate cake",
+    "category": "props",
+    "style": "Food",
+    "url": "/content/props/ph-strawberry-cake.glb",
+    "thumbnail": "/content/props/ph-strawberry-cake.png",
+    "description": "A chocolate cake covered in sliced strawberries. 0.24 × 0.24 m, 0.08 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/strawberry_chocolate_cake"
+    }
+  },
+  {
+    "id": "ph-encyclopedia-set",
+    "name": "Row of encyclopedias",
+    "category": "props",
+    "style": "Books",
+    "url": "/content/props/ph-encyclopedia-set.glb",
+    "thumbnail": "/content/props/ph-encyclopedia-set.png",
+    "description": "Twenty leather-bound encyclopedia volumes standing in a row. 0.55 × 0.16 m, 0.24 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "John Malcolm",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/book_encyclopedia_set_01"
+    }
+  },
+  {
+    "id": "ph-encyclopedia-book",
+    "name": "Leather-bound book",
+    "category": "props",
+    "style": "Books",
+    "url": "/content/props/ph-encyclopedia-book.glb",
+    "thumbnail": "/content/props/ph-encyclopedia-book.png",
+    "description": "A single leather-bound encyclopedia volume. 0.04 × 0.16 m, 0.24 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "John Malcolm",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/book_encyclopedia_set_01"
+    }
+  },
+  {
+    "id": "ph-binder-notebook",
+    "name": "Leather notebooks",
+    "category": "props",
+    "style": "Books",
+    "url": "/content/props/ph-binder-notebook.glb",
+    "thumbnail": "/content/props/ph-binder-notebook.png",
+    "description": "Two worn leather binder notebooks. 0.58 × 0.2 m, 0.03 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "DaDrood",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/binder_notebook"
+    }
+  },
+  {
+    "id": "ph-potted-tree",
+    "name": "Potted tree",
+    "category": "props",
+    "style": "Plants",
+    "url": "/content/props/ph-potted-tree.glb",
+    "thumbnail": "/content/props/ph-potted-tree.png",
+    "description": "A small leafy tree in a terracotta pot. 0.59 × 0.63 m, 1.35 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Rico Cilliers",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/potted_plant_01"
+    }
+  },
+  {
+    "id": "ph-potted-plant",
+    "name": "Potted arrowhead plant",
+    "category": "props",
+    "style": "Plants",
+    "url": "/content/props/ph-potted-plant.glb",
+    "thumbnail": "/content/props/ph-potted-plant.png",
+    "description": "A leafy arrowhead plant in a clay pot. 0.7 × 0.66 m, 0.84 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Rico Cilliers",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/potted_plant_02"
+    }
+  },
+  {
+    "id": "ph-succulent",
+    "name": "Potted succulent",
+    "category": "props",
+    "style": "Plants",
+    "url": "/content/props/ph-succulent.glb",
+    "thumbnail": "/content/props/ph-succulent.png",
+    "description": "A small aloe-like succulent in a white pot. 0.17 × 0.18 m, 0.27 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/potted_plant_04"
+    }
+  },
+  {
+    "id": "ph-vase",
+    "name": "White ceramic vase",
+    "category": "props",
+    "style": "Decor",
+    "url": "/content/props/ph-vase.glb",
+    "thumbnail": "/content/props/ph-vase.png",
+    "description": "A glazed white ceramic vase. 0.2 × 0.2 m, 0.4 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/ceramic_vase_01"
+    }
+  },
+  {
+    "id": "ph-picture-frame",
+    "name": "Framed photograph",
+    "category": "props",
+    "style": "Decor",
+    "url": "/content/props/ph-picture-frame.glb",
+    "thumbnail": "/content/props/ph-picture-frame.png",
+    "description": "A black-and-white photograph in a standing frame. 0.2 × 0.1 m, 0.25 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/standing_picture_frame_01"
+    }
+  },
+  {
+    "id": "ph-alarm-clock",
+    "name": "Alarm clock",
+    "category": "props",
+    "style": "Decor",
+    "url": "/content/props/ph-alarm-clock.glb",
+    "thumbnail": "/content/props/ph-alarm-clock.png",
+    "description": "A mint-green twin-bell alarm clock. 0.13 × 0.07 m, 0.17 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Yann Kervran, James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/alarm_clock_01"
+    }
+  },
+  {
+    "id": "ph-chess-set",
+    "name": "Chess set",
+    "category": "props",
+    "style": "Decor",
+    "url": "/content/props/ph-chess-set.glb",
+    "thumbnail": "/content/props/ph-chess-set.png",
+    "description": "A marble chessboard with a full set of pieces. 0.55 × 0.55 m, 0.11 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Riley Queen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/chess_set"
+    }
+  },
+  {
+    "id": "ph-throw-pillow",
+    "name": "Throw pillow",
+    "category": "props",
+    "style": "Decor",
+    "url": "/content/props/ph-throw-pillow.glb",
+    "thumbnail": "/content/props/ph-throw-pillow.png",
+    "description": "A zig-zag patterned throw pillow. 0.57 × 0.43 m, 0.45 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Serhii Khromov",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/throw_pillows_01"
+    }
+  },
+  {
+    "id": "ph-pipe-lamp",
+    "name": "Industrial table lamp",
+    "category": "props",
+    "style": "Lamps",
+    "url": "/content/props/ph-pipe-lamp.glb",
+    "thumbnail": "/content/props/ph-pipe-lamp.png",
+    "description": "A steel pipe table lamp with a bare filament bulb. 0.18 × 0.26 m, 0.36 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/industrial_pipe_lamp"
+    }
+  },
+  {
+    "id": "ph-oil-lamp",
+    "name": "Vintage oil lamp",
+    "category": "props",
+    "style": "Lamps",
+    "url": "/content/props/ph-oil-lamp.glb",
+    "thumbnail": "/content/props/ph-oil-lamp.png",
+    "description": "A brass oil lamp with a painted floral base and glass chimney. 0.22 × 0.22 m, 0.8 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Monsta3D",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/vintage_oil_lamp"
+    }
+  },
+  {
+    "id": "ph-lantern",
+    "name": "Oil lantern",
+    "category": "props",
+    "style": "Lamps",
+    "url": "/content/props/ph-lantern.glb",
+    "thumbnail": "/content/props/ph-lantern.png",
+    "description": "An old copper hurricane lantern. 0.12 × 0.1 m, 0.29 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Rajil Jose Macatangay",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/Lantern_01"
+    }
+  },
+  {
+    "id": "ph-cardboard-box",
+    "name": "Cardboard box",
+    "category": "props",
+    "style": "Storage",
+    "url": "/content/props/ph-cardboard-box.glb",
+    "thumbnail": "/content/props/ph-cardboard-box.png",
+    "description": "A worn, taped cardboard moving box. 0.39 × 0.52 m, 0.34 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Rahul Chaudhary",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/cardboard_box_01"
+    }
+  },
+  {
+    "id": "ph-wooden-crate",
+    "name": "Wooden crate",
+    "category": "props",
+    "style": "Storage",
+    "url": "/content/props/ph-wooden-crate.glb",
+    "thumbnail": "/content/props/ph-wooden-crate.png",
+    "description": "An old wooden crate with iron handles. 0.83 × 0.41 m, 0.35 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wooden_crate_01"
+    }
+  },
+  {
+    "id": "ph-plastic-crate",
+    "name": "Plastic milk crate",
+    "category": "props",
+    "style": "Storage",
+    "url": "/content/props/ph-plastic-crate.glb",
+    "thumbnail": "/content/props/ph-plastic-crate.png",
+    "description": "A red plastic milk crate. 0.3 × 0.41 m, 0.26 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "PierreB3D",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/plastic_crate_01"
+    }
+  },
+  {
+    "id": "ph-wicker-basket",
+    "name": "Wicker basket",
+    "category": "props",
+    "style": "Storage",
+    "url": "/content/props/ph-wicker-basket.glb",
+    "thumbnail": "/content/props/ph-wicker-basket.png",
+    "description": "A woven wicker basket with its lid beside it. 0.35 × 0.25 m, 0.2 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/wicker_basket_02"
+    }
+  },
+  {
+    "id": "ph-suitcase",
+    "name": "Vintage suitcase",
+    "category": "props",
+    "style": "Storage",
+    "url": "/content/props/ph-suitcase.glb",
+    "thumbnail": "/content/props/ph-suitcase.png",
+    "description": "A green vintage suitcase covered in travel stickers. 0.69 × 0.24 m, 0.57 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Maximilian Schuster",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/vintage_suitcase"
+    }
+  },
+  {
+    "id": "ph-trash-bag",
+    "name": "Trash bag",
+    "category": "props",
+    "style": "Storage",
+    "url": "/content/props/ph-trash-bag.glb",
+    "thumbnail": "/content/props/ph-trash-bag.png",
+    "description": "A full black plastic rubbish bag. 0.53 × 0.46 m, 0.57 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Benny Weimer",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/trashbag"
+    }
+  },
+  {
+    "id": "ph-laptop",
+    "name": "Vintage laptop",
+    "category": "props",
+    "style": "Electronics",
+    "url": "/content/props/ph-laptop.glb",
+    "thumbnail": "/content/props/ph-laptop.png",
+    "description": "An early-1990s laptop computer, open. 0.65 × 0.49 m, 0.54 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Arrangemonk",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/classic_laptop"
+    }
+  },
+  {
+    "id": "ph-television",
+    "name": "Portable television",
+    "category": "props",
+    "style": "Electronics",
+    "url": "/content/props/ph-television.glb",
+    "thumbnail": "/content/props/ph-television.png",
+    "description": "A small 1980s portable television set. 0.4 × 0.35 m, 0.41 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Benny Weimer",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/television_02"
+    }
+  },
+  {
+    "id": "ph-boombox",
+    "name": "Boombox",
+    "category": "props",
+    "style": "Electronics",
+    "url": "/content/props/ph-boombox.glb",
+    "thumbnail": "/content/props/ph-boombox.png",
+    "description": "A black cassette boombox with an aerial. 0.72 × 0.19 m, 0.47 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Thomas Paul Mouilleron",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/boombox"
+    }
+  },
+  {
+    "id": "ph-camera",
+    "name": "Film camera",
+    "category": "props",
+    "style": "Electronics",
+    "url": "/content/props/ph-camera.glb",
+    "thumbnail": "/content/props/ph-camera.png",
+    "description": "A vintage rangefinder film camera with a leather strap. 0.21 × 0.26 m, 0.08 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "Rajil Jose Macatangay",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/Camera_01"
+    }
+  },
+  {
+    "id": "ph-ladder",
+    "name": "Aluminium ladder",
+    "category": "props",
+    "style": "Tools",
+    "url": "/content/props/ph-ladder.glb",
+    "thumbnail": "/content/props/ph-ladder.png",
+    "description": "A straight sectioned metal ladder with flat treads and safety straps. 0.66 × 0.18 m, 2.13 m tall. Photo-scanned by Poly Haven.",
+    "credit": {
+      "author": "MP",
+      "license": "CC0",
+      "source": "https://polyhaven.com/a/ladder_sectioned_01"
+    },
+    "ladder": {
+      "height": 2.135,
+      "width": 0.3,
+      "firstRung": 0.15,
+      "spacing": 0.21,
+      "rungs": 10
+    }
+  }
+]

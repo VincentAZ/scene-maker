@@ -1,3 +1,4 @@
+import { contentAssets } from "../shared/contentLibrary";
 import { it, expect } from "vitest";
 import fs from "node:fs/promises";
 import * as T from "three";
@@ -162,16 +163,21 @@ it(
 it("keeps catalogue file access bounded and no longer offers the retired characters to the assistant", () => {
   const scene = starterScene();
   // Old projects still resolve every bundled character...
+  const realistic = contentAssets.filter((a) => a.category === "characters");
   expect(
     allAssets(scene).filter((a) => a.category === "characters"),
-  ).toHaveLength(46);
-  // ...but none is offered, and the offline helper will not add one.
+  ).toHaveLength(46 + realistic.length);
+  // ...but none is offered (only the realistic library is), and the offline
+  // helper will not add one.
   expect(
     offeredAssets(scene).filter((a) => a.category === "characters"),
-  ).toEqual([]);
+  ).toEqual(realistic);
   for (const asset of libraryCharacters) {
     expect(retiredAssetIds.has(asset.id), asset.name).toBe(true);
-    expect(offlineCommands(scene, `Add ${asset.name}`).commands).toEqual([]);
+    // A same-named realistic character may be added instead; never this one.
+    expect(
+      offlineCommands(scene, `Add ${asset.name}`).commands,
+    ).not.toContainEqual(expect.objectContaining({ assetId: asset.id }));
     expect(characterCollection(asset)).toBeTruthy();
   }
   for (const url of [

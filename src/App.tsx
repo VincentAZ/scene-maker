@@ -136,6 +136,7 @@ import {
   previewVoice,
 } from "./voiceCatalog";
 import { Viewport, type ViewportHandle } from "./Viewport";
+import { environmentAsset, photoSetAsset } from "./environmentModel";
 import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
 import { GenerateAsset, type ImportedModel } from "./GenerateAsset";
@@ -2028,27 +2029,39 @@ export default function App() {
                   {recording === "recording" ? "REC" : "SAVING MP4…"}
                 </span>
               )}
-              <div className="stage-pill">
-                <Sun size={14} />
-                <select
-                  aria-label="Scene lighting"
-                  value={scene.lighting}
-                  onChange={(e) =>
-                    execute([
-                      {
-                        type: "scene",
-                        changes: {
-                          lighting: e.target.value as Scene["lighting"],
-                        },
-                      },
-                    ])
-                  }
+              {photoSetAsset(scene) ? (
+                // A photographed set brings its own light; presets would
+                // contradict the photo behind the cast.
+                <div
+                  className="stage-pill"
+                  title="This set is lit by its own photograph"
                 >
-                  <option value="golden">Golden hour</option>
-                  <option value="daylight">Soft daylight</option>
-                  <option value="moonlight">Moonlight</option>
-                </select>
-              </div>
+                  <Sun size={14} />
+                  <span>Lit by the photo</span>
+                </div>
+              ) : (
+                <div className="stage-pill">
+                  <Sun size={14} />
+                  <select
+                    aria-label="Scene lighting"
+                    value={scene.lighting}
+                    onChange={(e) =>
+                      execute([
+                        {
+                          type: "scene",
+                          changes: {
+                            lighting: e.target.value as Scene["lighting"],
+                          },
+                        },
+                      ])
+                    }
+                  >
+                    <option value="golden">Golden hour</option>
+                    <option value="daylight">Soft daylight</option>
+                    <option value="moonlight">Moonlight</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div className="stage-tools">
               <button
@@ -2129,7 +2142,10 @@ export default function App() {
                   ? "Furnished room"
                   : scene.environment === "cafe"
                     ? "Corner café"
-                    : assets.find((a) => a.id === scene.environment)?.name}{" "}
+                    : (
+                        environmentAsset(scene) ??
+                        assets.find((a) => a.id === scene.environment)
+                      )?.name}{" "}
                 <span className="dot-separator">/</span> {cast.length}{" "}
                 characters
               </span>

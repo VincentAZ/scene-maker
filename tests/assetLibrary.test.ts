@@ -15,6 +15,7 @@ import {
   type Asset,
 } from "../shared/scene";
 import { queryAssets } from "../src/assetLibrary";
+import { contentAssets } from "../shared/contentLibrary";
 import { newProject, validatePlan } from "../shared/studio";
 
 const imported = (id: string, category: Asset["category"] = "characters") =>
@@ -28,10 +29,14 @@ const imported = (id: string, category: Asset["category"] = "characters") =>
   });
 
 describe("retired built-ins", () => {
-  it("offers only the plain studio and the creator's imports", () => {
+  it("offers the studio, the realistic library and the creator's imports", () => {
     const s = blankScene();
     s.customAssets.push(imported("own-woman"));
-    expect(offeredAssets(s).map((a) => a.id)).toEqual(["studio", "own-woman"]);
+    expect(offeredAssets(s).map((a) => a.id)).toEqual([
+      "studio",
+      ...contentAssets.map((a) => a.id),
+      "own-woman",
+    ]);
     for (const id of ["mila", "cup", "chair", "ladder", "cafe", "park"])
       expect(retiredAssetIds.has(id)).toBe(true);
   });

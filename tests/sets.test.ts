@@ -1,0 +1,277 @@
+import { describe, expect, it, vi } from "vitest";
+import * as T from "three";
+import sets from "../shared/content/sets.json";
+import { contentCredits } from "../shared/contentLibrary";
+import {
+  allAssets,
+  applyCommands,
+  assetSchema,
+  offeredAssets,
+  starterScene,
+  validateScene,
+  type Asset,
+} from "../shared/scene";
+import { EnvironmentModel, photoSetAsset } from "../src/environmentModel";
+import { exportSnapshot } from "../src/exportSnapshot";
+import {
+  backdropHome,
+  backdropLimits,
+  extractSun,
+  keepInsideBackdrop,
+  matchExposure,
+  PhotoSet,
+  texelDirection,
+} from "../src/hdriBackdrop";
+import { disposeObject } from "../src/world";
+
+const first = () =>
+  allAssets(starterScene()).find((asset) => asset.id === sets[0].id)!;
+const withSet = (id = sets[0].id) =>
+  applyCommands(starterScene(), [{ type: "add", assetId: id }]);
+
+describe("photographic sets catalogue", () => {
+  it("offers a varied, credited CC0 library of valid environment assets", () => {
+    expect(sets.length).toBeGreaterThanOrEqual(15);
+    expect(new Set(sets.map((set) => set.id)).size).toBe(sets.length);
+    expect(new Set(sets.map((set) => set.style))).toEqual(
+      new Set(["Indoor", "Outdoor", "Night"]),
+    );
+    const offered = offeredAssets(starterScene()).map((asset) => asset.id);
+    for (const set of sets) {
+      const asset = allAssets(starterScene()).find((a) => a.id === set.id)!;
+      expect(() => assetSchema.parse(asset)).not.toThrow();
+      expect(asset.category).toBe("environments");
+      expect(asset.url).toBeUndefined();
+      expect(asset.hdri).toMatch(/^\/content\/sets\/[a-z0-9-]+\.hdr$/);
+      expect(asset.backdrop?.image).toMatch(
+        /^\/content\/sets\/[a-z0-9-]+\.jpg$/,
+      );
+      expect(asset.thumbnail).toMatch(/^\/content\/sets\/[a-z0-9-]+\.png$/);
+      expect(asset.description.length).toBeGreaterThan(20);
+      // The camera always fits inside the projection dome.
+      const limits = backdropLimits(asset.backdrop!);
+      expect(
+        Math.hypot(limits.reach, limits.ceiling - asset.backdrop!.height),
+      ).toBeLessThan(asset.backdrop!.radius * 0.85);
+      // The cast at the origin stands on the flat, photographed floor.
+      expect(limits.center.length()).toBeLessThan(
+        (asset.backdrop!.radius * 2) / 3,
+      );
+      expect(contentCredits.get(set.id)).toMatchObject({
+        license: "CC0",
+        source: expect.stringMatching(/^https:\/\/polyhaven\.com\/a\/\w+$/),
+      });
+      expect(offered).toContain(set.id);
+    }
+  });
+});
+
+describe("placing a photographic set", () => {
+  it("sets the studio base with the set as environment asset and validates", () => {
+    const scene = withSet();
+    expect(scene.environment).toBe("studio");
+    expect(scene.environmentAssetId).toBe(sets[0].id);
+    expect(validateScene(JSON.parse(JSON.stringify(scene)))).toEqual(scene);
+    expect(photoSetAsset(scene)?.id).toBe(sets[0].id);
+    expect(scene.entities.some((e) => e.assetId === sets[0].id)).toBe(false);
+  });
+
+  it("returns to the plain studio and still rejects unknown environments", () => {
+    const scene = applyCommands(withSet(), [
+      { type: "add", assetId: "studio" },
+    ]);
+    expect(scene.environmentAssetId).toBeUndefined();
+    expect(photoSetAsset(scene)).toBeUndefined();
+    expect(() =>
+      validateScene({ ...withSet(), environmentAssetId: "not-a-set" }),
+    ).toThrow("custom environment asset");
+  });
+
+  it("keeps lighting edits from replacing the set", () => {
+    const scene = applyCommands(withSet(), [
+      { type: "scene", changes: { lighting: "moonlight" } },
+    ]);
+    expect(scene.environmentAssetId).toBe(sets[0].id);
+  });
+});
+
+describe("photographic set environment model", () => {
+  it("is an empty, ready environment without a photo loader (tests, export)", () => {
+    const content = new T.Group();
+    const model = new EnvironmentModel(content);
+    const settled = vi.fn();
+    model.update(withSet(), settled, () => {});
+    expect(model.ready).toBe(true);
+    expect(settled).toHaveBeenCalledOnce();
+    expect(model.root?.children).toHaveLength(0);
+    const snapshot = exportSnapshot(content);
+    expect(snapshot.getObjectByName("SceneMakerEnvironment")).toBeDefined();
+    disposeObject(snapshot);
+    model.dispose();
+  });
+
+  it("waits for the photo, shows it, and hides it when the set changes", async () => {
+    const content = new T.Group();
+    const photo = new PhotoSet(
+      new T.Group(),
+      new T.Texture(),
+      extractSun(new Float32Array(8 * 4 * 4).fill(1), 8, 4),
+      1.2,
+      first().backdrop!,
+    );
+    const dispose = vi.spyOn(photo, "dispose");
+    let resolve!: (photo: PhotoSet) => void;
+    const load = vi.fn(() => new Promise<PhotoSet>((done) => (resolve = done)));
+    const show = vi.fn();
+    const model = new EnvironmentModel(content, undefined, { load, show });
+    const settled = vi.fn();
+    model.update(withSet(), settled, () => {});
+    expect(model.ready).toBe(false);
+    expect(load).toHaveBeenCalledWith(first());
+    resolve(photo);
+    await Promise.resolve();
+    expect(model.ready).toBe(true);
+    expect(model.photo).toBe(photo);
+    expect(show).toHaveBeenLastCalledWith(photo);
+    expect(settled).toHaveBeenCalledOnce();
+    model.update(starterScene(), settled, () => {});
+    expect(show).toHaveBeenLastCalledWith(null);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(model.photo).toBeNull();
+    model.dispose();
+  });
+
+  it("reports a failed photo load", async () => {
+    const model = new EnvironmentModel(new T.Group(), undefined, {
+      load: () => Promise.reject(Error("offline")),
+      show: () => {},
+    });
+    const error = vi.fn();
+    model.update(withSet(), () => {}, error);
+    await new Promise((done) => setTimeout(done));
+    expect(error).toHaveBeenCalledWith("offline");
+    expect(model.ready).toBe(false);
+  });
+});
+
+/** An equirectangular sky of radiance 1 with a sun disc. */
+function sky(width: number, height: number, sun?: T.Vector3, power = 5e4) {
+  const data = new Float32Array(width * height * 4).fill(1);
+  const direction = new T.Vector3();
+  for (let row = 0; row < height; row++)
+    for (let column = 0; column < width; column++) {
+      texelDirection(column, row, width, height, direction);
+      if (sun && direction.angleTo(sun) < 0.02) {
+        const i = (row * width + column) * 4;
+        data[i] = power;
+        data[i + 1] = power * 0.9;
+        data[i + 2] = power * 0.8;
+      }
+    }
+  return data;
+}
+
+describe("photographed light", () => {
+  it("finds the sun, moves it from the environment to a light, and darkens shadows", () => {
+    const sun = new T.Vector3(0.4, 0.7, -0.5).normalize();
+    const data = sky(1024, 512, sun);
+    const light = extractSun(data, 1024, 512);
+    expect(light.sun!.angleTo(sun)).toBeLessThan(0.02);
+    expect(light.sunIntensity).toBeGreaterThan(5);
+    expect(light.sunColor.r).toBeCloseTo(1);
+    expect(light.sunColor.b).toBeCloseTo(0.8, 1);
+    expect(data.reduce((a, b) => Math.max(a, b))).toBeLessThan(5e4 * 0.01);
+    expect(light.shadowOpacity).toBeGreaterThan(0.5);
+  });
+
+  it("keeps an even sky in the environment with a soft overhead contact shadow", () => {
+    const data = sky(256, 128);
+    const light = extractSun(data, 256, 128);
+    expect(light.sun).toBeNull();
+    expect(light.key.y).toBeGreaterThan(0.85);
+    expect(data.every((value) => value === 1)).toBe(true);
+  });
+
+  it("matches renderer exposure to the photographer's tonemapped panorama", () => {
+    const hdr = {
+      data: new Float32Array(64 * 32 * 4).fill(0.2),
+      width: 64,
+      height: 32,
+    };
+    const brighter = matchExposure(hdr, {
+      data: new Uint8ClampedArray(64 * 32 * 4).fill(200),
+      width: 64,
+      height: 32,
+    });
+    const darker = matchExposure(hdr, {
+      data: new Uint8ClampedArray(64 * 32 * 4).fill(60),
+      width: 64,
+      height: 32,
+    });
+    expect(brighter).toBeGreaterThan(darker * 2);
+    expect(darker).toBeGreaterThan(0.05);
+    expect(brighter).toBeLessThan(20);
+  });
+});
+
+describe("camera in a photographic set", () => {
+  const backdrop: NonNullable<Asset["backdrop"]> = {
+    image: "/content/sets/x.jpg",
+    height: 1.6,
+    radius: 6,
+    rotation: 0,
+  };
+  it("opens at the photographer's viewpoint, looking at the cast", () => {
+    const home = backdropHome(backdrop);
+    expect(home.position.y).toBe(backdrop.height);
+    expect(home.position.distanceTo(backdropLimits(backdrop).center)).toBe(
+      backdrop.height,
+    );
+    expect(home.position.z).toBeGreaterThanOrEqual(3);
+    expect(home.target.x).toBe(0);
+    expect(home.target.z).toBe(0);
+    expect(keepInsideBackdrop(home.position.clone(), backdrop)).toBe(false);
+    // Orbiting as far round the cast as allowed stays where the photo holds.
+    const side = home.position
+      .clone()
+      .sub(home.target)
+      .applyAxisAngle(new T.Vector3(0, 1, 0), home.azimuth)
+      .add(home.target);
+    expect(keepInsideBackdrop(side, backdrop)).toBe(false);
+  });
+  it("keeps orbiting and framing inside the dome and below a bird's-eye view", () => {
+    const high = new T.Vector3(8, 6.5, 10);
+    expect(keepInsideBackdrop(high, backdrop)).toBe(true);
+    const { center, reach, ceiling } = backdropLimits(backdrop);
+    expect(Math.hypot(high.x - center.x, high.z - center.z)).toBeCloseTo(reach);
+    expect(high.y).toBe(ceiling);
+    const below = new T.Vector3(0, -1, 1);
+    keepInsideBackdrop(below, backdrop);
+    expect(below.y).toBeGreaterThan(0);
+  });
+});
+
+describe("exporting a photographic set", () => {
+  it("packages the scene without needing the photo files", async () => {
+    const { productionPackage } = await import("../src/productionPackage");
+    const { readFile } = await import("node:fs/promises");
+    const JSZip = (await import("jszip")).default;
+    const requested: string[] = [];
+    const read: typeof fetch = async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.startsWith("/engine/"))
+        return new Response(await readFile("." + url));
+      if (url.startsWith("/content/"))
+        return new Response("Missing", { status: 404 });
+      return new Response("bundled file");
+    };
+    const scene = withSet();
+    const zip = await JSZip.loadAsync(
+      await productionPackage(scene, new ArrayBuffer(8), read),
+    );
+    const saved = JSON.parse(await zip.file("scene.json")!.async("string"));
+    expect(saved.environmentAssetId).toBe(sets[0].id);
+    expect(requested.some((url) => url.startsWith("/content/"))).toBe(false);
+  });
+});

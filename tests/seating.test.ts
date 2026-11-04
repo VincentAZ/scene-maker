@@ -244,7 +244,10 @@ it("targets a named seat through the offline assistant and stages both actions i
 });
 it("matches declared library seat surfaces to the actual shipped geometry", async () => {
   const scene = starterScene();
-  for (const asset of allAssets(scene).filter((a) => a.url && a.seat)) {
+  // Downloaded library seats (/content/) are measured in tests/props.test.ts.
+  for (const asset of allAssets(scene).filter(
+    (a) => a.url && a.seat && !a.url.startsWith("/content/"),
+  )) {
     const data = await fs.readFile("public" + asset.url);
     const object = (
       await new GLTFLoader().parseAsync(

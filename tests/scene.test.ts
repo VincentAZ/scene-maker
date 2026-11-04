@@ -1,3 +1,4 @@
+import { contentAssets } from "../shared/contentLibrary";
 import { describe, it, expect } from "vitest";
 import {
   starterScene,
@@ -24,9 +25,12 @@ describe("creator scene workflows", () => {
   it("ships rigged characters, props, sets and distinct actions", () => {
     const s = starterScene();
     // Old projects still resolve every built-in, but only the plain studio
-    // stage is still offered.
+    // stage and the downloaded realistic library are offered.
     expect(allAssets(s).length).toBeGreaterThanOrEqual(32);
-    expect(offeredAssets(s).map((a) => a.id)).toEqual(["studio"]);
+    expect(offeredAssets(s).map((a) => a.id)).toEqual([
+      "studio",
+      ...contentAssets.map((a) => a.id),
+    ]);
     // Every action is a motion-capture recording, each with its own id; the
     // retired stylized clips are not offered. Every role a seat, ladder, prop
     // or dialogue line relies on names exactly one recording.

@@ -537,8 +537,14 @@ it.each(capturedMotions)(
     expect(
       gltf.animations[0].tracks.some((t) => /fingers|thumb/.test(t.name)),
     ).toBe(false);
-    expect(group.userData.bones.leftHand.name).toBe("lhand");
-    expect(group.userData.bones.rightHand.name).toBe("rhand");
+    // CMU ASF hands are lhand/rhand; 100STYLE BVH hands are its wrists.
+    const style = (entry as { source?: string }).source === "100STYLE";
+    expect(group.userData.bones.leftHand.name).toBe(
+      style ? "LeftWrist" : "lhand",
+    );
+    expect(group.userData.bones.rightHand.name).toBe(
+      style ? "RightWrist" : "rhand",
+    );
     const offset = leadIn.reduce((sum, c) => sum + c.duration, 0);
     // A seat or ladder action releases its placement when the scene ends
     // with the default rest, so its last sampled frame is just before the
