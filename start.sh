@@ -26,7 +26,7 @@ if [ "${1:-}" = --restart ]; then
   rm -f "$PIDFILE"
   mkdir -p "$DATA"
   echo "Restarting Scene Maker service at $URL (log: $LOG)" >>"$LOG"
-  PORT="$PORT" SCENE_MAKER_LAUNCHER=start.sh nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
+  PORT="$PORT" SCENE_MAKER_LAUNCHER=start.sh setsid nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
   for _ in $(seq 1 60); do running && break; sleep 1; done
   exit 0
@@ -42,15 +42,29 @@ if [ "${1:-}" = --stop ]; then
   exit 0
 fi
 
-if ! running; then
-  mkdir -p "$DATA"
-  # The service serves the production build; make one the first time.
-  if [ ! -f dist/index.html ]; then
-    echo "Building Scene Maker (first start)…"
-    npm run build >>"$LOG" 2>&1
+mkdir -p "$DATA"
+# Keep the install and the production build in step with the checked-out code: install when the lockfile
+# changed, rebuild when the commit changed, and restart a service still running the old code.
+if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+  echo "Installing Scene Maker dependencies…"
+  npm install >>"$LOG" 2>&1
+fi
+COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+if [ ! -f dist/index.html ] || [ "$(cat dist/.commit 2>/dev/null)" != "$COMMIT" ]; then
+  echo "Building Scene Maker…"
+  npm run build >>"$LOG" 2>&1
+  echo "$COMMIT" >dist/.commit
+  if running && [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "Restarting the service on the new build…"
+    kill "$(cat "$PIDFILE")" || true
+    for _ in $(seq 1 30); do running || break; sleep 1; done
+    rm -f "$PIDFILE"
   fi
+fi
+
+if ! running; then
   echo "Starting Scene Maker service at $URL (log: $LOG)"
-  PORT="$PORT" SCENE_MAKER_LAUNCHER=start.sh nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
+  PORT="$PORT" SCENE_MAKER_LAUNCHER=start.sh setsid nohup "$NODE" node_modules/tsx/dist/cli.mjs server/index.ts >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
   for _ in $(seq 1 60); do
     running && break
