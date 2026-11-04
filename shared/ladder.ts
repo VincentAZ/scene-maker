@@ -169,7 +169,7 @@ export function sampleLadder(plan: LadderPlan, value: number): LadderSample {
     ]);
   }
   // The upper stance straightens the legs first, then brings the hips in.
-  const settleUp = ease((progress - 0.9) / 0.08),
+  const settleUp = Math.sqrt(ease((progress - 0.9) / 0.1)),
     settleIn = ease((progress - 0.91) / 0.09);
   const footHeight = (contacts.leftFoot[1] + contacts.rightFoot[1]) / 2;
   // While stepping, the hips hang back and low enough that a knee raised to

@@ -106,52 +106,35 @@
     "description": "Argues with emphatic arm gestures."
   },
   {
-    "trial": "79_36",
+    "trial": "80_25",
     "name": "Answer the phone",
     "category": "Everyday",
     "description": "Picks up an imagined phone and talks. No phone is included."
   },
   {
-    "trial": "79_69",
-    "name": "Very happy",
-    "category": "Emotions",
-    "description": "Shows great joy with the whole body."
-  },
-  {
-    "trial": "79_70",
+    "trial": "80_44",
     "name": "Laughing",
     "category": "Emotions",
-    "description": "Laughs, doubling over."
+    "description": "Laughs, holding the stomach."
   },
   {
-    "trial": "79_71",
-    "name": "Sad",
-    "category": "Emotions",
-    "description": "Shows sadness with slumped posture."
-  },
-  {
-    "trial": "79_72",
+    "trial": "80_45",
+    "excerpt": [0.5, 14],
     "name": "Crying",
     "category": "Emotions",
-    "description": "Cries with hands to the face."
+    "description": "Cries with the hands to the face."
   },
   {
-    "trial": "79_73",
+    "trial": "139_09",
     "name": "Scared",
     "category": "Emotions",
-    "description": "Startles and shrinks back in fear."
+    "description": "Ducks and cowers in fright, then straightens up."
   },
   {
-    "trial": "79_74",
-    "name": "Upset",
-    "category": "Emotions",
-    "description": "Shows frustration and anger."
-  },
-  {
-    "trial": "79_68",
+    "trial": "80_41",
     "name": "Cold",
     "category": "Emotions",
-    "description": "Shivers and rubs the arms against the cold."
+    "description": "Hugs the arms and rubs them against the cold."
   },
   {
     "trial": "113_15",
@@ -229,19 +212,13 @@
     "description": "Sets a glass down in front. With a prop chosen, the hand places it."
   },
   {
-    "trial": "79_41",
-    "name": "Sipping coffee",
-    "category": "Objects",
-    "description": "Holds a cup and takes several sips. No cup is included."
-  },
-  {
-    "trial": "79_38",
-    "excerpt": [1.2, 8.8],
-    "key": "79_38_sip",
+    "trial": "80_27",
+    "excerpt": [10.0, 17.6],
+    "key": "80_27_sip",
     "name": "Take a sip",
     "category": "Objects",
     "role": "sip",
-    "description": "Raises a drink and sips. With a cup chosen, the hand holds it."
+    "description": "Lifts a glass from the table, drinks and puts it back. With a cup chosen, the hand holds it."
   },
   {
     "trial": "13_09",
@@ -390,34 +367,24 @@
     "travels": true
   },
   {
-    "trial": "79_31",
-    "name": "Write on a board",
-    "category": "Everyday",
-    "description": "Writes on a chalkboard. No board is included."
-  },
-  {
-    "trial": "79_85",
-    "name": "Type on a laptop",
-    "category": "Everyday",
-    "description": "Types on an imagined laptop held in front."
-  },
-  {
-    "trial": "79_44",
+    "trial": "143_26",
     "name": "Wash a window",
     "category": "Everyday",
-    "description": "Wipes a window in front."
+    "description": "Wipes a window in wide sweeps."
   },
   {
-    "trial": "79_55",
+    "trial": "80_61",
+    "excerpt": [1, 13],
     "name": "Sweep",
     "category": "Everyday",
     "description": "Sweeps the floor with a broom. No broom is included."
   },
   {
-    "trial": "79_75",
+    "trial": "80_37",
+    "excerpt": [2, 14],
     "name": "Channel surfing",
     "category": "Everyday",
-    "description": "Points a remote at a TV, changing channels."
+    "description": "Points a remote and flicks through channels. No remote is included."
   },
   {
     "trial": "143_23",

@@ -55,7 +55,7 @@ describe("retired built-ins", () => {
     const loaded = validateScene(s);
     expect(loaded.entities[0].assetId).toBe("mila");
     expect(loaded.entities[0].clips.map((c) => c.motionId)).toEqual([
-      "captured-79-69",
+      "captured-80-43",
       "walk",
     ]);
   });

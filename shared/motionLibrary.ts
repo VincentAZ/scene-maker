@@ -48,15 +48,38 @@ export const capturedMotions: Motion[] = catalogueEntries.map(
     ...(entry.role ? { role: entry.role } : {}),
   }),
 );
-/** Ids these recordings had before they served a role. */
-export const capturedRoleAliases: Record<string, string> = Object.fromEntries(
-  catalogueEntries
-    .filter((entry) => entry.role)
-    .map((entry) => [
-      `captured-${entry.trial.replaceAll("_", "-")}`,
-      entry.role!,
-    ]),
-);
+/** Recordings retired from the library (CMU subject 79 stands with the legs
+ * spread wide), each pointing at the closest remaining recording so saved
+ * clips still load. */
+export const retiredCaptureAliases: Record<string, string> = {
+  "captured-79-38-sip": "sip",
+  "captured-79-41": "sip", // Sipping coffee
+  "captured-79-36": "captured-80-25", // Answer the phone
+  "captured-79-68": "captured-80-41", // Cold
+  "captured-79-69": "captured-80-43", // Very happy: Clap
+  "captured-79-70": "captured-80-44", // Laughing
+  "captured-79-71": "captured-80-45", // Sad: Crying
+  "captured-79-72": "captured-80-45", // Crying
+  "captured-79-73": "captured-139-09", // Scared
+  "captured-79-74": "captured-80-48", // Upset: Arguing
+  "captured-79-31": "captured-80-14", // Write on a board: Teaching
+  "captured-79-85": "idle", // Type on a laptop
+  "captured-79-44": "captured-143-26", // Wash a window
+  "captured-79-55": "captured-80-61", // Sweep
+  "captured-79-75": "captured-80-37", // Channel surfing
+};
+/** Ids these recordings had before they served a role, and retired ids. */
+export const capturedRoleAliases: Record<string, string> = {
+  ...retiredCaptureAliases,
+  ...Object.fromEntries(
+    catalogueEntries
+      .filter((entry) => entry.role)
+      .map((entry) => [
+        `captured-${entry.trial.replaceAll("_", "-")}`,
+        entry.role!,
+      ]),
+  ),
+};
 export const roleMotion = (role: ActionRole) =>
   capturedMotions.find((motion) => motion.role === role)!;
 /** When a recorded sit lowers onto, or a stand rises from, the seat, as

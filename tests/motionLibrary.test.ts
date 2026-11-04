@@ -145,8 +145,8 @@ it("no longer offers the 17 stylized clips, and plays old clips that used them a
     // The stylized Stand up was a pose; the recorded one needs a seat.
     "authored-stand-up": "captured-139-16",
     "authored-pick-up": "pick",
-    "authored-victory": "captured-79-69",
-    "authored-defeat": "captured-79-71",
+    "authored-victory": "captured-80-43",
+    "authored-defeat": "captured-80-45",
     "authored-punch": "captured-143-23",
   });
   // Walks and runs become routes on the recorded stride, like the retired
@@ -190,7 +190,7 @@ it("no longer offers the 17 stylized clips, and plays old clips that used them a
   ];
   const copied = validateScene(copies);
   expect(copied.entities[0].clips.map((c) => c.motionId)).toEqual([
-    "captured-79-69",
+    "captured-80-43",
     "my-route",
   ]);
   expect(copied.customMotions.map((m) => m.id)).toEqual(["my-route"]);

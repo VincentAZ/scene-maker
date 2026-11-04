@@ -346,7 +346,7 @@ describe("directed dialogue performances", () => {
     expect(prompt).toContain("seat");
     // The full library of recordings, without the retired stylized clips.
     expect(prompt).toContain("Forward jump");
-    expect(prompt).toContain("captured-79-69");
+    expect(prompt).toContain("captured-80-43");
     expect(prompt).not.toContain("Athletic jump");
     expect(prompt).not.toContain("authored-");
     expect(prompt).toContain("I will sit and take a sip.");
