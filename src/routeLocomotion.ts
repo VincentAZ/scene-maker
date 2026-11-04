@@ -64,7 +64,7 @@ export function gaitTravelTime(
 
 /** Names suggest useful defaults, never prove that an uploaded clip loops. */
 export function namedRouteMovement(motion: Motion): RouteMovement | undefined {
-  if (motion.kind === "walk" || motion.kind === "run") return motion.kind;
+  if (motion.role === "walk" || motion.role === "run") return motion.role;
   const name = `${motion.animationName || ""} ${motion.name}`
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/[^a-zA-Z]+/g, " ")
@@ -88,8 +88,7 @@ const sourceKey = (motion: Motion) =>
       ])
     : motion.kind;
 
-/** Keep the two legacy studio gaits, bundled locomotion, and original uploaded
- * clips. Unnamed uploads remain selectable: a filename cannot tell us whether
+/** Keep recorded and bundled locomotion, and original uploaded clips. Unnamed uploads remain selectable: a filename cannot tell us whether
  * Take001 is a gait. Route copies are deduplicated by their original source. */
 export function routeLocomotions(
   scene: Scene,
@@ -97,9 +96,6 @@ export function routeLocomotions(
   current?: Motion,
 ): Motion[] {
   const motions = allMotions(scene);
-  const studio = motions.filter((motion) =>
-    ["walk", "run"].includes(motion.id),
-  );
   const imported = motions.filter((motion) => {
     if (motion.kind !== "imported" || motion.path) return false;
     const source = resolveMotionSource(scene, motion.sourceAssetId);
@@ -120,7 +116,7 @@ export function routeLocomotions(
       Number(a.sourceAssetId === actor.assetId),
   );
   const seen = new Set<string>();
-  return [...studio, ...imported].filter((motion) => {
+  return imported.filter((motion) => {
     const key = sourceKey(motion);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -180,8 +176,6 @@ export function defaultRouteLocomotion(
 export function routeLocomotionFields(
   motion: Motion,
 ): Pick<Motion, "kind" | "sourceAssetId" | "animationName"> {
-  if (motion.kind === "walk" || motion.kind === "run")
-    return { kind: motion.kind };
   if (
     motion.kind !== "imported" ||
     !motion.sourceAssetId ||

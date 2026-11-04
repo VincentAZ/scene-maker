@@ -425,11 +425,13 @@ export function configureImportedRig(
           object instanceof T.Bone ||
           Object.values(bones).some((bone) => hasAncestor(bone, object)),
       )
+      // Exporters leave ~1e-5 round-off in bind scales (FBX: measured up to
+      // 1.1e-5); only real non-uniform scaling distorts rotations.
       .every(
         ({ scale }) =>
           scale.x > 0 &&
-          Math.abs(scale.x - scale.y) < 1e-5 &&
-          Math.abs(scale.x - scale.z) < 1e-5,
+          Math.abs(scale.x - scale.y) < 1e-4 * scale.x &&
+          Math.abs(scale.x - scale.z) < 1e-4 * scale.x,
       );
   group.updateWorldMatrix(true, true);
   const data: HumanoidRig = {
@@ -568,6 +570,31 @@ export function applyHumanoidPose(
   return true;
 }
 
+/** Return a joint to its neutral orientation in character space; its
+ * children keep their own rotations and follow it. */
+export function neutralHumanoidJoint(group: T.Group, name: BoneName) {
+  const bone = group.userData.bones?.[name] as T.Bone | undefined;
+  if (!bone) return;
+  const data = rigs.get(group);
+  if (!data) {
+    const rest = group.userData.rest?.[name] as T.Quaternion | undefined;
+    if (rest) bone.quaternion.copy(rest);
+  } else {
+    group.updateWorldMatrix(true, false);
+    const desired = group
+      .getWorldQuaternion(new T.Quaternion())
+      .multiply(data.neutralWorld[name]!);
+    bone.quaternion
+      .copy(
+        bone
+          .parent!.getWorldQuaternion(new T.Quaternion())
+          .invert()
+          .multiply(desired),
+      )
+      .normalize();
+  }
+  bone.updateWorldMatrix(false, true);
+}
 /** Current anatomical orientation, independent of a provider's bone rolls. */
 export function humanoidJointOrientation(group: T.Group, name: BoneName) {
   const bone = group.userData.bones?.[name] as T.Bone | undefined;

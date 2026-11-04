@@ -235,6 +235,27 @@ function capture(group: T.Group): BodyPose | undefined {
  * Leave timeline travel on the root.
  * Native parent movement must not be blended twice with accumulated root travel.
  */
+/** Bones a blend wrote, with their unblended values. The sampler only
+ * rewrites animated bones, so the rest are put back before the next sample;
+ * otherwise each repeated sample would add the blend offset again. */
+const blendedBones = new WeakMap<
+  T.Group,
+  Map<
+    T.Bone,
+    { position: T.Vector3; quaternion: T.Quaternion; scale: T.Vector3 }
+  >
+>();
+function restoreBlendedBones(group: T.Group) {
+  const bones = blendedBones.get(group);
+  if (!bones) return;
+  for (const [bone, pose] of bones) {
+    bone.position.copy(pose.position);
+    bone.quaternion.copy(pose.quaternion);
+    bone.scale.copy(pose.scale);
+  }
+  blendedBones.delete(group);
+  group.updateMatrixWorld(true);
+}
 export function sampleWithTransitions(
   group: T.Group,
   entity: Entity,
@@ -242,6 +263,7 @@ export function sampleWithTransitions(
   time: number,
   raw: (time: number) => void,
 ) {
+  restoreBlendedBones(group);
   const transition = transitionAt(entity, scene, time, true);
   if (!transition) {
     raw(time);
@@ -393,6 +415,14 @@ export function sampleWithTransitions(
     if (!previous || previous.bone !== pose.bone || !incoming || !velocity)
       continue;
     const bone = pose.bone;
+    let unblended = blendedBones.get(group);
+    if (!unblended) blendedBones.set(group, (unblended = new Map()));
+    if (!unblended.has(bone))
+      unblended.set(bone, {
+        position: pose.position.clone(),
+        quaternion: bone.quaternion.clone(),
+        scale: pose.scale.clone(),
+      });
     bone.position
       .copy(pose.position)
       .addScaledVector(

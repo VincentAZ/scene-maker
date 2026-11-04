@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as T from "three";
-import { entityPose, motionPose } from "../shared/animation";
+import { entityPose } from "../shared/animation";
 import {
   compilePath,
   pathActionClips,
@@ -16,13 +16,20 @@ import {
   starterScene,
   type Motion,
 } from "../shared/scene";
+import { capturedRouteGaits } from "../shared/motionLibrary";
 import { createCharacter, applyAnimatedEntityPose } from "../src/world";
 import { bakeAnimation } from "../src/bakeAnimation";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
+// Routes travel on the recorded walking stride (its source take interval).
+const stride = capturedRouteGaits[0];
 const route = (): Motion => ({
   id: "four-stops",
   name: "Four stops",
-  kind: "walk",
+  kind: "imported",
+  sourceAssetId: stride.sourceAssetId,
+  animationName: stride.animationName,
   duration: 12,
   distance: 0,
   poses: [],
@@ -36,6 +43,7 @@ const route = (): Motion => ({
       [0, 0, -1],
     ],
     endHeading: -1.2,
+    sourceRange: { ...stride.path!.sourceRange! },
   },
 });
 const actions: PointAction[] = [
@@ -54,6 +62,17 @@ function fixture() {
   actor.scale = 1.4;
   return { scene, actor };
 }
+// Studio Walk is a recording whose root travel is measured from its loaded
+// source; stand in a measured 2 m straight stride for it in scene poses.
+const walkTravel = {
+  nativeRoot: (m: Motion) =>
+    m.id === "walk"
+      ? {
+          start: [0, 0, 0] as [number, number, number],
+          delta: [0, 0, 2] as [number, number, number],
+        }
+      : undefined,
+};
 const delta = (a: number[], b: number[]) =>
   Math.hypot(...a.map((n, i) => n - b[i]));
 
@@ -63,7 +82,12 @@ describe("route point actions materialized as sequence clips", () => {
     const withBefore = applyCommands(scene, [
       { type: "chain", id: actor.id, motionId: "walk", duration: 2 },
     ]);
-    const before = entityPose(withBefore.entities[0], withBefore, 2);
+    const before = entityPose(
+      withBefore.entities[0],
+      withBefore,
+      2,
+      walkTravel,
+    );
     const next = applyCommands(
       withBefore,
       savePathCommands(withBefore, actor.id, route(), undefined, actions),
@@ -81,30 +105,36 @@ describe("route point actions materialized as sequence clips", () => {
       const motion = library.find((m) => m.id === clip.motionId)!;
       if (time >= 2 && !motion.path) {
         const expected = pathToWorld(route().path!.points[stop + 1], frame);
-        expect(delta(entityPose(e, next, time).root, expected)).toBeLessThan(
-          1e-7,
-        );
         expect(
-          delta(entityPose(e, next, time + clip.duration / 2).root, expected),
+          delta(entityPose(e, next, time, walkTravel).root, expected),
         ).toBeLessThan(1e-7);
+        expect(
+          delta(
+            entityPose(e, next, time + clip.duration / 2, walkTravel).root,
+            expected,
+          ),
+        ).toBeLessThan(1e-7);
+        // The gesture plays as its own recorded take at this point.
         expect(clip.motionId).toBe(actions[stop].motionId);
         expect(clip.duration).toBe(actions[stop].duration);
-        expect(entityPose(e, next, time + clip.duration / 2).rotations).toEqual(
-          motionPose(motion, 0.5).rotations,
-        );
         stop++;
       }
       time += clip.duration;
     }
     expect(stop).toBe(4);
     expect(time).toBeCloseTo(24, 9); // preceding walk + movement + all four actions
-    const end = entityPose(e, next, time);
+    const end = entityPose(e, next, time, walkTravel);
     const desiredHeading = frame.heading + samplePath(route().path!, 1).heading;
     expect(Math.cos(end.heading! - desiredHeading)).toBeCloseTo(1, 9);
     const following = applyCommands(next, [
       { type: "chain", id: actor.id, motionId: "walk", duration: 2 },
     ]);
-    const final = entityPose(following.entities[0], following, time + 2);
+    const final = entityPose(
+      following.entities[0],
+      following,
+      time + 2,
+      walkTravel,
+    );
     expect(final.root[0] - end.root[0]).toBeCloseTo(
       Math.sin(desiredHeading) * 2 * actor.scale,
       8,
@@ -286,8 +316,9 @@ describe("route point actions materialized as sequence clips", () => {
       scene,
       savePathCommands(scene, actor.id, route(), undefined, actions),
     );
-    const rig = createCharacter(
-      allAssets(next).find((a) => a.id === actor.assetId)!,
+    const rig = withRecordedSources(
+      createCharacter(allAssets(next).find((a) => a.id === actor.assetId)!),
+      recordedSourceMap,
     );
     const sample = (time: number) =>
       applyAnimatedEntityPose(rig, next.entities[0], next, time);
@@ -310,7 +341,9 @@ describe("route point actions materialized as sequence clips", () => {
       );
       mixer.stopAllAction();
     }
-  });
+    // Every baked frame retargets recorded takes (stride and four gestures),
+    // which is far slower than the old formula poses.
+  }, 30_000);
 });
 
 it("keeps original imported gait identity on every movement fragment between point actions", () => {

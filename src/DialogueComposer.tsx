@@ -83,14 +83,16 @@ export function DialogueComposer({
               const motion = motions.find((m) => m.id === action.motionId);
               const targeted =
                 motion &&
-                ["pick", "sip", "place", "sit", "climb"].includes(motion.kind);
+                ["pick", "sip", "place", "sit", "climb"].includes(
+                  motion.role ?? "",
+                );
               const props = scene.entities.filter((e) => {
                 const asset = allAssets(scene).find((a) => a.id === e.assetId);
                 return (
                   e.visible &&
                   asset?.category === "props" &&
-                  (motion?.kind !== "sit" || seatProfile(asset)) &&
-                  (motion?.kind !== "climb" || ladderProfile(asset))
+                  (motion?.role !== "sit" || seatProfile(asset)) &&
+                  (motion?.role !== "climb" || ladderProfile(asset))
                 );
               });
               return (
@@ -157,9 +159,9 @@ export function DialogueComposer({
                       >
                         <option value="">
                           Choose a{" "}
-                          {motion?.kind === "sit"
+                          {motion?.role === "sit"
                             ? "seat"
-                            : motion?.kind === "climb"
+                            : motion?.role === "climb"
                               ? "ladder"
                               : "prop"}
                           …

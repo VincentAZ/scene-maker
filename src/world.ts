@@ -34,6 +34,7 @@ import {
   applyTransferredClip,
   sampleNativeClip,
   humanoidWarning,
+  neutralHumanoidJoint,
   rigHeading,
   importedClip,
 } from "./rig";
@@ -674,7 +675,7 @@ function applyUnblendedEntityPose(
     !group.userData.seatBody &&
     entity.clips.some(
       (c) =>
-        allMotions(scene).find((m) => m.id === c.motionId)?.kind === "sit" &&
+        allMotions(scene).find((m) => m.id === c.motionId)?.role === "sit" &&
         c.targetId,
     )
   ) {
@@ -924,6 +925,12 @@ function applyUnblendedEntityPose(
     !!current && !current.source,
     pose,
   );
+  // A seat or ladder owns the body's placement: keep the recording's joint
+  // rotations, not its pelvis travel in the capture room (seat support and
+  // rung contacts then place the hips, hands and feet). One that cannot be
+  // used keeps the body where it stands while its warning shows.
+  const placed = !!current && !!(pose.climb || pose.seat);
+  const placedRoot = placed ? group.position.clone() : undefined;
   if (current?.source)
     group.userData.motionWarning = applyTransferredClip(
       current.source,
@@ -933,6 +940,22 @@ function applyUnblendedEntityPose(
       current.sourceStart,
     );
   else if (current) sampleNativeClip(group, current.clip, current.time);
+  const placedHips = group.userData.bindPositions?.hips as
+    T.Vector3 | undefined;
+  if (placedRoot) {
+    group.position.copy(placedRoot);
+    if (!current?.source && placedHips && bones?.hips)
+      bones.hips.position.copy(placedHips);
+    // Rungs fix the limbs: a recorded pelvis tilt would move the hip joints
+    // out of the planned leg reach. A gesture recorded standing, played
+    // while seated, carries standing weight shifts the chair does not have.
+    // The spine, arms and head stay recorded either way.
+    const seatedHold =
+      !!pose.seat && pose.seat.progress >= 1 && !pose.seat.standing;
+    group.updateMatrixWorld(true);
+    if ((pose.climb && !pose.climb.plan.warning) || seatedHold)
+      neutralHumanoidJoint(group, "hips");
+  }
   if (current?.route && !current.source)
     // Routes replace planar travel, but retain the same vertical reference as
     // native standalone playback. A capture's constant root offset is not a jump.

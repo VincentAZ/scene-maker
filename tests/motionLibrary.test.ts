@@ -3,7 +3,13 @@ import fs from "node:fs/promises";
 import * as T from "three";
 import JSZip from "jszip";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { libraryMotions, motionSource } from "../shared/motionLibrary";
+import {
+  capturedMotions,
+  libraryMotions,
+  motionCollections,
+  motionDetails,
+  motionSource,
+} from "../shared/motionLibrary";
 import { libraryCharacters } from "../shared/characterLibrary";
 import {
   allMotions,
@@ -31,6 +37,8 @@ import {
 import { offlinePlan, offlineCommands } from "../server/ai";
 import { validatePlan } from "../shared/studio";
 import { productionPackage } from "../src/productionPackage";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 async function load(asset: Asset) {
   const bytes = await fs.readFile("public" + asset.url);
   const gltf = await new GLTFLoader().parseAsync(
@@ -338,4 +346,46 @@ it("packages the authored source exactly once, with its license and no extra cas
         : read(input, options),
     ),
   ).rejects.toThrow("action library");
+});
+it("files every recorded take under a library collection and separates stylized and user actions", () => {
+  const groups = motionCollections.filter(
+    (c) => !["All", "Stylized", "My actions"].includes(c),
+  );
+  for (const motion of capturedMotions) {
+    const details = motionDetails(motion);
+    expect(groups, motion.name).toContain(details.collection);
+    expect(details).toMatchObject({
+      source: "recorded",
+      captured: true,
+      authored: false,
+    });
+    expect(details.description).toContain("Recorded motion capture");
+    expect(motion.name).not.toMatch(/^Captured /);
+  }
+  // No collection is empty.
+  for (const collection of groups)
+    expect(
+      capturedMotions.some((m) => motionDetails(m).collection === collection),
+      collection,
+    ).toBe(true);
+  for (const motion of libraryMotions)
+    expect(motionDetails(motion)).toMatchObject({
+      collection: "Stylized",
+      source: "stylized",
+      authored: true,
+      captured: false,
+    });
+  expect(
+    motionDetails({ ...libraryMotions[0], id: "user-walk" }),
+  ).toMatchObject({ collection: "My actions", source: "mine" });
+  expect(
+    ["walk", "run", "idle"].map((id) => [
+      capturedMotions.find((m) => m.id === id)?.name,
+      motionDetails(capturedMotions.find((m) => m.id === id)!).collection,
+    ]),
+  ).toEqual([
+    ["Walk", "Walking"],
+    ["Run", "Running"],
+    ["Standing idle", "Standing"],
+  ]);
 });

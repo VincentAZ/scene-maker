@@ -13,6 +13,7 @@ import {
   allMotions,
   starterScene,
   applyCommands,
+  type Motion,
   type Scene,
 } from "../shared/scene";
 import { compilePath, pathToWorld, samplePath } from "../shared/path";
@@ -34,6 +35,36 @@ import { offlinePlan } from "../server/ai";
 import { validatePlan } from "../shared/studio";
 import { runStudioPlan, StudioPlanError } from "../src/studioRunner";
 import { libraryCharacters } from "../shared/characterLibrary";
+import { capturedRouteGaits, roleMotion } from "../shared/motionLibrary";
+import { measureNativeTravel } from "../src/nativeTravel";
+import { importedClip, motionSource } from "../src/rig";
+import {
+  locomotionProfile,
+  locomotionScale,
+  routeEntryHeading,
+} from "../src/locomotion";
+import type { RouteGaitCycle } from "../src/routeLocomotion";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
+
+/** Routes travel on the recorded stride at the pace measured from its take on
+ * the receiving body, as automatic replanning measures it. */
+const stride = capturedRouteGaits[0];
+function measuredCycle(rig: T.Group, gait: Motion = stride): RouteGaitCycle {
+  const source = motionSource(rig, gait.sourceAssetId!)!;
+  const take = importedClip(source.userData.animations, gait.animationName!)!;
+  const profile = locomotionProfile(source, take, gait.path!.sourceRange)!;
+  const ratio = locomotionScale(source, rig);
+  return {
+    duration: profile.duration,
+    entryHeading: routeEntryHeading(profile),
+    distance: profile.distance * ratio,
+    samples: profile.frames.map((frame) => ({
+      time: frame.time,
+      distance: frame.distance * ratio,
+    })),
+  };
+}
 
 const rect = (
   minX: number,
@@ -108,12 +139,17 @@ it("replans an approach followed by pickup using the proposed arrival schedule w
   let scene = fixture();
   const objects = await objectsFor(scene);
   try {
+    const cycle = measuredCycle(objects.get("actor")!);
     const route = planObjectRoute(
       scene,
       objects,
       "actor",
       "destination",
       "walk",
+      undefined,
+      undefined,
+      stride,
+      cycle,
     );
     scene = applyCommands(scene, [
       { type: "createMotion", motion: route },
@@ -132,7 +168,7 @@ it("replans an approach followed by pickup using the proposed arrival schedule w
         clip.id,
         undefined,
         route,
-        undefined,
+        cycle,
         0,
         {
           movingIds: new Set(),
@@ -178,10 +214,12 @@ async function objectsFor(scene: Scene) {
           "",
         ),
       );
+      if (a.category === "characters")
+        withRecordedSources(object, recordedSourceMap);
     } else
       object =
         a.category === "characters"
-          ? createCharacter(a, e.color)
+          ? withRecordedSources(createCharacter(a, e.color), recordedSourceMap)
           : createProp(a.style, e.color, a.parts, a.ladder);
     objects.set(e.id, object);
   }
@@ -193,13 +231,37 @@ it("plans from the preceding action endpoint around measured geometry and reache
     const original = JSON.stringify(scene),
       objects = await objectsFor(scene);
     const context = routeContext(scene, objects, "actor");
-    expect(context.frame.position[2]).toBeCloseTo(0, 6);
+    // The route starts where the preceding recorded walk's own root travel
+    // ends on this body, facing as that take finishes.
+    const rig = objects.get("actor")!,
+      walk = roleMotion("walk"),
+      source = motionSource(rig, walk.sourceAssetId!)!;
+    const travel = measureNativeTravel(
+      source,
+      rig,
+      importedClip(source.userData.animations, walk.animationName!)!,
+      scene.entities[0].clips[0],
+    )!;
+    expect(travel.destination.z, assetId).toBeGreaterThan(1);
+    expect(context.frame.position[0], assetId).toBeCloseTo(
+      -3 + travel.destination.x,
+      6,
+    );
+    expect(context.frame.position[2], assetId).toBeCloseTo(
+      -2 + travel.destination.z,
+      6,
+    );
+    expect(context.frame.heading, assetId).toBeCloseTo(travel.endHeading, 6);
     const motion = planObjectRoute(
       scene,
       objects,
       "actor",
       "destination",
       "walk",
+      undefined,
+      undefined,
+      stride,
+      measuredCycle(rig),
     );
     expect(JSON.stringify(scene)).toBe(original);
     expect(motion.path!.points.length).toBeGreaterThan(2);
@@ -230,21 +292,42 @@ it("plans from the preceding action endpoint around measured geometry and reache
       })),
     ]);
     const actor = scene.entities[0],
-      rig = objects.get("actor")!,
       prop = objects.get("destination")!;
     const sample = (time: number) => {
       for (const e of scene.entities)
         applyAnimatedEntityPose(objects.get(e.id)!, e, scene, time);
-      expect(applyInteractions(scene, time, objects), assetId).toEqual([]);
+      expect(
+        applyInteractions(scene, time, objects),
+        `${assetId} at ${time}`,
+      ).toEqual([]);
     };
+    // The planned route ends exactly facing the cup.
+    const end = samplePath(motion.path!, 1),
+      endPoint = pathToWorld(end.point, context.frame),
+      endHeading = context.frame.heading + end.heading;
+    expect(
+      new T.Vector3(Math.sin(endHeading), 0, Math.cos(endHeading)).dot(
+        new T.Vector3(3.13 - endPoint[0], 0, -endPoint[2]).normalize(),
+      ),
+      assetId,
+    ).toBeGreaterThan(0.99999);
     const arrival = 2 + motion.duration;
     sample(arrival);
     const facing = new T.Vector3(0, 0, 1).applyQuaternion(rig.quaternion);
     const toCup = new T.Vector3(3.13, rig.position.y, 0)
       .sub(rig.position)
       .normalize();
-    expect(facing.dot(toCup), assetId).toBeGreaterThan(0.99999);
-    sample(arrival + 1);
+    // The body itself is recorded: the stride and Pick up keep the
+    // performer's natural hip yaw around that direction (a few degrees,
+    // varying with the receiving body), which the old formula body lacked.
+    expect(facing.dot(toCup), assetId).toBeGreaterThan(Math.cos(Math.PI / 36));
+    // The recorded takes set their own timing: the hand meets the grip at
+    // the pick contact (40% through Pick up), and the cup is home again once
+    // Put down has finished.
+    const [pick, sip, place] = actor.clips.slice(2).map((c) => c.duration);
+    const contact = arrival + pick * 0.4,
+      returned = arrival + pick + sip + place;
+    sample(contact);
     const hand = rig.userData.bones.rightForearm.localToWorld(
       rig.userData.contacts.hand.clone(),
     );
@@ -253,9 +336,15 @@ it("plans from the preceding action endpoint around measured geometry and reache
       assetId,
     ).toBeLessThan(0.0001);
     const lifted = prop.position.clone();
-    for (const t of [arrival + 3, arrival + 6, 0, arrival + 1]) sample(t);
+    for (const t of [
+      arrival + pick + sip / 2,
+      returned - place / 2,
+      0,
+      contact,
+    ])
+      sample(t);
     expect(prop.position.distanceTo(lifted)).toBeLessThan(1e-6);
-    sample(arrival + 7);
+    sample(returned + 0.5);
     expect(prop.position.distanceTo(new T.Vector3(3, 0.985, 0))).toBeLessThan(
       1e-5,
     );
@@ -280,6 +369,10 @@ it("finds a reachable side of a cup on a real table without crossing the support
     "actor",
     "destination",
     "walk",
+    undefined,
+    undefined,
+    stride,
+    measuredCycle(objects.get("actor")!),
   );
   scene = applyCommands(scene, [
     { type: "createMotion", motion },
@@ -296,7 +389,9 @@ it("finds a reachable side of a cup on a real table without crossing the support
         p[2] > table.max.z + 0.28,
     ).toBe(true);
   }
-  const time = 2 + motion.duration + 1.5;
+  // Halfway through the recorded Take a sip the cup is raised to the mouth.
+  const time =
+    2 + motion.duration + scene.entities[0].clips.at(-1)!.duration / 2;
   for (const e of scene.entities)
     applyAnimatedEntityPose(objects.get(e.id)!, e, scene, time);
   expect(applyInteractions(scene, time, objects)).toEqual([]);
@@ -315,9 +410,25 @@ it("handles scaled and rotated actors, high or occupied props, and still-destina
   scene.entities[0].scale = 1.3;
   scene.entities[0].position = [-6, 0, -2];
   const objects = await objectsFor(scene);
-  const route = planObjectRoute(scene, objects, "actor", "destination", "run");
-  expect(route.kind).toBe("run");
-  expect(samplePath(route.path!, 0).point).toEqual([0, 0, 0]);
+  const running = capturedRouteGaits[1];
+  const route = planObjectRoute(
+    scene,
+    objects,
+    "actor",
+    "destination",
+    "run",
+    undefined,
+    undefined,
+    running,
+    measuredCycle(objects.get("actor")!, running),
+  );
+  expect(route).toMatchObject({
+    kind: "imported",
+    animationName: running.animationName,
+    path: { sourceRange: running.path!.sourceRange },
+  });
+  for (const n of samplePath(route.path!, 0).point)
+    expect(n).toBeCloseTo(0, 12);
   scene.entities.find((e) => e.id === "destination")!.position[1] = 8;
   expect(() =>
     planObjectRoute(scene, objects, "actor", "destination", "walk"),
@@ -337,7 +448,10 @@ it("handles scaled and rotated actors, high or occupied props, and still-destina
   ]);
   objects.set(
     "holder",
-    createCharacter(allAssets(scene).find((a) => a.id === "leo")!),
+    withRecordedSources(
+      createCharacter(allAssets(scene).find((a) => a.id === "leo")!),
+      recordedSourceMap,
+    ),
   );
   expect(() =>
     planObjectRoute(scene, objects, "actor", "destination", "walk"),
@@ -445,6 +559,10 @@ it("routes offline requests to the named destination and stops workflows after a
             step.actorId,
             step.targetId,
             step.movement,
+            undefined,
+            undefined,
+            stride,
+            measuredCycle(objects.get(step.actorId)!),
           );
           scene = applyCommands(scene, [
             { type: "createMotion", motion },
@@ -454,11 +572,14 @@ it("routes offline requests to the named destination and stops workflows after a
       },
     },
   );
+  // The studio Walk, then the planned route on the recorded stride, then the
+  // recorded interactions.
   expect(
-    scene.entities[0].clips.map(
-      (c) => allMotions(scene).find((m) => m.id === c.motionId)!.kind,
-    ),
-  ).toEqual(["walk", "walk", "pick", "sip", "place"]);
+    scene.entities[0].clips.map((c) => {
+      const motion = allMotions(scene).find((m) => m.id === c.motionId)!;
+      return motion.path ? motion.animationName : motion.role;
+    }),
+  ).toEqual(["walk", stride.animationName, "pick", "sip", "place"]);
   for (const object of objects.values()) disposeObject(object);
 });
 
@@ -508,6 +629,8 @@ it("plans around backdrop walls while excluding floor meshes from route footprin
     "walk",
     undefined,
     environment,
+    stride,
+    measuredCycle(objects.get("actor")!),
   );
   const expanded = context.footprints.map((p) => ({
     ...p,

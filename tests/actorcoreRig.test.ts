@@ -10,6 +10,10 @@ import {
   setMotionSources,
   transferWarning,
 } from "../src/rig";
+import { locomotionScale } from "../src/locomotion";
+import { roleMotion } from "../shared/motionLibrary";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 const point = (object: T.Object3D) => object.getWorldPosition(new T.Vector3());
 const direction = (upper: T.Bone, lower: T.Bone) =>
@@ -38,7 +42,8 @@ const expectedNames = {
 // coordinates in centimeters; bone frames are deliberately varied below.
 // No proprietary FBX or local asset data is required to run these regressions.
 function fixture(rename = (name: string) => name, rollOffset = 0) {
-  const group = new T.Group(),
+  // Studio actions play on the rig from the recorded source skeletons.
+  const group = withRecordedSources(new T.Group(), recordedSourceMap),
     imported = new T.Group();
   group.add(imported);
   const joints: Record<string, T.Bone> = {};
@@ -250,12 +255,9 @@ describe("native ActorCore / Character Creator humanoid mapping", () => {
 
   it("plays canonical walk and wave actions without warnings and scrubs back deterministically", () => {
     const f = fixture();
-    f.actor.clips = [
-      { id: "walk", motionId: "walk", duration: 4 },
-      { id: "wave", motionId: "wave", duration: 3 },
-    ];
     f.configure();
     const bones = f.group.userData.bones;
+    // The calibrated rest relaxes the T-pose: the arms hang straight down.
     f.sample(0);
     for (const side of ["left", "right"]) {
       expect(
@@ -269,7 +271,14 @@ describe("native ActorCore / Character Creator humanoid mapping", () => {
         ),
       ).toBeLessThan(1e-6);
     }
-    f.sample(0.8);
+    const rest = point(bones.rightHand).y;
+    f.actor.clips = [
+      { id: "walk", motionId: "walk", duration: 4, playbackRate: 1 },
+      { id: "wave", motionId: "wave", duration: 3, playbackRate: 1 },
+    ];
+    // 1.1 s into the recorded Walk the left thigh swings well out of its
+    // bind orientation.
+    f.sample(1.1);
     const walking = boneNames.map((name) => point(bones[name]));
     expect(
       Math.abs(
@@ -277,14 +286,32 @@ describe("native ActorCore / Character Creator humanoid mapping", () => {
           f.bind.find(({ bone }) => bone === bones.leftLeg)!.quaternion,
         ),
       ),
-    ).toBeGreaterThan(0.1);
-    f.sample(5.5);
+    ).toBeGreaterThan(0.3);
+    // Half a second into the recorded Wave hello the hand is raised above
+    // the shoulder.
+    f.sample(4.5);
     expect(f.group.userData.motionWarning).toBe("");
-    expect(point(bones.rightForearm).y).toBeGreaterThan(
+    expect(point(bones.rightHand).y).toBeGreaterThan(
       point(bones.rightArm).y + 0.1,
     );
-    expect(f.group.position.z).toBeCloseTo(2, 5);
-    for (const time of [7, 0, 0.8]) {
+    expect(point(bones.rightHand).y).toBeGreaterThan(rest + 0.5);
+    // By its end the walk travelled its captured distance, scaled to this
+    // rig's standing height, along the actor's facing (+Z).
+    f.sample(3.9);
+    const source = recordedSourceMap.get(roleMotion("walk").sourceAssetId!)!;
+    const walked = nativeRootMotion(
+      source,
+      source.userData.animations[0],
+    )!.delta;
+    const travel =
+      Math.hypot(walked.x, walked.z) * locomotionScale(source, f.group);
+    expect(
+      Math.abs(Math.hypot(f.group.position.x, f.group.position.z) - travel),
+    ).toBeLessThan(0.01 * travel);
+    expect(f.group.position.z).toBeGreaterThan(
+      5 * Math.abs(f.group.position.x),
+    );
+    for (const time of [7, 0, 1.1]) {
       f.sample(time);
       expect(f.group.userData.motionWarning).toBe("");
       f.group.traverse((object) =>
@@ -381,7 +408,10 @@ describe("native ActorCore / Character Creator humanoid mapping", () => {
     source.configure([clip]);
     const receiving = fixture((name) => `Receiver:${name}`, -0.6);
     receiving.configure();
-    const procedural = createCharacter(characters[0]);
+    const procedural = withRecordedSources(
+      createCharacter(characters[0]),
+      recordedSourceMap,
+    );
     source.scene.customAssets.push({
       ...characters[0],
       id: "actorcore-source",

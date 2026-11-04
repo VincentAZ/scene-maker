@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import * as T from "three";
 import { createRoot, type Root } from "react-dom/client";
 import { PathEditor } from "../src/PathEditor";
-import { starterScene, type Motion } from "../shared/scene";
+import { starterScene, validateScene, type Motion } from "../shared/scene";
 import { libraryMotions } from "../shared/motionLibrary";
 import type { PointAction } from "../shared/path";
 import { loadImportedAsset } from "../src/importedAsset";
@@ -134,28 +134,50 @@ function savedActions() {
   return onSave.mock.lastCall![1] as PointAction[] | undefined;
 }
 
-it("reopens and edits backward routes without losing direction, and lets the user change it", async () => {
-  const motion = route();
-  motion.path!.backward = true;
+it("reopens a migrated procedural backward route on the recorded backward walk and keeps it through replanning and saves", async () => {
+  // Procedural backpedalling is gone: loading migrates such a route onto the
+  // captured "Walk backwards" take, whose body already faces away from travel.
+  const scene = starterScene();
+  scene.customMotions = [
+    { ...route(), path: { ...route().path!, backward: true } },
+  ];
+  scene.entities[0].clips = [
+    { id: "back", motionId: route().id, duration: 12 },
+  ];
+  const motion = validateScene(scene).customMotions[0];
+  expect(motion).toMatchObject({
+    kind: "imported",
+    animationName: "143_39",
+    path: { points: route().path!.points },
+  });
+  expect(motion.path!.backward).toBeUndefined();
   const onPlan = vi.fn<
     (targetId: string, movement: "walk" | "run", locomotion?: Motion) => Motion
   >(() => motion);
   await render({ motion, onPlan });
-  const control = [...container.querySelectorAll("label")]
-    .find((label) => label.textContent?.includes("Move backward"))!
-    .querySelector("input")!;
-  expect(control.checked).toBe(true);
+  expect(container.textContent).not.toContain("Move backward");
+  const locomotion = query<HTMLSelectElement>(
+    'select[aria-label="Route locomotion"]',
+  );
+  expect(
+    locomotion.selectedOptions[0].textContent?.startsWith("Walk backwards"),
+  ).toBe(true);
   const destination = query<HTMLSelectElement>(
     'select[aria-label="Route destination"]',
   );
   await changeSelect("Route destination", destination.options[1].value);
   await click("Plan a clear route");
-  expect(onPlan.mock.calls[0]?.[2]).toMatchObject({ path: { backward: true } });
+  expect(onPlan.mock.calls[0]?.[2]).toMatchObject({
+    kind: "imported",
+    animationName: "143_39",
+  });
   await changeInput("Point 1 across", "3");
   await click("Save path");
-  expect(onSave.mock.lastCall![0].path.backward).toBe(true);
-  await act(async () => control.click());
-  await click("Save path");
+  expect(onSave.mock.lastCall![0]).toMatchObject({
+    kind: "imported",
+    sourceAssetId: motion.sourceAssetId,
+    animationName: "143_39",
+  });
   expect(onSave.mock.lastCall![0].path.backward).toBeUndefined();
 });
 
@@ -295,7 +317,7 @@ describe("PathEditor imported locomotion", () => {
     });
   });
 
-  it("saves the selected original gait identity instead of converting it to a procedural walk", async () => {
+  it("saves the selected original gait identity, including the recorded take behind Run", async () => {
     await render();
     await changeSelect("Route locomotion", "authored-walk-carry");
     await click("Save path");
@@ -308,10 +330,15 @@ describe("PathEditor imported locomotion", () => {
       path: route().path,
     });
     await changeSelect("Route locomotion", "run");
+    expect(
+      query<HTMLSelectElement>('select[aria-label="Route locomotion"]').value,
+    ).toBe("run");
     await click("Save path");
-    expect(onSave.mock.lastCall?.[0].kind).toBe("run");
-    expect(onSave.mock.lastCall?.[0].sourceAssetId).toBeUndefined();
-    expect(onSave.mock.lastCall?.[0].animationName).toBeUndefined();
+    expect(onSave.mock.lastCall?.[0]).toMatchObject({
+      kind: "imported",
+      sourceAssetId: "cmu-capture-35-17",
+      animationName: "35_17",
+    });
   });
 
   it("reopens imported routes by source identity and keeps the gait through replanning", async () => {
@@ -556,8 +583,16 @@ describe("PathEditor production gait measurement", () => {
     expect(
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
     ).toBe("");
+    // Studio Walk is a recording too: there is no fixed procedural pace to
+    // fall back on, so it still needs a measured cycle.
     await changeSelect("Route locomotion", "walk");
-    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(
+      query<HTMLSelectElement>('select[aria-label="Route locomotion"]').value,
+    ).toBe("walk");
+    expect(container.textContent).toContain("Measure this imported gait");
+    expect(
+      query<HTMLInputElement>('input[aria-label="Route duration"]').value,
+    ).toBe("");
     expect(loadImportedAsset).not.toHaveBeenCalled();
   });
 });

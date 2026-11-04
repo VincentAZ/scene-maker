@@ -38,6 +38,8 @@ import {
 } from "../shared/studioLibrary";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
 import { compilePath } from "../shared/path";
+import { contactAction } from "../shared/transitions";
+import { measureSeatBody } from "../src/seating";
 
 async function load(asset: Asset) {
   const bytes = await fs.readFile("public" + asset.url);
@@ -486,7 +488,7 @@ it.each(capturedMotions)(
         motionIds: [motion.id],
       }),
     ).toEqual([]);
-    const original = actionPreview(
+    let original = actionPreview(
       scene,
       motion,
       scene.entities[0].id,
@@ -497,8 +499,36 @@ it.each(capturedMotions)(
       (a) => a.id === original.actor.assetId,
     )!;
     expect(alias.rigMapping).toEqual(source.rigMapping);
-    expect(requiredMotionSources(original.scene, original.actor)).toEqual([]);
+    // A role action rehearses in its context: Stand up after the recorded
+    // Sit down, Put down after the recorded Pick up. Only that lead-in
+    // plays from another recording; the take itself uses its own skeleton.
+    const leadIn = original.actor.clips.slice(0, -1);
+    expect(leadIn.map((c) => c.motionId)).toEqual(
+      motion.role === "stand"
+        ? ["sit"]
+        : motion.role === "place"
+          ? ["pick"]
+          : [],
+    );
+    expect(
+      requiredMotionSources(original.scene, original.actor).map((a) => a.id),
+    ).toEqual(
+      leadIn.map(
+        (c) => capturedMotions.find((m) => m.id === c.motionId)!.sourceAssetId,
+      ),
+    );
     const { bytes, gltf, group } = await load(alias);
+    if (motion.role === "sit" || motion.role === "stand") {
+      // Like the preview panel, size the bench to the performer's legs.
+      const body = measureSeatBody(group)!;
+      original = actionPreview(
+        scene,
+        motion,
+        scene.entities[0].id,
+        Math.max(0.2, Math.min(10, body.lowerLength / 0.38)),
+        "original",
+      );
+    }
     const entry = catalogue.find((c) => c.trial === motion.animationName)!;
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(
       entry.sha256[`${entry.trial}.glb` as keyof typeof entry.sha256],
@@ -509,8 +539,20 @@ it.each(capturedMotions)(
     ).toBe(false);
     expect(group.userData.bones.leftHand.name).toBe("lhand");
     expect(group.userData.bones.rightHand.name).toBe("rhand");
-    for (const time of [0.17, motion.duration * 0.6, motion.duration, 0.17]) {
-      applyAnimatedEntityPose(group, original.actor, original.scene, time);
+    const offset = leadIn.reduce((sum, c) => sum + c.duration, 0);
+    // A seat or ladder action releases its placement when the scene ends
+    // with the default rest, so its last sampled frame is just before the
+    // end.
+    const last = contactAction(original.scene, original.actor.clips.at(-1)!)
+      ? motion.duration - 1e-3
+      : motion.duration;
+    for (const time of [0.17, motion.duration * 0.6, last, 0.17]) {
+      applyAnimatedEntityPose(
+        group,
+        original.actor,
+        original.scene,
+        offset + time,
+      );
       expect(group.userData.motionWarning || "").toBe("");
       expect(group.userData.mixer.time).toBeCloseTo(time, 5);
     }

@@ -9,6 +9,8 @@ import { furnitureAssets, furnitureURLs } from "./furnitureLibrary";
 import {
   libraryMotions,
   capturedMotions,
+  capturedRoleAliases,
+  capturedRouteGaits,
   motionSources,
 } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
@@ -41,6 +43,27 @@ export const boneNames = [
   "rightLeg",
   "rightShin",
 ] as const;
+/** Purposes a recorded action can serve. Earlier studio versions computed
+ * these bodies with formulas (kinds of the same names); scenes saved then are
+ * migrated to recordings on load (`migrateLegacyMotions`). */
+export const actionRoles = [
+  "idle",
+  "walk",
+  "run",
+  "jump",
+  "wave",
+  "sit",
+  "stand",
+  "dance",
+  "crawl",
+  "climb",
+  "sip",
+  "pick",
+  "place",
+  "talk",
+  "bow",
+] as const;
+export type ActionRole = (typeof actionRoles)[number];
 export const poseSchema = z.object({
   at: z.number().min(0).max(1),
   root: vec3,
@@ -72,6 +95,9 @@ export const motionSchema = z
     ]),
     distance: z.number().min(-20).max(20).default(0),
     poses: z.array(poseSchema).max(100).default([]),
+    // What a recorded action is for, so seats, ladders, props, dialogue and
+    // routes can use it. Bodies always come from the recording.
+    role: z.enum(actionRoles).optional(),
     sourceAssetId: z.string().optional(),
     animationName: z.string().optional(),
     path: z
@@ -248,6 +274,9 @@ export const assetSchema = z
       .optional(),
     description: z.string().max(1000).default(""),
     rigMapping: rigMappingSchema.optional(),
+    // An animation-only import (BVH, skinless FBX/GLB): a skeleton holding
+    // recorded takes for Actions, not a placeable character.
+    motionOnly: z.boolean().optional(),
     thumbnail: z
       .string()
       .regex(/^\/uploads\/[a-zA-Z0-9_-]+\.png$/)
@@ -454,6 +483,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: z.string(),
     clipId: z.string(),
   }),
+  // Delete one of the creator's own actions (imports, routes) and every clip
+  // that plays it. Library recordings cannot be deleted.
+  z.object({
+    type: z.literal("deleteMotion"),
+    motionId: z.string(),
+  }),
   z.object({
     type: z.literal("reorderClip"),
     id: z.string(),
@@ -571,33 +606,8 @@ export const assets = [
   ...environments,
   ...setAssets,
 ];
-export const motions: Motion[] = [
-  ["idle", "Breathe", 3, 0],
-  ["walk", "Walk", 4, 2],
-  ["run", "Run", 2, 3],
-  ["jump", "Jump", 1.5, 0],
-  ["wave", "Wave hello", 2, 0],
-  ["sit", "Sit down", 3, 0],
-  ["stand", "Stand up", 2, 0],
-  ["dance", "Little dance", 4, 0],
-  ["crawl", "Crawl", 4, 1.6],
-  ["climb", "Climb a ladder", 6, 1],
-  ["pick", "Pick up", 2, 0],
-  ["place", "Put down", 2, 0],
-  ["sip", "Take a sip", 3, 0],
-  ["talk", "Talk", 4, 0],
-  ["bow", "Take a bow", 2, 0],
-].map(([id, name, duration, distance]) => ({
-  id: String(id),
-  name: String(name),
-  duration: Number(duration),
-  distance: Number(distance),
-  kind: id as Motion["kind"],
-  poses: [],
-}));
 export const allAssets = (s: Scene) => [...assets, ...s.customAssets];
 export const allMotions = (s: Scene) => [
-  ...motions,
   ...capturedMotions,
   ...libraryMotions,
   ...s.customMotions,
@@ -623,7 +633,7 @@ export function applyCommands(
     for (const entity of s.entities) {
       let removedSeat = false;
       for (const clip of entity.clips) {
-        const kind = allMotions(s).find((m) => m.id === clip.motionId)?.kind;
+        const kind = allMotions(s).find((m) => m.id === clip.motionId)?.role;
         if (clip.targetId && ids.has(clip.targetId)) {
           if (kind === "sit") {
             clip.motionId = "idle";
@@ -773,6 +783,35 @@ export function applyCommands(
       e.clips = e.clips.filter(
         (c) => c.id !== cmd.clipId && c.routeWait !== cmd.clipId,
       );
+    }
+    if (cmd.type === "deleteMotion") {
+      const motion = s.customMotions.find((m) => m.id === cmd.motionId);
+      if (!motion) throw Error("Only your own actions can be deleted.");
+      s.customMotions = s.customMotions.filter((m) => m !== motion);
+      for (const e of s.entities) {
+        const removed = new Set(
+          e.clips
+            .filter(
+              (c) =>
+                c.motionId === motion.id ||
+                c.navigation?.native?.motionId === motion.id ||
+                c.navigation?.arrival?.motionId === motion.id,
+            )
+            .map((c) => c.id),
+        );
+        e.clips = e.clips.filter(
+          (c) =>
+            !removed.has(c.id) && !(c.routeWait && removed.has(c.routeWait)),
+        );
+      }
+      // An animation-only source goes with its last action.
+      const source = s.customAssets.find((a) => a.id === motion.sourceAssetId);
+      if (
+        source?.motionOnly &&
+        !s.entities.some((e) => e.assetId === source.id) &&
+        !s.customMotions.some((m) => m.sourceAssetId === source.id)
+      )
+        s.customAssets = s.customAssets.filter((a) => a !== source);
     }
     if (cmd.type === "reorderClip") {
       const e = find(cmd.id),
@@ -954,6 +993,102 @@ export function applyCommands(
   }
   return validateScene(s, options);
 }
+/** Scenes saved before every action was recorded referenced studio actions
+ * whose bodies were computed by formulas. Their ids now name recordings with
+ * the same role; this rewrites everything else that depended on formulas:
+ * - clips of those actions play the recording at its own speed;
+ * - formula Walk/Run clips that travelled a set distance become straight
+ *   routes on the recorded walking/running stride;
+ * - formula-gait routes use the recorded stride (backward ones the recorded
+ *   backward walk);
+ * - assistant-made keyframe actions are replaced by recorded standing. */
+function migrateLegacyMotions(scene: Scene) {
+  const legacy = new Set<string>(actionRoles);
+  const replaced = new Map<string, string>();
+  const travel = new Map<string, number>();
+  // Props travel along routes without a body; only characters get a gait.
+  const performed = new Set(
+    scene.entities
+      .filter(
+        (e) =>
+          allAssets(scene).find((a) => a.id === e.assetId)?.category ===
+          "characters",
+      )
+      .flatMap((e) => e.clips.map((c) => c.motionId)),
+  );
+  const stride = (kind: string, backward?: boolean) =>
+    backward
+      ? capturedMotions.find((m) => m.animationName === "143_39")!
+      : capturedRouteGaits[kind === "run" ? 1 : 0];
+  scene.customMotions = scene.customMotions.flatMap((motion) => {
+    if (motion.kind === "imported") return [motion];
+    if (motion.path && !performed.has(motion.id)) return [motion];
+    if (motion.kind === "custom" || !motion.path) {
+      replaced.set(
+        motion.id,
+        motion.kind === "custom" ? "idle" : (motion.kind as string),
+      );
+      if (motion.distance) travel.set(motion.id, motion.distance);
+      return [];
+    }
+    const gait = stride(motion.kind, motion.path.backward);
+    const { backward: _backward, ...path } = motion.path;
+    return [
+      {
+        ...motion,
+        kind: "imported" as const,
+        role: undefined,
+        distance: 0,
+        poses: [],
+        sourceAssetId: gait.sourceAssetId,
+        animationName: gait.animationName,
+        path: {
+          ...path,
+          ...(gait.path?.sourceRange
+            ? { sourceRange: { ...gait.path.sourceRange } }
+            : {}),
+        },
+      },
+    ];
+  });
+  for (const entity of scene.entities)
+    for (const clip of entity.clips) {
+      const own = travel.get(clip.motionId);
+      clip.motionId =
+        replaced.get(clip.motionId) ??
+        capturedRoleAliases[clip.motionId] ??
+        clip.motionId;
+      if (!legacy.has(clip.motionId) || clip.playbackRate !== undefined)
+        continue;
+      // Formula clips had no playback rate: the recording keeps its speed.
+      clip.playbackRate = 1;
+      if (clip.motionId !== "walk" && clip.motionId !== "run") continue;
+      const distance = own ?? (clip.motionId === "run" ? 3 : 2),
+        gait = stride(clip.motionId, distance < 0);
+      const base = `recorded-route-${entity.id}-${clip.id}`;
+      let id = base,
+        suffix = 2;
+      while (scene.customMotions.some((m) => m.id === id))
+        id = `${base}-${suffix++}`;
+      scene.customMotions.push({
+        ...gait,
+        id,
+        name: clip.motionId === "run" ? "Run" : "Walk",
+        duration: clip.duration,
+        path: {
+          points: [
+            [0, 0, 0],
+            [0, 0, distance],
+          ],
+          smooth: false,
+          ...(gait.path?.sourceRange
+            ? { sourceRange: { ...gait.path.sourceRange } }
+            : {}),
+        },
+      });
+      clip.motionId = id;
+    }
+}
 /** Preserve old fitted takes as a fixed, visible speed, never a dynamic stretch. */
 function materializeImportedClipTiming(scene: Scene) {
   const motionMap = new Map(
@@ -984,6 +1119,7 @@ export function validateScene(
   options: { deferInteractionTiming?: boolean } = {},
 ): Scene {
   const s = sceneSchema.parse(input);
+  migrateLegacyMotions(s);
   materializeImportedClipTiming(s);
   const unique = (ids: string[]) => new Set(ids).size === ids.length;
   if (
@@ -1139,7 +1275,7 @@ export function validateScene(
       }
       if (c.targetId && !s.entities.some((t) => t.id === c.targetId))
         throw Error("Missing action target.");
-      if (c.targetId && motion.kind === "sit") {
+      if (c.targetId && motion.role === "sit") {
         const target = s.entities.find((t) => t.id === c.targetId)!;
         const targetAsset = allAssets(s).find((a) => a.id === target.assetId)!;
         if (
@@ -1156,7 +1292,7 @@ export function validateScene(
       }
       if (
         c.targetId &&
-        allMotions(s).find((m) => m.id === c.motionId)!.kind === "climb"
+        allMotions(s).find((m) => m.id === c.motionId)!.role === "climb"
       ) {
         if (
           allAssets(s).find((a) => a.id === e.assetId)!.category !==
@@ -1171,7 +1307,7 @@ export function validateScene(
       if (
         c.targetId &&
         ["pick", "sip", "place"].includes(
-          allMotions(s).find((m) => m.id === c.motionId)!.kind,
+          allMotions(s).find((m) => m.id === c.motionId)!.role ?? "",
         )
       ) {
         const target = s.entities.find((t) => t.id === c.targetId)!;

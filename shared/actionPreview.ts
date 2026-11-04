@@ -79,7 +79,7 @@ export function actionPreview(
   actor.scale = view === "original" ? 1 : original?.scale || 1;
   if (view === "character" && original?.color) actor.color = original.color;
   let targetId: string | undefined;
-  if (["sit", "stand"].includes(motion.kind)) {
+  if (["sit", "stand"].includes(motion.role ?? "")) {
     preview = applyCommands(preview, [
       {
         type: "add",
@@ -91,7 +91,7 @@ export function actionPreview(
     preview.entities.find((e) => e.id === "preview-seat")!.scale =
       seatScale ?? actor.scale;
     targetId = "preview-seat";
-  } else if (motion.kind === "climb") {
+  } else if (motion.role === "climb") {
     preview = applyCommands(preview, [
       {
         type: "add",
@@ -101,7 +101,7 @@ export function actionPreview(
       },
     ]);
     targetId = "preview-ladder";
-  } else if (["pick", "sip", "place"].includes(motion.kind)) {
+  } else if (["pick", "sip", "place"].includes(motion.role ?? "")) {
     preview = applyCommands(preview, [
       {
         type: "add",
@@ -120,10 +120,10 @@ export function actionPreview(
   }
   const performer = preview.entities[0];
   performer.clips = [
-    ...(motion.kind === "stand"
+    ...(motion.role === "stand"
       ? [{ id: "preview-sit", motionId: "sit", duration: 3, targetId }]
       : []),
-    ...(motion.kind === "place"
+    ...(motion.role === "place"
       ? [{ id: "preview-pick", motionId: "pick", duration: 2, targetId }]
       : []),
     {
@@ -131,7 +131,7 @@ export function actionPreview(
       motionId: performedMotion.id,
       duration: motion.duration,
       ...(motion.kind === "imported" ? { playbackRate: 1 } : {}),
-      targetId: motion.kind === "stand" ? undefined : targetId,
+      targetId: motion.role === "stand" ? undefined : targetId,
       transition: "cut",
     },
   ];

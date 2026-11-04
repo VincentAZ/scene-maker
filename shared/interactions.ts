@@ -33,7 +33,7 @@ export function interactionSessions(
     let start = 0,
       held: HoldSession | null = null;
     for (const [index, clip] of actor.clips.entries()) {
-      const kind = motions.find((m) => m.id === clip.motionId)?.kind;
+      const kind = motions.find((m) => m.id === clip.motionId)?.role;
       const end = start + clip.duration;
       if (clip.targetId && kind === "climb") {
         if (held)

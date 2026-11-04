@@ -603,7 +603,7 @@ export function PathEditor({
               value={locomotionId}
               onChange={(event) => setLocomotionId(event.target.value)}
             >
-              <optgroup label="Authored and imported gaits">
+              <optgroup label="Recorded, stylized and imported gaits">
                 {locomotions
                   .filter((candidate) => candidate.kind === "imported")
                   .map((candidate) => (
@@ -615,17 +615,10 @@ export function PathEditor({
                       {candidate.sourceAssetId === actor.assetId
                         ? " · original character"
                         : candidate.sourceAssetId === motionSource.id
-                          ? " · authored"
-                          : " · imported"}
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="Studio procedural gaits">
-                {locomotions
-                  .filter((candidate) => candidate.kind !== "imported")
-                  .map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
+                          ? " · stylized"
+                          : candidate.sourceAssetId?.startsWith("cmu-capture-")
+                            ? " · recorded"
+                            : " · imported"}
                     </option>
                   ))}
               </optgroup>
@@ -702,19 +695,6 @@ export function PathEditor({
             </p>
           )}
         <div className="path-map-actions">
-          {locomotion.kind !== "imported" && (
-            <label className="path-smooth">
-              <input
-                type="checkbox"
-                checked={backward}
-                onChange={(event) => {
-                  setBackward(event.target.checked);
-                  setEndHeading(undefined);
-                }}
-              />{" "}
-              Move backward
-            </label>
-          )}
           <label className="path-smooth">
             <input
               type="checkbox"

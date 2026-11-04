@@ -172,6 +172,8 @@ export function retimeDialogueAfterChange(
         id,
         motionId: "idle",
         duration: Math.max(0.2, needed / count),
+        // The recorded idle plays at its own speed.
+        playbackRate: padding[i]?.playbackRate ?? 1,
         transition: padding[i]?.transition ?? ("smooth" as const),
       };
     });

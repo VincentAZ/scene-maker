@@ -20,14 +20,18 @@ export function measureSeatBody(rig: T.Group): SeatBody | undefined {
     !contacts.rightFoot
   )
     return;
+  // Horizontal positions are measured from the hips: a raw capture skeleton
+  // stands where it stood in the capture room, away from its own origin.
+  const centre = rig.worldToLocal(bones.hips.getWorldPosition(new T.Vector3()));
+  centre.y = 0;
   const local = (bone: T.Object3D) =>
-    rig.worldToLocal(bone.getWorldPosition(new T.Vector3()));
+    rig.worldToLocal(bone.getWorldPosition(new T.Vector3())).sub(centre);
   const hip = local(bones.hips),
     upper = local(bones.rightLeg),
     lower = local(bones.rightShin),
-    foot = rig.worldToLocal(
-      bones.rightShin.localToWorld(contacts.rightFoot.clone()),
-    );
+    foot = rig
+      .worldToLocal(bones.rightShin.localToWorld(contacts.rightFoot.clone()))
+      .sub(centre);
   let skinBottom = hip.y;
   const soleVertices: Record<
     "left" | "right",
@@ -92,6 +96,7 @@ export function measureSeatBody(rig: T.Group): SeatBody | undefined {
     feet: {
       left: rig
         .worldToLocal(bones.leftShin.localToWorld(contacts.leftFoot!.clone()))
+        .sub(centre)
         .toArray(),
       right: foot.toArray(),
     },

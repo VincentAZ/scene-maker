@@ -132,14 +132,23 @@ export function planSeat(
     warning,
   };
 }
-export function sampleSeat(plan: SeatPlan, progress: number, standing = false) {
+export function sampleSeat(
+  plan: SeatPlan,
+  progress: number,
+  standing = false,
+  timing?: [number, number],
+) {
   const u = Math.max(0, Math.min(1, progress));
-  const amount = standing ? 1 - ease(u / 0.85) : ease((u - 0.3) / 0.6);
-  const approach = ease(u / 0.3);
+  // A recording lowers (or rises) between its own measured fractions.
+  const [from, to] = timing ?? (standing ? [0, 0.85] : [0.3, 0.9]);
+  const amount = standing
+    ? 1 - ease((u - from) / (to - from))
+    : ease((u - from) / (to - from));
+  const approach = ease(u / Math.max(from, 0.05));
   const root = plan.warning
     ? ([...plan.from] as Point)
     : standing
-      ? mixPoint(plan.centre, plan.front, ease(u / 0.85))
+      ? mixPoint(plan.centre, plan.front, ease((u - from) / (to - from)))
       : mixPoint(
           mixPoint(plan.from, plan.front, approach),
           plan.centre,
@@ -175,7 +184,7 @@ export function validateSeating(
     let time = 0,
       occupied: (typeof uses)[number] | undefined;
     for (const clip of actor.clips) {
-      const kind = motions.find((m) => m.id === clip.motionId)?.kind;
+      const kind = motions.find((m) => m.id === clip.motionId)?.role;
       if (kind === "sit" && clip.targetId) {
         if (occupied)
           throw Error(

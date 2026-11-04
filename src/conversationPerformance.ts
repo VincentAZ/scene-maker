@@ -14,7 +14,8 @@ const yaw = (q: T.Quaternion) => {
 };
 const clamp = (n: number, limit: number) =>
   Math.max(-limit, Math.min(limit, n));
-/** Evaluated from absolute scene time, including export and reverse scrubbing. */
+/** Attention toward the speaker, evaluated from absolute scene time, including
+ * export and reverse scrubbing. */
 export function applyConversationPerformance(
   scene: Scene,
   time: number,
@@ -61,13 +62,10 @@ export function applyConversationPerformance(
         ? actor.clips.at(-1)
         : undefined);
     const motion = motions.find((m) => m.id === effective?.motionId);
-    // The source owns its entire performance, including routes and the final
-    // held frame. Dialogue must not replace captured detail with synthetic noise.
-    if (motion?.kind === "imported" || motion?.kind === "custom") continue;
-    const conversational =
-      !motion || ["idle", "talk", "wave", "bow"].includes(motion.kind);
-    const walking = !!motion?.path;
-    if (!conversational && !walking) continue;
+    // Every action is a recording, which owns its entire performance,
+    // including routes and the final held frame. Only an actor with no action
+    // turns its head and torso toward the speaker; no motion is synthesised.
+    if (motion) continue;
     const bones = object.userData.bones as Record<string, T.Bone> | undefined;
     if (!bones) continue;
     const others = cast
@@ -103,58 +101,5 @@ export function applyConversationPerformance(
     };
     aim("spine", clamp(localLook, 0.2));
     aim("head", localLook);
-    const own = timed.find(
-      (t) => t.line === speaking && t.line.characterId === actor.id,
-    );
-    // Listening motion keeps one absolute phase across turns. Restarting its
-    // clock when this actor starts/stops speaking snaps the head and torso.
-    const listeningElapsed = time - first;
-    const elapsed = own ? time - own.start : listeningElapsed;
-    const envelope = own
-      ? ease(elapsed / 0.25) * ease((own.end - time) / 0.3)
-      : 1;
-    if (bones.head) {
-      rotateHumanoidJoint(
-        object,
-        "head",
-        new T.Quaternion().setFromAxisAngle(
-          new T.Vector3(1, 0, 0),
-          T.MathUtils.lerp(
-            Math.sin(listeningElapsed * 2.1 + index) * 0.045,
-            Math.sin(elapsed * Math.PI * 4.5) * 0.035,
-            own ? envelope : 0,
-          ) * weight,
-        ),
-      );
-    }
-    if (bones.spine)
-      rotateHumanoidJoint(
-        object,
-        "spine",
-        new T.Quaternion().setFromAxisAngle(
-          new T.Vector3(0, 0, 1),
-          Math.sin(listeningElapsed * 1.1 + index) * 0.018 * weight,
-        ),
-      );
-    if (
-      own &&
-      ["talk", "idle", "walk", "run"].includes(motion?.kind || "idle")
-    ) {
-      const emphasis =
-        (0.5 + 0.5 * Math.sin(elapsed * 3.1 + index)) * envelope * weight;
-      for (const [name, amount] of [
-        ["rightArm", -0.13],
-        ["rightForearm", -0.25],
-        ["leftForearm", -0.12],
-      ] as const)
-        rotateHumanoidJoint(
-          object,
-          name,
-          new T.Quaternion().setFromAxisAngle(
-            new T.Vector3(1, 0, 0),
-            amount * emphasis,
-          ),
-        );
-    }
   }
 }

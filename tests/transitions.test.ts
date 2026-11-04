@@ -21,6 +21,8 @@ import { configureRigContacts } from "../src/ik";
 import { applyInteractions } from "../src/interactions";
 import { BAKE_SAMPLE_FPS, bakeAnimation } from "../src/bakeAnimation";
 import { exportSnapshot } from "../src/exportSnapshot";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 const point = (object: T.Object3D) => object.getWorldPosition(new T.Vector3());
 const rotation = (object: T.Object3D) =>
@@ -33,31 +35,23 @@ function fixture() {
   actor.position = [0, 0, 0];
   actor.rotation = 0;
   actor.scale = 1;
+  // The first second of the recorded Wave hello raises the right arm; the
+  // recorded Walk follows it with a smooth transition.
   actor.clips = [
-    { id: "gesture", motionId: "gesture", duration: 1 },
-    { id: "walk", motionId: "walk", duration: 2, transition: "smooth" },
+    { id: "gesture", motionId: "wave", duration: 1, playbackRate: 1 },
+    {
+      id: "walk",
+      motionId: "walk",
+      duration: 2,
+      playbackRate: 1,
+      transition: "smooth",
+    },
   ];
   scene.entities = [actor];
-  scene.customMotions.push({
-    id: "gesture",
-    name: "Raised greeting",
-    kind: "custom",
-    duration: 1,
-    distance: 0,
-    poses: [
-      {
-        at: 0,
-        root: [0, 0, 0],
-        rotations: { rightArm: [0, 0, -1.4], rightForearm: [-0.6, 0, 0] },
-      },
-      {
-        at: 1,
-        root: [0, 0, 2],
-        rotations: { rightArm: [0, 0, -1.4], rightForearm: [-0.6, 0, 0] },
-      },
-    ],
-  });
-  const group = createCharacter(characters[0]);
+  const group = withRecordedSources(
+    createCharacter(characters[0]),
+    recordedSourceMap,
+  );
   const sample = (time: number, e: Entity = actor, s: Scene = scene) => {
     applyAnimatedEntityPose(group, e, s, time);
     group.updateWorldMatrix(true, true);
@@ -73,7 +67,10 @@ function fixture() {
 function nativeFixture() {
   const f = fixture(),
     group = new T.Group(),
-    body = createCharacter(characters[0]);
+    body = withRecordedSources(
+      createCharacter(characters[0]),
+      recordedSourceMap,
+    );
   group.add(body);
   const clip = new T.AnimationClip("Turning original", 2, [
     new T.VectorKeyframeTrack(
@@ -100,6 +97,8 @@ function nativeFixture() {
     ),
   ]);
   configureImportedRig(group, body, [clip]);
+  // The recorded Walk that follows plays from its source skeleton.
+  withRecordedSources(group, recordedSourceMap);
   f.scene.customMotions.push({
     id: "original",
     name: "Turning original",
@@ -112,7 +111,13 @@ function nativeFixture() {
   });
   f.actor.clips = [
     { id: "a", motionId: "original", duration: 2 },
-    { id: "b", motionId: "walk", duration: 2, transition: "smooth" },
+    {
+      id: "b",
+      motionId: "walk",
+      duration: 2,
+      playbackRate: 1,
+      transition: "smooth",
+    },
   ];
   const sample = (time: number) => {
     applyAnimatedEntityPose(group, f.actor, f.scene, time);
@@ -404,7 +409,18 @@ describe("action transitions and endings", () => {
       initialGap,
     );
     expect(f.group.position.distanceTo(travel)).toBeLessThan(1e-8);
-    expect(f.group.position.z).toBeCloseTo(2.125, 7);
+    // Timeline travel continues from where the wave ended, by exactly the
+    // recorded walk's own first 0.125 s, not twice.
+    f.sample(1, cut);
+    const boundary = f.group.position.clone();
+    const walkOnly = { ...cut, clips: cut.clips.slice(1) };
+    f.sample(0, walkOnly);
+    const walkStart = f.group.position.clone();
+    f.sample(0.125, walkOnly);
+    const walked = f.group.position.distanceTo(walkStart);
+    expect(walked).toBeGreaterThan(0.05);
+    expect(travel.distanceTo(boundary)).toBeCloseTo(walked, 6);
+    f.sample(1.125);
     f.sample(1.25);
     const settled = rotation(f.bones.rightArm);
     f.sample(1.25, cut);
@@ -424,11 +440,34 @@ describe("action transitions and endings", () => {
     expect(point(f.bones.hips).distanceTo(before)).toBeLessThan(1e-5);
     expect(rotation(f.bones.rightArm).angleTo(arm)).toBeLessThan(1e-6);
     f.sample(2.125);
-    expect(point(f.bones.hips).x).toBeCloseTo(-1.875, 6);
-    expect(point(f.bones.hips).z).toBeCloseTo(0, 6);
-    f.sample(4);
-    expect(f.group.position.length()).toBeLessThan(1e-5);
-    expect(f.group.rotation.y).toBeCloseTo(Math.PI / 2, 6);
+    // The recorded Walk continues from where the original take ended
+    // (x = -2) in its final facing (+X): the same travel as that Walk
+    // performed alone from there.
+    const alone = (time: number) => {
+      applyAnimatedEntityPose(
+        f.group,
+        {
+          ...f.actor,
+          position: [-2, 0, 0],
+          rotation: Math.PI / 2,
+          clips: [{ ...f.actor.clips[1], transition: "cut" }],
+        },
+        f.scene,
+        time,
+      );
+      return {
+        position: f.group.position.clone(),
+        heading: f.group.rotation.y,
+      };
+    };
+    for (const time of [2.125, 3, 4]) {
+      const expected = alone(time - 2);
+      f.sample(time);
+      expect(f.group.position.distanceTo(expected.position)).toBeLessThan(1e-6);
+      expect(f.group.rotation.y).toBeCloseTo(expected.heading, 6);
+    }
+    expect(f.group.position.x).toBeGreaterThan(-1);
+    expect(Math.abs(f.group.position.z)).toBeLessThan(0.5);
   });
   it("keeps exported subframes continuous when native parent motion transfers to the studio root", () => {
     const f = nativeFixture();
@@ -548,18 +587,22 @@ describe("action transitions and endings", () => {
       { id: "a", motionId: "wave", duration: 2, transition: "smooth" },
       { id: "b", motionId: "idle", duration: 2, transition: "smooth" },
     ];
-    expect(transitionAt(f.actor, f.scene, 2.1)).toBeUndefined();
+    // Prop actions blend like any recording; the carried cup, not the
+    // blend, decides where the hand is.
+    expect(transitionAt(f.actor, f.scene, 2.1)).toMatchObject({
+      boundary: 2,
+    });
     const prop = createProp("cup", cup.color),
       objects = new Map([
         [f.actor.id, f.group],
         [cup.id, prop],
       ]);
     configureRigContacts(f.group);
-    for (const time of [4, 4.125, 4.25, 1, 4.125]) {
+    for (const time of [2.1, 4, 4.125, 4.25, 1, 2.1, 4.125]) {
       for (const actor of f.scene.entities)
         applyAnimatedEntityPose(objects.get(actor.id)!, actor, f.scene, time);
       expect(applyInteractions(f.scene, time, objects)).toEqual([]);
-      if (time >= 4) {
+      if (time >= 2) {
         const hand = f.bones.rightForearm.localToWorld(
           f.group.userData.contacts.hand.clone(),
         );

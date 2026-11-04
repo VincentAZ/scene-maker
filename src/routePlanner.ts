@@ -24,6 +24,7 @@ import {
 } from "../shared/path";
 import type { Point } from "../shared/ladder";
 import { applyAnimatedEntityPose } from "./world";
+import { entityPose } from "../shared/animation";
 import { reachableGrip } from "./interactions";
 import { snapshotCollider } from "./collision";
 import {
@@ -144,8 +145,14 @@ export function routeContext(
     );
     object.updateMatrixWorld(true);
   }
+  // The route starts on the action's own floor: a recorded body bobs a few
+  // millimetres around it, which must not turn the floor into an obstacle.
   const frame: PathFrame = {
-    position: rig.position.toArray(),
+    position: [
+      rig.position.x,
+      entityPose(prefix, scene, time).root[1],
+      rig.position.z,
+    ],
     heading: rig.rotation.y,
     scale: actor.scale,
   };

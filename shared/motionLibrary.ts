@@ -1,4 +1,4 @@
-import type { Asset, Motion } from "./scene";
+import type { ActionRole, Asset, Motion } from "./scene";
 import catalogue from "./motion-catalogue.json";
 import durations from "./motion-durations.json";
 import capturedCatalogue from "./captured-motion-catalogue.json";
@@ -25,9 +25,19 @@ export const capturedMotionSources: Asset[] = capturedCatalogue.map(
   }),
 );
 export const motionSources = [motionSource, ...capturedMotionSources];
-export const capturedMotions: Motion[] = capturedCatalogue.map(
+type CatalogueEntry = (typeof capturedCatalogue)[number] & {
+  role?: ActionRole;
+  category?: string;
+  timing?: number[];
+  travels?: boolean;
+};
+const catalogueEntries = capturedCatalogue as CatalogueEntry[];
+/** A recording serving a role (Walk, Sit down, Take a sip…) keeps that
+ * role's long-standing id, so scenes, dialogue and the assistant address it
+ * exactly as they addressed the studio action it replaces. */
+export const capturedMotions: Motion[] = catalogueEntries.map(
   (entry, index) => ({
-    id: `captured-${entry.trial.replaceAll("_", "-")}`,
+    id: entry.role ?? `captured-${entry.trial.replaceAll("_", "-")}`,
     name: entry.name,
     kind: "imported",
     duration: entry.duration,
@@ -35,8 +45,41 @@ export const capturedMotions: Motion[] = capturedCatalogue.map(
     animationName: entry.trial,
     distance: 0,
     poses: [],
+    ...(entry.role ? { role: entry.role } : {}),
   }),
 );
+/** Ids these recordings had before they served a role. */
+export const capturedRoleAliases: Record<string, string> = Object.fromEntries(
+  catalogueEntries
+    .filter((entry) => entry.role)
+    .map((entry) => [
+      `captured-${entry.trial.replaceAll("_", "-")}`,
+      entry.role!,
+    ]),
+);
+export const roleMotion = (role: ActionRole) =>
+  capturedMotions.find((motion) => motion.role === role)!;
+/** When a recorded sit lowers onto, or a stand rises from, the seat, as
+ * fractions of the take measured from its hips. Other recordings use the
+ * seat's default easing. */
+export function seatTiming(motion: Motion): [number, number] | undefined {
+  const entry = catalogueEntries.find(
+    (item) => item.trial === motion.animationName,
+  );
+  return entry?.timing?.length === 2
+    ? [entry.timing[0], entry.timing[1]]
+    : undefined;
+}
+/** A library recording performed in place (it does not travel). */
+export const recordedInPlace = (motion: Motion) => {
+  const entry = catalogueEntries.find(
+    (item) =>
+      `cmu-capture-${item.trial.replaceAll("_", "-")}` === motion.sourceAssetId,
+  );
+  return !!entry && !entry.travels && !motion.path;
+};
+/** The role of a recorded action, if it has one. */
+export const motionRole = (motion: Motion | undefined) => motion?.role;
 /** Recorded deceleration/standing finishes are one-shot performances, not
  * repeating gaits. Match source identity so renamed copies retain that role. */
 export const recordedArrivals = capturedMotions.filter(
@@ -138,58 +181,52 @@ export const libraryMotions: Motion[] = catalogue.map(
 );
 export const motionCollections = [
   "All",
-  "Movement",
+  "Walking",
+  "Running",
+  "Standing",
+  "Talking",
+  "Gestures",
+  "Emotions",
+  "Sitting",
+  "Objects",
   "Everyday",
-  "Acting",
-  "Stunts",
-  "Interactions",
+  "Climbing",
+  "Dance",
+  "Sports",
+  "Stylized",
   "My actions",
 ];
+/** Where an action comes from, for the library's source filter. */
+export type MotionSource = "recorded" | "stylized" | "mine";
 export function motionDetails(motion: Motion) {
   const capture = capturedMotions.findIndex((m) => m.id === motion.id);
-  if (capture >= 0)
+  if (capture >= 0) {
+    const entry = catalogueEntries[capture];
     return {
-      collection: "Movement",
+      collection: entry.category ?? "Walking",
       description:
-        capturedCatalogue[capture].description +
-        " Body motion capture; no finger or facial capture.",
+        entry.description +
+        " Recorded motion capture; no finger or facial capture.",
+      source: "recorded" as MotionSource,
       authored: false,
       captured: true,
     };
+  }
   const index = libraryMotions.findIndex((m) => m.id === motion.id);
   return index >= 0
     ? {
-        collection: catalogue[index][2],
+        collection: "Stylized",
         description: catalogue[index][3],
+        source: "stylized" as MotionSource,
         authored: true,
         captured: false,
       }
     : {
-        collection: motion.path
-          ? "Movement"
-          : ["walk", "run", "jump", "crawl"].includes(motion.kind)
-            ? "Movement"
-            : ["pick", "place", "sip", "climb", "sit", "stand"].includes(
-                  motion.kind,
-                )
-              ? "Interactions"
-              : ["wave", "dance", "talk", "bow"].includes(motion.kind)
-                ? "Acting"
-                : ["idle"].includes(motion.kind)
-                  ? "Everyday"
-                  : "My actions",
-        description:
-          motion.kind === "sit"
-            ? "Sit on a chosen chair; keep seated through gestures."
-            : motion.kind === "stand"
-              ? "Rise from your seat before the next full-body action."
-              : motion.path
-                ? "Follow your drawn route."
-                : motion.kind === "imported"
-                  ? "A motion from your imported character."
-                  : motion.kind === "custom"
-                    ? "An action created for your scene."
-                    : "A studio action, ready to direct.",
+        collection: "My actions",
+        description: motion.path
+          ? "Follow your drawn route."
+          : "A motion from your imported files.",
+        source: "mine" as MotionSource,
         authored: false,
         captured: false,
       };

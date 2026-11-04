@@ -1,10 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { appendSpeech, dialogueTiming } from "../shared/conversation";
 import { applyCommands, starterScene, type Scene } from "../shared/scene";
+import { capturedRouteGaits } from "../shared/motionLibrary";
 import {
   runResolvedConversation,
   type ResolvedConversationPorts,
 } from "../src/resolvedConversation";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 function deferred() {
   let resolve!: () => void;
@@ -171,71 +174,82 @@ it("checks batch capacity and rejects an old multi-turn response", async () => {
   expect(f.ports.getScene().transcript).toEqual([]);
 });
 
-it("passes an actual geometry detour to the next turn and schedules its caption after arrival", async () => {
-  const { prepareAutomaticRoutes } = await import("../src/automaticRoutes");
-  const { createCharacter, createProp } = await import("../src/world");
-  const { characters } = await import("../shared/scene");
-  const f = fixture();
-  f.setScene(
-    applyCommands(starterScene(), [
-      { type: "clear" },
-      { type: "add", id: "a", assetId: "mila", position: [-3, 0, 0] },
-      { type: "update", id: "a", changes: { rotation: Math.PI / 2 } },
-      { type: "add", id: "b", assetId: "leo", position: [4, 0, -4] },
-      { type: "add", id: "crate", assetId: "crate", position: [0, 0, 0] },
-      { type: "scene", changes: { environment: "studio" } },
-      {
-        type: "createMotion",
-        motion: {
-          id: "route",
-          name: "Across the scene",
-          kind: "walk",
-          duration: 4,
-          distance: 0,
-          poses: [],
-          path: {
-            points: [
-              [0, 0, 0],
-              [0, 0, 6],
-            ],
-            smooth: false,
+// Planning the detour samples the recorded stride on both rigs (~5 s).
+it(
+  "passes an actual geometry detour to the next turn and schedules its caption after arrival",
+  { timeout: 30000 },
+  async () => {
+    const { prepareAutomaticRoutes } = await import("../src/automaticRoutes");
+    const { createCharacter, createProp } = await import("../src/world");
+    const { characters } = await import("../shared/scene");
+    const f = fixture();
+    f.setScene(
+      applyCommands(starterScene(), [
+        { type: "clear" },
+        { type: "add", id: "a", assetId: "mila", position: [-3, 0, 0] },
+        { type: "update", id: "a", changes: { rotation: Math.PI / 2 } },
+        { type: "add", id: "b", assetId: "leo", position: [4, 0, -4] },
+        { type: "add", id: "crate", assetId: "crate", position: [0, 0, 0] },
+        { type: "scene", changes: { environment: "studio" } },
+        {
+          type: "createMotion",
+          // A straight route on the recorded walking stride, through the crate.
+          motion: {
+            ...capturedRouteGaits[0],
+            id: "route",
+            name: "Across the scene",
+            duration: 4,
+            path: {
+              points: [
+                [0, 0, 0],
+                [0, 0, 6],
+              ],
+              smooth: false,
+              sourceRange: { ...capturedRouteGaits[0].path!.sourceRange! },
+            },
           },
         },
-      },
-    ]),
-  );
-  const objects = new Map([
-    ["a", createCharacter(characters[0])],
-    ["b", createCharacter(characters[1])],
-    ["crate", createProp("crate", "#aa8844")],
-  ]);
-  f.ports.request = async (scene) => {
-    f.requested.push(structuredClone(scene));
-    return stream(
-      appendSpeech(scene, f.requested.length === 1 ? "a" : "b", {
-        dialogue: "Walk over here.",
-        performance: [
-          {
-            motionId: f.requested.length === 1 ? "route" : "talk",
-            duration: 4,
-          },
-        ],
-      }),
+      ]),
     );
-  };
-  f.ports.prepare = async (scene) => {
-    const result = prepareAutomaticRoutes(scene, objects);
-    expect(result.issues).toEqual([]);
-    f.setScene(result.scene);
-  };
-  await runResolvedConversation(2, f.ports, f.controller.signal);
-  expect(f.requested[1].entities[0].clips[0].duration).toBeGreaterThan(4);
-  expect(
-    f.requested[1].customMotions.find((m) => m.id === "route")!.path!.points
-      .length,
-  ).toBeGreaterThan(2);
-  const final = f.ports.getScene(),
-    first = dialogueTiming(final, final.transcript[0])!,
-    second = dialogueTiming(final, final.transcript[1])!;
-  expect(second.start).toBeGreaterThanOrEqual(first.end);
-});
+    const objects = new Map([
+      [
+        "a",
+        withRecordedSources(createCharacter(characters[0]), recordedSourceMap),
+      ],
+      [
+        "b",
+        withRecordedSources(createCharacter(characters[1]), recordedSourceMap),
+      ],
+      ["crate", createProp("crate", "#aa8844")],
+    ]);
+    f.ports.request = async (scene) => {
+      f.requested.push(structuredClone(scene));
+      return stream(
+        appendSpeech(scene, f.requested.length === 1 ? "a" : "b", {
+          dialogue: "Walk over here.",
+          performance: [
+            {
+              motionId: f.requested.length === 1 ? "route" : "talk",
+              duration: 4,
+            },
+          ],
+        }),
+      );
+    };
+    f.ports.prepare = async (scene) => {
+      const result = prepareAutomaticRoutes(scene, objects);
+      expect(result.issues).toEqual([]);
+      f.setScene(result.scene);
+    };
+    await runResolvedConversation(2, f.ports, f.controller.signal);
+    expect(f.requested[1].entities[0].clips[0].duration).toBeGreaterThan(4);
+    expect(
+      f.requested[1].customMotions.find((m) => m.id === "route")!.path!.points
+        .length,
+    ).toBeGreaterThan(2);
+    const final = f.ports.getScene(),
+      first = dialogueTiming(final, final.transcript[0])!,
+      second = dialogueTiming(final, final.transcript[1])!;
+    expect(second.start).toBeGreaterThanOrEqual(first.end);
+  },
+);

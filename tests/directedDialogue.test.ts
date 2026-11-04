@@ -16,6 +16,7 @@ import {
   validateScene,
 } from "../shared/scene";
 import { validatePlan } from "../shared/studio";
+import { capturedRouteGaits, roleMotion } from "../shared/motionLibrary";
 import {
   assistant,
   conversation,
@@ -62,33 +63,35 @@ describe("directed dialogue performances", () => {
         { motionId: "place", targetId: "cup" },
       ],
     });
-    expect(first.entities[0].clips.map((c) => c.duration)).toEqual([
-      3, 2, 3, 2,
+    // Each action keeps its recording's length.
+    const lengths = (["sit", "pick", "sip", "place"] as const).map(
+      (role) => roleMotion(role).duration,
+    );
+    expect(first.entities[0].clips.map((c) => c.duration)).toEqual(lengths);
+    expect(lengths.map((n) => Math.round(n * 10) / 10)).toEqual([
+      3, 6.6, 7.6, 5,
     ]);
+    const total = lengths.reduce((sum, n) => sum + n, 0);
     expect(first.transcript[0].clipIds).toHaveLength(4);
-    expect(dialogueTiming(first, first.transcript[0])).toEqual({
-      start: 0,
-      end: 10,
-    });
-    for (const time of [0, 3.5, 6.5, 9.9])
+    const timing = dialogueTiming(first, first.transcript[0])!;
+    expect(timing.start).toBe(0);
+    expect(timing.end).toBeCloseTo(total, 6);
+    for (const time of [0, 3.5, 10, 17, total - 0.1])
       expect(dialogueAt(first, time)[0].name).toBe("Mila");
     const next = appendSpeech(first, "leo", {
       dialogue: "I am listening.",
       performance: [{ motionId: "wave", duration: 3 }],
     });
-    expect(dialogueTiming(next, next.transcript[1])).toEqual({
-      start: 10,
-      end: 13,
-    });
-    expect(next.entities[1].clips[0]).toMatchObject({
-      motionId: "idle",
-      duration: 10,
-    });
+    const reply = dialogueTiming(next, next.transcript[1])!;
+    expect(reply.start).toBeCloseTo(total, 6);
+    expect(reply.end).toBeCloseTo(total + 3, 6);
+    expect(next.entities[1].clips[0].motionId).toBe("idle");
+    expect(next.entities[1].clips[0].duration).toBeCloseTo(total, 6);
     expect(dialogueSubtitles(next)).toContain(
-      "00:00:00,000 --> 00:00:10,000\nMila:",
+      "00:00:00,000 --> 00:00:22,200\nMila:",
     );
     expect(dialogueSubtitles(next)).toContain(
-      "00:00:10,000 --> 00:00:13,000\nLeo:",
+      "00:00:22,200 --> 00:00:25,200\nLeo:",
     );
   });
   it("keeps chosen action timing and adds a linked reading hold", () => {
@@ -343,7 +346,11 @@ describe("directed dialogue performances", () => {
     expect(prompt).toContain("seat");
     expect(prompt).toContain("Athletic jump");
     expect(prompt).toContain("I will sit and take a sip.");
-    expect(dialogueTiming(result, result.transcript[1])!.start).toBe(6);
+    // Leo answers once Mila's recorded Sit down and Take a sip finish.
+    expect(dialogueTiming(result, result.transcript[1])!.start).toBeCloseTo(
+      roleMotion("sit").duration + roleMotion("sip").duration,
+      6,
+    );
   });
   it("retains completed model turns when the next physical performance is invalid", async () => {
     const scene = fixture();
@@ -370,19 +377,20 @@ describe("directed dialogue performances", () => {
   });
 
   it("routes the first travelling action of a performance line and leaves contact actions in place", () => {
+    // A drawn route plays the recorded walking stride.
+    const stride = capturedRouteGaits[0];
     const route = {
+      ...stride,
       id: "route",
       name: "Over here",
-      kind: "walk" as const,
       duration: 30,
-      distance: 0,
-      poses: [],
       path: {
         points: [
           [0, 0, 0],
           [0, 0, 1],
         ] as [number, number, number][],
         smooth: true,
+        sourceRange: { ...stride.path!.sourceRange! },
       },
     };
     const spoken = appendSpeech(fixture(), "mila", {
@@ -400,7 +408,11 @@ describe("directed dialogue performances", () => {
     const clips = routed.entities[0].clips;
     expect(clips[0]).toEqual(pick);
     const motion = allMotions(routed).find((m) => m.id === clips[1].motionId)!;
-    expect(motion.kind).toBe("walk");
+    expect(motion).toMatchObject({
+      kind: "imported",
+      sourceAssetId: stride.sourceAssetId,
+      animationName: stride.animationName,
+    });
     expect(motion.path).toBeTruthy();
     expect(clips[1].duration).toBe(3);
     expect(dialogueTiming(routed, routed.transcript[0])).toEqual(

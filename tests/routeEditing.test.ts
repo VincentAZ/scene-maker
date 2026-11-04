@@ -15,6 +15,7 @@ import {
 } from "../shared/conversation";
 import { savePathCommands } from "../shared/path";
 import { pathActionClips } from "../shared/path";
+import { capturedRouteGaits } from "../shared/motionLibrary";
 
 function fixture() {
   return applyCommands(starterScene(), [
@@ -43,12 +44,23 @@ const route = (): Motion => ({
 });
 const roundTrip = (scene: Scene) =>
   validateScene(JSON.parse(JSON.stringify(scene)));
+/** A legacy formula-gait route, as older callers and saved scenes send it. */
 const procedural = (motion: Motion, kind: "walk" | "run"): Motion => ({
   ...motion,
   kind,
   sourceAssetId: undefined,
   animationName: undefined,
 });
+/** Legacy formula gaits migrate onto the recorded stride of the same pace. */
+const recordedStride = (kind: "walk" | "run") => {
+  const stride = capturedRouteGaits[kind === "run" ? 1 : 0];
+  return {
+    kind: "imported",
+    sourceAssetId: stride.sourceAssetId,
+    animationName: stride.animationName,
+    path: { sourceRange: stride.path!.sourceRange },
+  };
+};
 
 it("persists source-to-path correspondence and rejects incomplete or reversed anchors", () => {
   const motion = route();
@@ -294,7 +306,7 @@ describe("imported dialogue routes", () => {
   });
 
   it.each(["walk", "run"] as const)(
-    "switches a dialogue route to %s without imported timing fields",
+    "switches a dialogue route to a legacy procedural %s on the recorded stride at its own speed",
     (kind) => {
       const spoken = speakingScene();
       const clipId = spoken.transcript[0].clipId!;
@@ -308,13 +320,16 @@ describe("imported dialogue routes", () => {
         clipId,
         procedural(old, kind),
       );
-      expect(edited.entities[0].clips[0].playbackRate).toBeUndefined();
+      // The previous take's speed and fit notice do not carry over to the
+      // newly chosen recording, which plays at its captured speed.
+      expect(edited.entities[0].clips[0].playbackRate).toBe(1);
       expect(edited.entities[0].clips[0].legacyFit).toBeUndefined();
       expect(edited.customMotions[0]).toMatchObject({
         id: old.id,
-        kind,
+        ...recordedStride(kind),
         duration: 5,
       });
+      expect(edited.customMotions[0].path!.points).toEqual(old.path!.points);
       expect(dialogueTiming(edited, edited.transcript[0])).toEqual({
         start: 0,
         end: 5,
@@ -383,7 +398,7 @@ describe("route timing normalization", () => {
   });
 
   it.each([false, true])(
-    "clears imported timing when saving procedural routes (shared motion: %s)",
+    "resets imported timing when saving legacy procedural routes onto the recorded stride (shared motion: %s)",
     (shared) => {
       const scene = fixture();
       let before = applyCommands(
@@ -409,16 +424,19 @@ describe("route timing normalization", () => {
         );
         const changed = edited.entities[0].clips[0];
         expect(changed).toMatchObject({ id: clip.id, duration: 9 });
-        expect(changed.playbackRate).toBeUndefined();
+        expect(changed.playbackRate).toBe(1);
         expect(changed.legacyFit).toBeUndefined();
         expect(changed.motionId === route().id).toBe(!shared);
+        expect(
+          edited.customMotions.find((m) => m.id === changed.motionId),
+        ).toMatchObject({ ...recordedStride(kind), duration: 9 });
         expect(edited.entities[1]).toEqual(before.entities[1]);
         expect(roundTrip(edited)).toEqual(edited);
       }
     },
   );
 
-  it("clears reference timing for a standalone motion kind edit and for old clip-update callers", () => {
+  it("resets reference timing for a standalone legacy kind edit and for old clip-update callers", () => {
     const scene = fixture();
     const before = applyCommands(
       scene,
@@ -430,7 +448,8 @@ describe("route timing normalization", () => {
       motion: procedural(route(), "walk"),
     };
     const edited = applyCommands(before, [command]);
-    expect(edited.entities[0].clips[0].playbackRate).toBeUndefined();
+    expect(edited.entities[0].clips[0].playbackRate).toBe(1);
+    expect(edited.customMotions[0]).toMatchObject(recordedStride("walk"));
     const updated = applyCommands(before, [
       command,
       {
@@ -441,7 +460,7 @@ describe("route timing normalization", () => {
         },
       },
     ]);
-    expect(updated.entities[0].clips[0].playbackRate).toBeUndefined();
+    expect(updated.entities[0].clips[0].playbackRate).toBe(1);
     expect(updated.entities[0].clips[0].legacyFit).toBeUndefined();
   });
 
@@ -466,9 +485,10 @@ describe("route timing normalization", () => {
       [fresh, 1],
       [edited, 0.75],
     ] as const) {
+      // The waypoint wave is a recorded take played at its captured speed.
       expect(result.entities[0].clips.map((c) => c.playbackRate)).toEqual([
         rate,
-        undefined,
+        1,
         rate,
       ]);
       expect(

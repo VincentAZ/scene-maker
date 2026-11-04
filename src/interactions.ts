@@ -13,6 +13,7 @@ import {
 import { applyAnimatedEntityPose } from "./world";
 import { configureRigContacts, solveLimb, type RigContacts } from "./ik";
 import { applyClimbContacts } from "./climbing";
+import { humanoidJointOrientation } from "./rig";
 const smooth = (n: number) => {
   const t = Math.min(1, Math.max(0, n));
   return t * t * (3 - 2 * t);
@@ -151,6 +152,19 @@ export function reachableGrip(rig: T.Group, actor: Entity, goal: T.Vector3) {
     handTarget(rig, actor, goal, contacts).error <= 0.025 * actor.scale
   );
 }
+/** The character's facing taken from its pelvis (yaw only), so poses built
+ * around the body follow the body rather than the root. */
+function bodyFacing(rig: T.Group) {
+  const root = rig.getWorldQuaternion(new T.Quaternion());
+  const pelvis = humanoidJointOrientation(rig, "hips");
+  if (!pelvis) return root;
+  const forward = new T.Vector3(0, 0, 1).applyQuaternion(pelvis);
+  if (Math.hypot(forward.x, forward.z) < 1e-6) return root;
+  return new T.Quaternion().setFromAxisAngle(
+    new T.Vector3(0, 1, 0),
+    Math.atan2(forward.x, forward.z),
+  );
+}
 export function applyInteractions(
   scene: Scene,
   time: number,
@@ -255,9 +269,25 @@ export function applyInteractions(
         message: `Move ${actor.name} back to ${target.name}'s original spot before Put down. The prop is still in hand.`,
       });
     const bones = rig.userData.bones as Record<string, T.Bone>;
-    const heading = rig.getWorldQuaternion(new T.Quaternion());
+    // Face where the body faces: when a recording ends, its own turn moves
+    // onto the root while the blended body continues unchanged.
+    const heading = bodyFacing(rig);
     const restHand = bones.rightForearm.localToWorld(contacts.hand.clone());
-    const carryGrip = rig.localToWorld(new T.Vector3(-0.25, 1.05, 0.26));
+    // A carried prop rides with the body, not the root: recorded hips move,
+    // and one recording stands a little differently on the root than the
+    // next (the blended body is continuous across them; the root is not).
+    const hips = (rig.userData.bones as Record<string, T.Bone> | undefined)
+      ?.hips;
+    const carryGrip =
+      hips && contacts.hipsHeight !== undefined
+        ? hips
+            .getWorldPosition(new T.Vector3())
+            .add(
+              new T.Vector3(-0.25, 1.05 - contacts.hipsHeight, 0.26)
+                .multiplyScalar(rig.getWorldScale(new T.Vector3()).x)
+                .applyQuaternion(heading),
+            )
+        : rig.localToWorld(new T.Vector3(-0.25, 1.05, 0.26));
     const carry = propPoseAtGrip(
       carryGrip,
       grip,

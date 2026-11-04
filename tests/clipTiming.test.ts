@@ -13,11 +13,18 @@ import {
   clipTimingDescription,
   sourceSecondsAt,
 } from "../shared/clipTiming";
+import { capturedRouteGaits } from "../shared/motionLibrary";
 
 function fixture() {
   const scene = starterScene();
+  // A take without a studio role: role recordings (Walk, Wave…) replaced
+  // formula actions, whose saved clips migrate to native speed instead.
   const motion = allMotions(scene).find(
-    (motion) => motion.kind === "imported",
+    (motion) =>
+      motion.kind === "imported" &&
+      !motion.role &&
+      !motion.path &&
+      motion.duration < 10,
   )!;
   const actor = scene.entities[0];
   actor.clips = [];
@@ -195,15 +202,18 @@ describe("persisted imported timing", () => {
         }).success,
       ).toBe(false);
     const { scene, actor } = fixture();
-    expect(() =>
+    // Role actions are recordings now: they take an explicit rate…
+    expect(
       applyCommands(scene, [
-        { type: "chain", id: actor.id, motionId: "walk", playbackRate: 2 },
-      ]),
-    ).toThrow("only for imported");
-    const procedural = applyCommands(scene, [
-      { type: "chain", id: actor.id, motionId: "walk", duration: 2 },
-    ]);
-    expect(procedural.entities[0].clips[0].playbackRate).toBeUndefined();
+        { type: "chain", id: actor.id, motionId: "wave", playbackRate: 2 },
+      ]).entities[0].clips[0].playbackRate,
+    ).toBe(2);
+    // …and a clip saved when Wave was a formula, stretched to its slot,
+    // plays the recording at its own speed rather than a legacy fit.
+    actor.clips = [{ id: "formula", motionId: "wave", duration: 6 }];
+    const migrated = validateScene(scene).entities[0].clips[0];
+    expect(migrated).toMatchObject({ playbackRate: 1, duration: 6 });
+    expect(migrated.legacyFit).toBeUndefined();
   });
 });
 
@@ -260,9 +270,14 @@ it("persists source starts across save/reload and duration-only edits while reje
         },
       ]),
     ).toThrow();
+  // A distance-paced route selects its source range on the path instead.
   expect(() =>
     applyCommands(scene, [
-      { type: "chain", id: actor.id, motionId: "walk", sourceStart: 1 },
+      {
+        type: "createMotion",
+        motion: { ...capturedRouteGaits[0], id: "my-route" },
+      },
+      { type: "chain", id: actor.id, motionId: "my-route", sourceStart: 0.5 },
     ]),
   ).toThrow("source start");
 });

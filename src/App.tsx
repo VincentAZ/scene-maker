@@ -1,5 +1,6 @@
 import { usePlayhead } from "./usePlayhead";
 import { routeActiveDuration } from "../shared/clipTiming";
+import { importedTakeLabel } from "../shared/animation";
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
 import { ChatExportMenu } from "./ChatExportMenu";
@@ -53,7 +54,8 @@ import { AssistantModelMenu } from "./AssistantModelMenu";
 import { productionPackage } from "./productionPackage";
 import { ActionPreview } from "./ActionPreview";
 import { ImportedClipTiming } from "./ImportedClipTiming";
-import { motionCollections, motionDetails } from "../shared/motionLibrary";
+import { motionDetails } from "../shared/motionLibrary";
+import { ActionLibrary } from "./ActionLibrary";
 import { CharacterCreator } from "./CharacterCreator";
 import { characterCollection, libraryEntry } from "../shared/characterLibrary";
 import {
@@ -959,18 +961,18 @@ export default function App() {
       return;
     }
     const ladder =
-      motion.kind === "climb"
+      motion.role === "climb"
         ? nearestLadder(current.entities, allAssets(current), actor)
         : undefined;
-    if (motion.kind === "climb" && !ladder) {
+    if (motion.role === "climb" && !ladder) {
       toast("Add a ladder from Props, then try this action.");
       return;
     }
     const seat =
-      motion.kind === "sit"
+      motion.role === "sit"
         ? nearestSeat(current, allAssets(current), actor)
         : undefined;
-    if (motion.kind === "sit" && !seat) {
+    if (motion.role === "sit" && !seat) {
       toast(
         "Add a chair with a sitting surface from Props, then try this action.",
       );
@@ -1379,8 +1381,6 @@ export default function App() {
     setBusy(true);
     try {
       // Motion capture arrives as an animated armature GLB; VRM as its GLB.
-      // A capture has no body to place: its takes go to Actions for any cast.
-      const capture = /\.bvh$/i.test(file.name);
       file = await importableFile(file);
       const data = new FormData();
       data.append("file", file);
@@ -1388,7 +1388,11 @@ export default function App() {
         url: string;
         name: string;
         animations: { name: string; duration: number }[];
+        hasMesh: boolean;
       }>("/api/import", { method: "POST", body: data });
+      // A capture or animation-only take has no body to place: its takes go
+      // to Actions for any cast.
+      const capture = !result.hasMesh && result.animations.length > 0;
       // Takes are limited to 60 seconds; longer ones are counted in the notice,
       // not dropped silently, and a capture with nothing usable is not imported.
       const tooLong = result.animations.filter((a) => a.duration > 60);
@@ -1415,16 +1419,21 @@ export default function App() {
         skin: "#b98a69",
         body: "masculine",
         description: "Imported from your files.",
+        ...(capture ? { motionOnly: true } : {}),
       };
       execute([
         { type: "createAsset", asset },
         ...result.animations
+          .map((a, index, all) => ({
+            ...a,
+            label: importedTakeLabel(a.name, asset.name, index, all.length),
+          }))
           .filter((a) => a.duration <= 60)
           .map((a) => ({
             type: "createMotion" as const,
             motion: {
               id: uid(),
-              name: a.name.slice(0, 100),
+              name: a.label.slice(0, 100),
               kind: "imported" as const,
               duration: a.duration,
               distance: 0,
@@ -1469,12 +1478,16 @@ export default function App() {
     execute([
       { type: "createAsset", asset },
       ...model.animations
+        .map((a, index, all) => ({
+          ...a,
+          label: importedTakeLabel(a.name, asset.name, index, all.length),
+        }))
         .filter((a) => a.duration <= 60)
         .map((a) => ({
           type: "createMotion" as const,
           motion: {
             id: uid(),
-            name: a.name.slice(0, 100),
+            name: a.label.slice(0, 100),
             kind: "imported" as const,
             duration: a.duration,
             distance: 0,
@@ -1572,6 +1585,7 @@ export default function App() {
     .filter(
       (a) =>
         a.category === tab &&
+        !a.motionOnly &&
         (filter !== "My assets" || privateAssetIds.has(a.id)) &&
         (["All", "My assets"].includes(filter) ||
           (tab === "characters"
@@ -1598,19 +1612,13 @@ export default function App() {
       ? characterFilters
       : tab === "props"
         ? ["All", ...furnitureCollections, "Essentials", "My assets"]
-        : tab === "motions"
-          ? motionCollections
-          : ["All", "My assets"];
-  const filteredMotions = studioLibraryMotions(scene, studioLibrary).filter(
-    (m) =>
-      (filter === "All" ||
-        (filter === "My actions"
-          ? privateMotionIds.has(m.id)
-          : motionDetails(m).collection === filter)) &&
-      (m.name + " " + motionDetails(m).description)
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+        : ["All", "My assets"];
+  const libraryMotionList = studioLibraryMotions(scene, studioLibrary);
+  const ownMotionIds = new Set(scene.customMotions.map((motion) => motion.id));
+  const motionUsage = new Map<string, number>();
+  for (const entity of scene.entities)
+    for (const clip of entity.clips)
+      motionUsage.set(clip.motionId, (motionUsage.get(clip.motionId) ?? 0) + 1);
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1724,34 +1732,36 @@ export default function App() {
               />
               <span>⌕</span>
             </div>
-            <select
-              className="collection-picker"
-              aria-label={
-                tab === "characters"
-                  ? "Character collection"
-                  : tab === "motions"
-                    ? "Action collection"
+            {tab !== "motions" && (
+              <select
+                className="collection-picker"
+                aria-label={
+                  tab === "characters"
+                    ? "Character collection"
                     : "Asset collection"
-              }
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              {collectionFilters.map((f) => (
-                <option key={f}>{f}</option>
-              ))}
-            </select>
-            <div className="filters">
-              {collectionFilters.map((f) => (
-                <button
-                  key={f}
-                  className={filter === f ? "active" : ""}
-                  aria-pressed={filter === f}
-                  onClick={() => setFilter(f)}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
+                }
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                {collectionFilters.map((f) => (
+                  <option key={f}>{f}</option>
+                ))}
+              </select>
+            )}
+            {tab !== "motions" && (
+              <div className="filters">
+                {collectionFilters.map((f) => (
+                  <button
+                    key={f}
+                    className={filter === f ? "active" : ""}
+                    aria-pressed={filter === f}
+                    onClick={() => setFilter(f)}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="section-caption">
               <span>
                 {tab === "characters"
@@ -1763,7 +1773,7 @@ export default function App() {
                       : "MAKE YOUR NEXT MOVE"}
               </span>
               <span>
-                {tab === "motions" ? filteredMotions.length : filtered.length}
+                {tab === "motions" ? libraryMotionList.length : filtered.length}
               </span>
             </div>
             {tab === "environments" && (
@@ -1773,56 +1783,46 @@ export default function App() {
               </p>
             )}
             {tab === "motions" ? (
-              <div className="motion-library">
-                {filteredMotions.map((m) => (
-                  <div className="motion-card" key={m.id}>
-                    <button className="motion-add" onClick={() => addMotion(m)}>
-                      <span className="motion-symbol">
-                        <Footprints size={18} />
-                      </span>
-                      <span>
-                        <strong>{m.name}</strong>
-                        <small>
-                          {Number(m.duration.toFixed(1))}s ·{" "}
-                          {motionDetails(m).captured
-                            ? "Motion capture"
-                            : motionDetails(m).authored
-                              ? "Authored motion"
-                              : m.kind === "imported"
-                                ? isCharacter
-                                  ? `Adapt to ${entity!.name}`
-                                  : "From your files"
-                                : m.kind === "custom"
-                                  ? "Your creation"
-                                  : "Ready to use"}
-                        </small>
-                      </span>
-                      <Plus size={15} />
-                    </button>
-                    <button
-                      className="motion-preview"
-                      aria-label={`Preview ${m.name}`}
-                      onClick={() => {
-                        try {
-                          previewMotion(
-                            m,
-                            isCharacter ? entity!.id : undefined,
-                          );
-                        } catch (error) {
-                          report((error as Error).message);
-                        }
-                      }}
-                    >
-                      <Play size={12} /> Preview
-                    </button>
-                  </div>
-                ))}
-                {!filteredMotions.length && (
-                  <p className="empty-state">
-                    No actions match. Try another collection or search.
-                  </p>
-                )}
-              </div>
+              <ActionLibrary
+                key={filter === "My actions" ? "mine" : "all"}
+                motions={libraryMotionList}
+                search={search}
+                mine={privateMotionIds}
+                deletable={ownMotionIds}
+                usage={motionUsage}
+                initialSource={filter === "My actions" ? "mine" : "all"}
+                subtitle={(m) =>
+                  motionDetails(m).captured
+                    ? "Motion capture"
+                    : motionDetails(m).authored
+                      ? "Stylized animation"
+                      : m.path
+                        ? "Your route"
+                        : isCharacter
+                          ? `Adapt to ${entity!.name}`
+                          : "From your files"
+                }
+                onAdd={addMotion}
+                onPreview={(m) => {
+                  try {
+                    previewMotion(m, isCharacter ? entity!.id : undefined);
+                  } catch (error) {
+                    report((error as Error).message);
+                  }
+                }}
+                onDelete={(ids) =>
+                  execute(
+                    ids.map((motionId) => ({
+                      type: "deleteMotion" as const,
+                      motionId,
+                    })),
+                  )
+                }
+                onImport={() => {
+                  setImportCategory("characters");
+                  setModal("import");
+                }}
+              />
             ) : (
               <div className="asset-grid">
                 {filtered.map((a) => (
@@ -1891,36 +1891,34 @@ export default function App() {
                 <Plus size={14} />
               </button>
             )}
-            <button
-              className="create-asset"
-              onClick={() => {
-                if (tab === "characters") {
-                  setModal("character");
-                  return;
-                }
-                setRightTab("assistant");
-                setPanel(true);
-                setPrompt(
-                  tab === "motions"
-                    ? "Create a new action where the character "
-                    : "Add a ",
-                );
-                document.getElementById("assistant-prompt")?.focus();
-              }}
-            >
-              <Sparkles size={16} />
-              <span>
-                {tab === "characters"
-                  ? "Create a character"
-                  : "Create something new"}
-                <small>
+            {tab !== "motions" && (
+              <button
+                className="create-asset"
+                onClick={() => {
+                  if (tab === "characters") {
+                    setModal("character");
+                    return;
+                  }
+                  setRightTab("assistant");
+                  setPanel(true);
+                  setPrompt("Add a ");
+                  document.getElementById("assistant-prompt")?.focus();
+                }}
+              >
+                <Sparkles size={16} />
+                <span>
                   {tab === "characters"
-                    ? "Choose a look. Make it yours."
-                    : "A little imagination goes a long way"}
-                </small>
-              </span>
-              <Plus size={14} />
-            </button>
+                    ? "Create a character"
+                    : "Create something new"}
+                  <small>
+                    {tab === "characters"
+                      ? "Choose a look. Make it yours."
+                      : "A little imagination goes a long way"}
+                  </small>
+                </span>
+                <Plus size={14} />
+              </button>
+            )}
           </div>
           <button className="import-button" onClick={() => setModal("import")}>
             <Upload size={15} /> Import your own asset
@@ -3204,11 +3202,11 @@ export default function App() {
                                   <option value="">
                                     {allMotions(scene).find(
                                       (m) => m.id === c.motionId,
-                                    )?.kind === "climb"
+                                    )?.role === "climb"
                                       ? "Choose a ladder…"
                                       : allMotions(scene).find(
                                             (m) => m.id === c.motionId,
-                                          )?.kind === "sit"
+                                          )?.role === "sit"
                                         ? "Choose a seat…"
                                         : "Choose a prop…"}
                                   </option>
@@ -3221,11 +3219,11 @@ export default function App() {
                                         asset?.category === "props" &&
                                         (allMotions(scene).find(
                                           (m) => m.id === c.motionId,
-                                        )?.kind !== "climb" ||
+                                        )?.role !== "climb" ||
                                           ladderProfile(asset)) &&
                                         (allMotions(scene).find(
                                           (m) => m.id === c.motionId,
-                                        )?.kind !== "sit" ||
+                                        )?.role !== "sit" ||
                                           seatProfile(asset))
                                       );
                                     })

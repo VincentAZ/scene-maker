@@ -399,6 +399,9 @@ class EngineGeneratedTests(unittest.TestCase):
                                    for s in animation["samplers"])
                     self.assertGreaterEqual(duration, 0.99, animation["name"])
                     self.assertLessEqual(duration, 1.04, animation["name"])
+                    # Takes start at 0, not one frame late.
+                    self.assertEqual(min(document["accessors"][s["input"]]["min"][0]
+                                         for s in animation["samplers"]), 0, animation["name"])
 
 
 if __name__ == "__main__":

@@ -6,19 +6,40 @@ import {
   allAssets,
   allMotions,
   characters,
-  motions,
+  actionRoles,
 } from "../shared/scene";
-import { entityPose, motionPose } from "../shared/animation";
-import { createCharacter } from "../src/world";
+import {
+  capturedMotions,
+  capturedRouteGaits,
+  libraryMotions,
+} from "../shared/motionLibrary";
+import { applyAnimatedEntityPose, createCharacter } from "../src/world";
 import * as T from "three";
 import { offlineCommands } from "../server/ai";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 describe("creator scene workflows", () => {
   it("ships rigged characters, props, sets and distinct actions", () => {
     const s = starterScene();
     expect(allAssets(s).length).toBeGreaterThanOrEqual(32);
-    expect(allMotions(s).length).toBe(41);
+    // Every action is a recording: the motion-capture takes and the
+    // authored stylized clips, each with its own id. Every role a seat,
+    // ladder, prop or dialogue line relies on names exactly one recording.
+    expect(capturedMotions.length).toBeGreaterThanOrEqual(74);
+    expect(allMotions(s).length).toBe(
+      capturedMotions.length + libraryMotions.length,
+    );
+    expect(new Set(allMotions(s).map((m) => m.id)).size).toBe(
+      allMotions(s).length,
+    );
+    expect(allMotions(s).every((m) => m.kind === "imported")).toBe(true);
+    for (const role of actionRoles) {
+      const recorded = allMotions(s).filter((m) => m.role === role);
+      expect(recorded.map((m) => m.id)).toEqual([role]);
+      expect(recorded[0].sourceAssetId).toMatch(/^cmu-capture-/);
+    }
     for (const a of characters) {
-      const rig = createCharacter(a);
+      const rig = withRecordedSources(createCharacter(a), recordedSourceMap);
       const mesh = rig.children.find(
         (c) => c instanceof T.SkinnedMesh,
       ) as T.SkinnedMesh;
@@ -41,9 +62,36 @@ describe("creator scene workflows", () => {
       { type: "chain", id: actor.id, motionId: "jump" },
       { type: "chain", id: actor.id, motionId: "walk" },
     ]);
-    expect(entityPose(next.entities[0], next, 4).root[0]).toBeCloseTo(2);
-    expect(entityPose(next.entities[0], next, 4.75).root[1]).toBeCloseTo(1);
-    expect(entityPose(next.entities[0], next, 9.5).root[0]).toBeCloseTo(4);
+    const [walk, jump] = next.entities[0].clips;
+    // Recorded clips play at their captured speed and length.
+    expect(walk.playbackRate).toBe(1);
+    expect(walk.duration).toBeCloseTo(2.975);
+    expect(jump.duration).toBeCloseTo(3.45);
+    const rig = withRecordedSources(
+      createCharacter(characters.find((a) => a.id === actor.assetId)!),
+      recordedSourceMap,
+    );
+    const at = (time: number) => {
+      applyAnimatedEntityPose(rig, next.entities[0], next, time);
+      return rig.position.clone();
+    };
+    const walked = at(walk.duration - 1e-6),
+      jumped = at(walk.duration + jump.duration - 1e-6),
+      end = at(walk.duration * 2 + jump.duration - 1e-6);
+    // The take travels forward along the actor's facing (+X), not the
+    // capture room's axes.
+    expect(walked.x).toBeGreaterThan(3);
+    expect(Math.abs(walked.z)).toBeLessThan(walked.x * 0.2);
+    // The recorded jump leaves the ground and lands further forward.
+    let peak = -Infinity;
+    for (let t = walk.duration; t < walk.duration + jump.duration; t += 0.05)
+      peak = Math.max(peak, at(t).y);
+    expect(peak - walked.y).toBeGreaterThan(0.15);
+    expect(jumped.x - walked.x).toBeGreaterThan(0.8);
+    // The second walk starts where the jump landed and covers the same
+    // recorded distance again, rather than restarting at the origin.
+    expect(end.distanceTo(jumped)).toBeCloseTo(walked.length(), 2);
+    expect(end.x).toBeGreaterThan(jumped.x + 2.5);
   });
   it("reorders and removes actions without changing source state", () => {
     const s = starterScene(),
@@ -91,22 +139,113 @@ describe("creator scene workflows", () => {
       ]),
     ).toThrow();
   });
-  it("interpolates custom action poses and supports vertical paths", () => {
-    const custom = {
-      ...motions[0],
-      kind: "custom" as const,
-      poses: [
-        { at: 0, root: [0, 0, 0] as [number, number, number], rotations: {} },
-        { at: 1, root: [0, 3, 0] as [number, number, number], rotations: {} },
-      ],
+  it("migrates formula actions in saved scenes to recordings", () => {
+    const s = starterScene(),
+      actor = s.entities[0];
+    s.customMotions = [
+      // An assistant-made keyframe action and a formula-gait route.
+      {
+        id: "custom-hop",
+        name: "Hop",
+        kind: "custom",
+        duration: 2,
+        distance: 0,
+        poses: [
+          { at: 0, root: [0, 0, 0], rotations: {} },
+          { at: 1, root: [0, 3, 0], rotations: {} },
+        ],
+      },
+      {
+        id: "old-route",
+        name: "Old route",
+        kind: "walk",
+        duration: 4,
+        distance: 0,
+        poses: [],
+        path: {
+          points: [
+            [0, 0, 0],
+            [0, 0, 4],
+          ],
+          smooth: false,
+        },
+      },
+    ];
+    actor.clips = [
+      { id: "w", motionId: "walk", duration: 4 },
+      { id: "h", motionId: "custom-hop", duration: 2 },
+      { id: "r", motionId: "old-route", duration: 4 },
+      { id: "v", motionId: "wave", duration: 1 },
+      { id: "c", motionId: "captured-77-02", duration: 3, playbackRate: 1 },
+    ];
+    const next = validateScene(JSON.parse(JSON.stringify(s)));
+    const clips = next.entities[0].clips;
+    // A travelling formula walk becomes a private straight route on the
+    // recorded stride, keeping its scheduled time.
+    const walkRoute = next.customMotions.find(
+      (m) => m.id === clips[0].motionId,
+    )!;
+    expect(walkRoute.id).toBe(`recorded-route-${actor.id}-w`);
+    expect(walkRoute).toMatchObject({
+      kind: "imported",
+      duration: 4,
+      sourceAssetId: capturedRouteGaits[0].sourceAssetId,
+      animationName: capturedRouteGaits[0].animationName,
+      path: { sourceRange: capturedRouteGaits[0].path!.sourceRange },
+    });
+    expect(walkRoute.path!.points).toEqual([
+      [0, 0, 0],
+      [0, 0, 2],
+    ]);
+    // Keyframe actions are replaced by recorded standing.
+    expect(clips[1].motionId).toBe("idle");
+    expect(next.customMotions.some((m) => m.id === "custom-hop")).toBe(false);
+    // A formula-gait route keeps its path but plays the recorded stride.
+    expect(next.customMotions.find((m) => m.id === "old-route")).toMatchObject({
+      kind: "imported",
+      sourceAssetId: capturedRouteGaits[0].sourceAssetId,
+      path: {
+        points: [
+          [0, 0, 0],
+          [0, 0, 4],
+        ],
+        sourceRange: capturedRouteGaits[0].path!.sourceRange,
+      },
+    });
+    // Role clips play the recording at its own speed; former capture ids
+    // alias to their role.
+    expect(clips[3]).toMatchObject({ motionId: "wave", playbackRate: 1 });
+    expect(clips[4].motionId).toBe("idle");
+    expect(clips.every((clip) => clip.playbackRate === 1)).toBe(true);
+    // Migration is stable across save/reload.
+    expect(validateScene(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  });
+  it("deletes only the user's own actions, with every clip playing them", () => {
+    const s = starterScene(),
+      actor = s.entities[0];
+    const route = {
+      ...capturedRouteGaits[0],
+      id: "my-route",
+      name: "My route",
     };
-    expect(motionPose(custom, 0.5).root).toEqual([0, 1.5, 0]);
-    expect(
-      motionPose(
-        motions.find((m) => m.id === "climb")!,
-        1,
-      ).root[1],
-    ).toBe(1);
+    const next = applyCommands(s, [
+      { type: "createMotion", motion: route },
+      { type: "chain", id: actor.id, motionId: "my-route" },
+      { type: "chain", id: actor.id, motionId: "wave" },
+    ]);
+    expect(next.entities[0].clips.map((c) => c.motionId)).toContain("my-route");
+    const removed = applyCommands(next, [
+      { type: "deleteMotion", motionId: "my-route" },
+    ]);
+    expect(removed.customMotions.some((m) => m.id === "my-route")).toBe(false);
+    expect(removed.entities[0].clips.map((c) => c.motionId)).toEqual([
+      ...s.entities[0].clips.map((c) => c.motionId),
+      "wave",
+    ]);
+    for (const motionId of ["wave", libraryMotions[0].id])
+      expect(() =>
+        applyCommands(next, [{ type: "deleteMotion", motionId }]),
+      ).toThrow("Only your own actions can be deleted.");
   });
   it("keeps local helper honest and obeys motion order", () => {
     const s = starterScene();

@@ -17,6 +17,8 @@ import {
   sampleNativeClip,
 } from "../src/rig";
 import { applyInteractions } from "../src/interactions";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 const point = (bone: T.Object3D) => bone.getWorldPosition(new T.Vector3());
 it("normalizes sampled rotation rounding before native skinning and retargeting", () => {
@@ -53,8 +55,9 @@ it("normalizes sampled rotation rounding before native skinning and retargeting"
 it("measures fallback rig proportions from neutral offsets after translated poses", () => {
   const scene = starterScene();
   const actor = scene.entities[0];
-  const group = createCharacter(
-    allAssets(scene).find((a) => a.id === actor.assetId)!,
+  const group = withRecordedSources(
+    createCharacter(allAssets(scene).find((a) => a.id === actor.assetId)!),
+    recordedSourceMap,
   );
   const original = standingHeight(group);
   group.userData.bones.leftLeg.position.y += 0.03;
@@ -67,8 +70,9 @@ function fixture(tPose = false, rolls = false) {
   entity.position = [0, 0, 0];
   entity.rotation = 0;
   entity.clips = [];
-  const source = createCharacter(
-    allAssets(scene).find((a) => a.id === entity.assetId)!,
+  const source = withRecordedSources(
+    createCharacter(allAssets(scene).find((a) => a.id === entity.assetId)!),
+    recordedSourceMap,
   );
   const bones = source.userData.bones as Record<string, T.Bone>;
   if (tPose) {
@@ -86,7 +90,9 @@ function fixture(tPose = false, rolls = false) {
         child.quaternion.premultiply(roll.clone().invert());
       }
     }
-  const group = new T.Group();
+  // The configured imported rig is the performer: studio actions play on
+  // it from the recorded source skeletons.
+  const group = withRecordedSources(new T.Group(), recordedSourceMap);
   group.add(source);
   group.updateMatrixWorld(true);
   const configure = (animations: T.AnimationClip[] = []) =>
@@ -451,11 +457,25 @@ describe("imported humanoid calibration", () => {
         .normalize();
       expect(direction.distanceTo(new T.Vector3(0, -1, 0))).toBeLessThan(1e-6);
     }
-    entity.clips = [{ id: "wave", motionId: "wave", duration: 3 }];
-    sample(1.5);
-    expect(point(bones.rightForearm).y).toBeGreaterThan(
-      point(bones.rightArm).y,
-    );
+    // The recorded Wave hello lifts the relaxed arm until the elbow is
+    // level with the shoulder, exactly as on an unmodified rig.
+    const reference = fixture();
+    for (const f of [{ entity, configure }, reference]) {
+      f.entity.clips = [
+        { id: "wave", motionId: "wave", duration: 2.48, playbackRate: 1 },
+      ];
+      f.configure();
+    }
+    sample(0.6);
+    reference.sample(0.6);
+    expect(
+      point(bones.rightForearm).y - point(bones.rightArm).y,
+    ).toBeGreaterThan(-0.03);
+    for (const name of Object.keys(bones))
+      expect(
+        point(bones[name]).distanceTo(point(reference.bones[name])),
+        name,
+      ).toBeLessThan(1e-5);
     expect(skin.skeleton.boneInverses.map((m) => m.elements)).toEqual(inverses);
   });
   it("produces equivalent joint trajectories with rotated bone axes and helper bones", () => {
@@ -561,25 +581,45 @@ describe("native animation travel in action chains", () => {
     f.entity.clips = [
       native(f.scene, "Travel"),
       { id: "second", motionId: "Travel", duration: 4 },
-      { id: "walk", motionId: "walk", duration: 3 },
+      { id: "walk", motionId: "walk", duration: 3, playbackRate: 1 },
     ];
     f.entity.rotation = Math.PI / 2;
     f.entity.scale = 1.5;
     f.entity.position = [1, 0, -2];
     f.configure([clip]);
+    const chain = f.entity.clips;
+    // The recorded Walk performed alone from where the native travel ends.
+    const alone = (time: number) => {
+      f.entity.clips = chain.slice(2);
+      f.entity.position = [7, 0, -2];
+      f.sample(time);
+      f.entity.clips = chain;
+      f.entity.position = [1, 0, -2];
+      return point(f.bones.hips);
+    };
     for (const [time, x] of [
       [0, 1],
       [1, 2.5],
       [2, 4],
       [4, 5.5],
       [6, 7],
-      [9, 10],
+      [9],
+      [7.5],
       [1, 2.5],
     ]) {
+      const expected = x === undefined ? alone(time - 6) : undefined;
       f.sample(time);
+      if (expected) {
+        expect(point(f.bones.hips).distanceTo(expected)).toBeLessThan(1e-5);
+        continue;
+      }
       expect(point(f.bones.hips).x).toBeCloseTo(x, 5);
       expect(point(f.bones.hips).z).toBeCloseTo(-2, 5);
     }
+    // The walk carries on along the facing (+X), at the actor's scale.
+    f.sample(9);
+    expect(point(f.bones.hips).x).toBeGreaterThan(7 + 1.5 * 2);
+    expect(Math.abs(point(f.bones.hips).z + 2)).toBeLessThan(1);
     f.sample(2 - 1e-6);
     const before = point(f.bones.hips);
     f.sample(2 + 1e-6);
@@ -608,8 +648,17 @@ describe("native animation travel in action chains", () => {
       { id: "idle", motionId: "idle", duration: 3 },
     ];
     f.configure([clip]);
+    // The recorded idle that follows starts on the same floor as when it
+    // is performed alone: the crouch added no vertical travel.
+    const chain = f.entity.clips;
+    f.entity.clips = chain.slice(1);
+    f.sample(0);
+    const standing = f.group.position.y,
+      hips = point(f.bones.hips).y;
+    expect(Math.abs(standing)).toBeLessThan(0.05);
+    f.entity.clips = chain;
     f.sample(2);
-    expect(f.group.position.y).toBeCloseTo(0, 5);
-    expect(point(f.bones.hips).y).toBeCloseTo(0.9, 5);
+    expect(f.group.position.y).toBeCloseTo(standing, 5);
+    expect(point(f.bones.hips).y).toBeCloseTo(hips, 5);
   });
 });

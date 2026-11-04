@@ -353,6 +353,44 @@ class ActorCoreBlenderTests(unittest.TestCase):
         self.assertGreater(report['verification']['rawGLTF']['rest']['joints']['hips'][1], .9)
         self.assertLess(report['verification']['rawGLTF']['motionChecks'][0]['maximumJointPositionErrorMeters'], .003)
 
+    def test_generic_fbx_import_keeps_joints_upright_inside_the_skin(self):
+        # engine/convert.py is the "Import your own asset" FBX route. Blender
+        # leaves the armature object in the take's frame for this file, so the
+        # skin renders upright around horizontal joints unless it is repaired.
+        def world(document, name):
+            nodes = document["nodes"]
+            parents = {c: i for i, n in enumerate(nodes) for c in n.get("children", [])}
+            index = next(i for i, n in enumerate(nodes) if n.get("name") == name)
+            point = [0.0, 0.0, 0.0]
+            while index is not None:
+                node = nodes[index]
+                x, y, z, w = node.get("rotation", [0, 0, 0, 1])
+                sx, sy, sz = node.get("scale", [1, 1, 1])
+                px, py, pz = point[0] * sx, point[1] * sy, point[2] * sz
+                # q * p * q^-1, then translate.
+                tx, ty, tz = 2 * (y * pz - z * py), 2 * (z * px - x * pz), 2 * (x * py - y * px)
+                point = [px + w * tx + y * tz - z * ty, py + w * ty + z * tx - x * tz,
+                         pz + w * tz + x * ty - y * tx]
+                point = [a + b for a, b in zip(point, node.get("translation", [0, 0, 0]))]
+                index = parents.get(index)
+            return point
+        for source in ("mismatched.fbx", "body.fbx"):
+            with self.subTest(source=source):
+                output = self.directory / ("generic-" + source.replace(".fbx", ".glb"))
+                self.run_blender(ROOT / "engine/convert.py", [str(self.directory / source), str(output)])
+                document, _ = actorcore.read_glb(output)
+                hips, head = world(document, "CC_Base_Hip"), world(document, "CC_Base_Head")
+                self.assertGreater(head[1] - hips[1], .2)
+                self.assertLess(abs(head[0] - hips[0]) + abs(head[2] - hips[2]), .05)
+        output = self.directory / "generic-motion.glb"
+        self.run_blender(ROOT / "engine/convert.py", [str(self.directory / "motion.fbx"), str(output)])
+        document, _ = actorcore.read_glb(output)
+        motion = next(a for a in document["animations"] if a["name"].endswith("Motion"))
+        times = [document["accessors"][s["input"]] for s in motion["samplers"]]
+        # FBX keys land from frame 1; the take starts at 0 and keeps its second.
+        self.assertEqual(min(t["min"][0] for t in times), 0)
+        self.assertAlmostEqual(max(t["max"][0] for t in times), 1.0, places=3)
+
     def test_raw_check_rejects_horizontal_joints_even_when_inverse_binds_hide_it(self):
         script = self.directory / 'reject_horizontal.py'
         script.write_text(r"""

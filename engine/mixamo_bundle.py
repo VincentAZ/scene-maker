@@ -172,10 +172,13 @@ bpy.ops.object.select_all(action="DESELECT")
 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 # 'ACTIONS' writes one glTF animation (named after the action) per non-muted single-strip
 # NLA track, plus the active action; we cleared the active action so tracks are the source.
+# FBX import keys from frame 1: start each take at 0 so it neither plays a frame late nor
+# holds its first pose when it loops.
 bpy.ops.export_scene.gltf(
     filepath=output_path, export_format="GLB", export_animations=True,
     export_animation_mode="ACTIONS", export_image_format="AUTO", export_yup=True,
     export_skins=True, export_def_bones=False, export_frame_range=False,
+    export_anim_slide_to_zero=True,
     export_force_sampling=True, export_optimize_animation_size=False, export_apply=False,
 )
 if not Path(output_path).is_file() or Path(output_path).stat().st_size == 0:

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import * as T from "three";
 import { characters, type Asset } from "../shared/scene";
 import { prepareImportedAsset } from "../src/importedAsset";
+import { humanoidWarning } from "../src/rig";
 
 /** One body layout; each standard convention only renames it. */
 const LAYOUT: [string, string | null, number[]][] = [
@@ -249,6 +250,7 @@ const ROLES: Record<string, string> = {
 function body(
   names: Record<string, string>,
   extra: [string, string | null][] = [],
+  adjust?: (joints: Record<string, T.Bone>) => void,
 ) {
   const scene = new T.Group();
   const joints: Record<string, T.Bone> = {};
@@ -267,6 +269,7 @@ function body(
     else scene.add(bone);
     joints[name] = bone;
   }
+  adjust?.(joints);
   scene.updateMatrixWorld(true);
   const bones = Object.values(joints);
   const at = bones.map((b) => b.getWorldPosition(new T.Vector3()));
@@ -326,6 +329,18 @@ it.each(Object.keys(conventions))(
     expect(group.userData.rigMappingReport.missing).toEqual([]);
   },
 );
+
+it("accepts exporter round-off in a bind scale but not a stretched joint", () => {
+  // 100Avatars FBX: a thigh at [1.0000001, 1.0000001, 1.0000111].
+  const noisy = body(conventions.unreal, [], (j) =>
+    j.lThigh.scale.set(1.0000001, 1.0000001, 1.0000111),
+  );
+  expect(humanoidWarning(noisy.group, "Noisy", false)).toBe("");
+  const stretched = body(conventions.unreal, [], (j) =>
+    j.lThigh.scale.set(1, 1, 1.2),
+  );
+  expect(humanoidWarning(stretched.group, "Stretched", false)).not.toBe("");
+});
 
 it("takes the hip above the pelvis branch, as on Daz and Character Creator bodies", () => {
   const names = { ...conventions.daz };

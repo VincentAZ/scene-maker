@@ -49,6 +49,8 @@ import {
 } from "../src/rig";
 import { applyAnimatedEntityPose } from "../src/world";
 import { animationSampleBoundaries } from "../src/bakeAnimation";
+import { recordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 const up = new T.Vector3(0, 1, 0);
 const worldPosition = (node: T.Object3D) =>
@@ -790,6 +792,13 @@ describe("imported route playback through the world sampler", () => {
         duration: 1,
         transition: "cut",
       });
+      // The following Standing idle is a recording: every rig needs its source.
+      for (const rig of [f.native, reference])
+        setMotionSources(rig.group, new Map(recordedSourceMap));
+      setMotionSources(
+        f.target.group,
+        new Map([...recordedSourceMap, ["route-source", f.source.group]]),
+      );
       const nativeMotion = {
         ...f.motion,
         id: "native-reference",

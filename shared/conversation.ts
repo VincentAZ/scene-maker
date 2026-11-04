@@ -104,7 +104,7 @@ export function appendSpeech(
     const motion = allMotions(scene).find((m) => m.id === action.motionId);
     if (!motion) throw Error("Choose an action from this scene’s library.");
     const targeted = ["pick", "sip", "place", "climb", "sit"].includes(
-      motion.kind,
+      motion.role ?? "",
     );
     const target = scene.entities.find((e) => e.id === action.targetId);
     if (
@@ -223,7 +223,7 @@ export function dialogueSubtitles(scene: Scene): string {
 const routableKinds = ["talk", "idle", "wave", "bow", "walk", "run"];
 const routableMotion = (motion: Motion | undefined) =>
   !!motion &&
-  (routableKinds.includes(motion.kind) ||
+  (routableKinds.includes(motion.role ?? "") ||
     (motion.kind === "imported" && !!motion.path));
 const lineClipIds = (line: DialogueLine) =>
   line.clipIds || (line.clipId ? [line.clipId] : []);

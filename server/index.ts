@@ -1,5 +1,6 @@
 import { thinkingLevels, thinkingChoices } from "../shared/thinking";
 import { untitledAnimationName } from "../shared/animation";
+import { blenderFailure, unsupportedFbxMessage } from "./fbxImport";
 import { createCodingService, codingRouter, repositoryRoot } from "./coding";
 import { scheduleRestart } from "./codingDeploy";
 import { runShell } from "./codingAgent";
@@ -557,6 +558,11 @@ app.post("/api/import", upload.single("file"), async (req, res) => {
         throw Error("This file is not a valid GLB 2.0 asset.");
       fs.renameSync(f.path, output);
     } else if (ext === ".fbx") {
+      const unsupported = unsupportedFbxMessage(
+        f.path,
+        path.basename(f.originalname),
+      );
+      if (unsupported) throw Error(unsupported);
       await run(
         config().blender,
         [
@@ -571,7 +577,11 @@ app.post("/api/import", upload.single("file"), async (req, res) => {
           output,
         ],
         { timeout: 120000, maxBuffer: 2 * 1024 * 1024 },
-      );
+      ).catch((error) => {
+        // A missing Blender keeps its ENOENT for the settings hint.
+        if ((error as { code?: unknown }).code === "ENOENT") throw error;
+        throw Error(blenderFailure(error));
+      });
     } else throw Error("Choose a GLB or FBX file.");
     const bytes = fs.readFileSync(output);
     const metadata = JSON.parse(
@@ -601,6 +611,8 @@ app.post("/api/import", upload.single("file"), async (req, res) => {
       url: "/uploads/" + id + ".glb",
       name: path.basename(f.originalname, ext),
       animations,
+      // Animation-only files (BVH, FBX/GLB takes without skin) have no body.
+      hasMesh: (metadata.meshes || []).length > 0,
     });
   } catch (error) {
     if (fs.existsSync(output)) fs.unlinkSync(output);

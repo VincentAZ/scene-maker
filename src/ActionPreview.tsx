@@ -54,7 +54,10 @@ export function ActionPreview({
       .current!.waitForScene(rehearsal.scene, controller.signal)
       .then(() => {
         if (cancelled) return;
-        if (["sit", "stand"].includes(motion.kind) && seatScale === undefined) {
+        if (
+          ["sit", "stand"].includes(motion.role ?? "") &&
+          seatScale === undefined
+        ) {
           const body = viewport.current!.seatingBody(rehearsal.actor.id);
           if (body) {
             setSeatScale(
@@ -183,10 +186,10 @@ export function ActionPreview({
             ? rehearsal.actor.name
             : "a sample performer"}
           . Your scene stays as it is. Drag to orbit.
-          {["sit", "stand"].includes(motion.kind)
+          {["sit", "stand"].includes(motion.role ?? "")
             ? " The rehearsal bench is sized for this performer. Choose the scene’s seat in Details after adding Sit down."
             : ""}
-          {motion.kind === "place"
+          {motion.role === "place"
             ? " This preview picks up the cup before putting it down."
             : ""}
         </p>

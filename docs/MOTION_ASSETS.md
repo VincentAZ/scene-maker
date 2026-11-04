@@ -1,6 +1,20 @@
-# Authored action library
+# Action library
 
-The studio bundles all 17 clips from the Casual Male file in Quaternius's CC0 Ultimate Animated Character Pack. Together with 15 studio actions, including the targeted Sit down and Stand up pair, these provide 32 built-in choices. [motion-source.json](motion-source.json) records the original public download URL, original SHA-256, processed GLB SHA-256, and exact clip durations. The creator's original [license](../public/library/actions/LICENSE.txt) accompanies the bank. Source acquisition is recorded in [character provenance](CHARACTER_ASSETS.md).
+## Recorded studio actions
+
+Every body animation is a recording or stylized hand-authored animation; the studio no longer computes any body motion by formula. The library holds 74 recorded takes from the [CMU Graphics Lab Motion Capture Database](https://mocap.cs.cmu.edu/) in 13 categories (Walking, Running, Standing, Talking, Gestures, Emotions, Sitting, Objects, Everyday, Climbing, Dance, Sports), the 17 stylized Quaternius clips below, and each creator's own imports.
+
+Fifteen recordings serve a role and keep that role's long-standing action id, so saved scenes, dialogue and the assistant address them as before: idle (Standing idle, 77_02), walk (35_01), run (35_17), jump (13_11), wave (141_16), sit (113_15, 1.2–4.2 s), stand (113_15, 4.2–6.4 s), dance (141_12), crawl (111_03), climb (13_33, 1.8–6.8 s), sip (79_38, 1.2–8.8 s), pick (80_08, 3.3–9.9 s), place (80_27, 2.0–7.0 s), talk (80_14, 2–10 s) and bow (113_02, 0.2–3.2 s). Seats, ladders and props still place the body and its contacts (seat support, rung and hand IK); the recording supplies every limb. A recorded sit lowers onto the seat at its own measured hip timing (`timing` in the catalogue).
+
+Scenes saved with the earlier computed actions are migrated on load (`migrateLegacyMotions` in shared/scene.ts): their clips play the recordings at native speed, computed walk/run travel becomes a straight route on the recorded stride, computed-gait routes use the recorded stride (backward ones the recorded backward walk), and assistant-made keyframe actions become Standing idle.
+
+[scripts/cmu-library.json](../scripts/cmu-library.json) lists every take with its name, category, role and excerpt. To rebuild, download each listed ASF/AMC from mocap.cs.cmu.edu into one directory per subject, convert each take with `node scripts/prepare-cmu-motion.mjs <subject-directory> <trial> <60|120>`, then run `node scripts/build-cmu-library.mjs <source-directory>`. Excerpts keep only the original samples inside the interval, shifted to start at zero; the catalogue records source URLs, SHA-256 hashes of the ASF, AMC and output, and joint mappings re-derived in the written file.
+
+The Actions panel filters by source (Recorded, Stylized, My imports), category and use in the scene, sorts by category, name, length or newest import, and selects several actions at once. Your own actions can be deleted (with every clip that plays them; undoable); library actions can be hidden in this browser.
+
+## Stylized action library
+
+The studio bundles all 17 clips from the Casual Male file in Quaternius's CC0 Ultimate Animated Character Pack. [motion-source.json](motion-source.json) records the original public download URL, original SHA-256, processed GLB SHA-256, and exact clip durations. The creator's original [license](../public/library/actions/LICENSE.txt) accompanies the bank. Source acquisition is recorded in [character provenance](CHARACTER_ASSETS.md).
 
 The catalogue uses creator-facing names and descriptions in [motion-catalogue.json](../shared/motion-catalogue.json). These include relaxed idle, walking/jogging/carrying poses, an athletic jump, forward roll, sitting/rising/reaching, celebration/disappointment, and staged action performances. Source animation names remain intact, including the source spelling `RecieveHit`.
 

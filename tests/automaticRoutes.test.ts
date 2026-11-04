@@ -37,6 +37,43 @@ import {
   createCharacter,
   createProp,
 } from "../src/world";
+import { capturedRouteGaits } from "../shared/motionLibrary";
+import { importedClip, motionSource } from "../src/rig";
+import {
+  locomotionProfile,
+  locomotionScale,
+  routeEntryHeading,
+} from "../src/locomotion";
+import { gaitTravelTime, type RouteGaitCycle } from "../src/routeLocomotion";
+import type { MotionPath } from "../shared/path";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
+
+/** Routes travel on the recorded stride at the pace measured from its take on
+ * the receiving body, as automatic replanning measures it. */
+const stride = capturedRouteGaits[0];
+function strideCycle(group: T.Group): RouteGaitCycle {
+  const source = motionSource(group, stride.sourceAssetId!)!;
+  const take = importedClip(source.userData.animations, stride.animationName!)!;
+  const profile = locomotionProfile(source, take, stride.path!.sourceRange)!;
+  const ratio = locomotionScale(source, group);
+  return {
+    duration: profile.duration,
+    entryHeading: routeEntryHeading(profile),
+    distance: profile.distance * ratio,
+    samples: profile.frames.map((frame) => ({
+      time: frame.time,
+      distance: frame.distance * ratio,
+    })),
+  };
+}
+/** A recorded gait's pace: captured travel time over the route's scheduled
+ * time. Its cadence is not linear in distance (whole steps, source pauses). */
+const routePaceOf = (
+  cycle: RouteGaitCycle,
+  path: MotionPath,
+  duration: number,
+) => gaitTravelTime(cycle, compilePath(path).length) / duration;
 
 function fixture() {
   let scene = applyCommands(starterScene(), [
@@ -53,48 +90,57 @@ function fixture() {
     objects.set(
       e.id,
       a.category === "characters"
-        ? createCharacter(characters[0])
+        ? withRecordedSources(createCharacter(characters[0]), recordedSourceMap)
         : createProp(a.style, a.color),
     );
   }
+  const cycle = strideCycle(objects.get("actor")!);
   const motion = planObjectRoute(
     scene,
     objects,
     "actor",
     "destination",
     "walk",
+    undefined,
+    undefined,
+    stride,
+    cycle,
   );
   scene = applyCommands(scene, savePathCommands(scene, "actor", motion));
   scene.entities[0].clips[0].navigation = {
     targetId: "destination",
     movement: "walk",
   };
-  return { scene, objects, motion };
+  return { scene, objects, motion, cycle };
 }
 
-function movingCrate(
+/** A moving obstacle crossing the aisle: props cannot play recorded gaits,
+ * so it is a character travelling on the recorded walking (or, above 2 m/s,
+ * running) stride. Its rig replaces the crate in `f.objects`. */
+function movingObstacle(
   f: ReturnType<typeof fixture>,
   startZ: number,
   endZ: number,
   seconds: number,
 ) {
+  const gait = capturedRouteGaits[(endZ - startZ) / seconds > 2 ? 1 : 0];
   const scene = applyCommands(f.scene, [
-    { type: "update", id: "obstacle", changes: { position: [0, 0, startZ] } },
+    { type: "remove", id: "obstacle" },
+    { type: "add", assetId: "leo", id: "obstacle", position: [0, 0, startZ] },
     {
       type: "createMotion",
       motion: {
+        ...gait,
         id: "crossing",
         name: "Cross the aisle",
-        kind: "walk",
         duration: seconds,
-        distance: 0,
-        poses: [],
         path: {
           points: [
             [0, 0, 0],
             [0, 0, endZ - startZ],
           ],
           smooth: false,
+          sourceRange: { ...gait.path!.sourceRange! },
         },
       },
     },
@@ -108,8 +154,49 @@ function movingCrate(
       },
     },
   ]);
+  f.objects.set(
+    "obstacle",
+    withRecordedSources(createCharacter(characters[1]), recordedSourceMap),
+  );
   return scene;
 }
+
+it("still loads a saved scene whose prop moves along a route", () => {
+  // Older scenes moved props (a crossing crate) on walk-kind routes. Props
+  // have no body to animate, so migrating that route onto a recorded gait
+  // must not make the scene unloadable.
+  const scene = starterScene();
+  scene.entities = [
+    {
+      ...scene.entities.find(
+        (e) =>
+          allAssets(scene).find((a) => a.id === e.assetId)?.category ===
+          "props",
+      )!,
+      id: "crate",
+      position: [0, 0, -2],
+      clips: [{ id: "cross", motionId: "crossing", duration: 5 }],
+    },
+  ];
+  scene.customMotions = [
+    {
+      id: "crossing",
+      name: "Cross the aisle",
+      kind: "walk",
+      duration: 5,
+      distance: 0,
+      poses: [],
+      path: {
+        points: [
+          [0, 0, 0],
+          [0, 0, 4],
+        ],
+        smooth: false,
+      },
+    },
+  ];
+  expect(() => validateScene(JSON.parse(JSON.stringify(scene)))).not.toThrow();
+});
 
 it("replans around a stationary obstacle even when the actor has a later acquisition scheduled", () => {
   const f = fixture();
@@ -229,7 +316,10 @@ it("retimes existing speakers around a geometry detour without stretching their 
   f.scene = applyCommands(f.scene, [
     { type: "add", id: "partner", assetId: "leo", position: [4, 0, -4] },
   ]);
-  f.objects.set("partner", createCharacter(characters[1]));
+  f.objects.set(
+    "partner",
+    withRecordedSources(createCharacter(characters[1]), recordedSourceMap),
+  );
   f.scene = appendSpeech(f.scene, "partner", {
     dialogue: "I see you.",
     performance: [{ motionId: "talk", duration: 4 }],
@@ -283,8 +373,8 @@ it.each([0.4, 2])(
       "walk",
       "point",
       undefined,
-      undefined,
-      undefined,
+      stride,
+      f.cycle,
       0,
       undefined,
       0.4,
@@ -298,18 +388,26 @@ it.each([0.4, 2])(
         "point",
       ),
     );
+    // The route itself ends exactly at the point and facing, relative to
+    // where and how the preceding recorded walk finished.
+    expect(motion.path!.points.at(-1)![0]).toBeCloseTo(point[0], 12);
+    expect(motion.path!.points.at(-1)![2]).toBeCloseTo(point[2], 12);
+    expect(motion.path!.endHeading).toBeCloseTo(0.4, 12);
     const end = scene.entities[0].clips.reduce((sum, c) => sum + c.duration, 0);
     const group = f.objects.get("actor")!;
     applyAnimatedEntityPose(group, scene.entities[0], scene, end - 1e-7);
+    // The rendered body is the recording: its root keeps the performer's
+    // lateral sway (under a centimetre on this body) and hip yaw (a few
+    // degrees) about the travel line, which the formula walk did not have.
     expect(
       Math.hypot(
         group.position.x - expected[0],
         group.position.z - expected[2],
       ),
-    ).toBeLessThan(1e-5);
+    ).toBeLessThan(0.01 * scale);
     const turn = group.rotation.y - frame.heading - 0.4;
     expect(Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn)))).toBeLessThan(
-      1e-5,
+      Math.PI / 36,
     );
   },
 );
@@ -333,8 +431,8 @@ it("replans a coordinate goal around a newly placed obstacle and preserves its i
   )!.path!;
   expect(path.points.at(-1)).toEqual(point);
   expect(path.points).not.toEqual(f.motion.path!.points);
-  expect(clip.duration / compilePath(path).length).toBeCloseTo(
-    initial.entities[0].clips[0].duration / compilePath(f.motion.path!).length,
+  expect(routePaceOf(f.cycle, path, clip.duration)).toBeCloseTo(
+    routePaceOf(f.cycle, f.motion.path!, initial.entities[0].clips[0].duration),
     8,
   );
   expect(
@@ -356,7 +454,7 @@ it("predicts moving obstacles for point goals and holds a blocked coordinate wit
     movement: "walk",
   };
   f.scene.entities.find((e) => e.id === "destination")!.position = [3, 0, 3];
-  const moving = movingCrate(f, -2, 2, 5);
+  const moving = movingObstacle(f, -2, 2, 5);
   const planned = prepareAutomaticRoutes(moving, f.objects);
   expect(planned.issues).toEqual([]);
   expect(
@@ -401,9 +499,9 @@ function overlapsDuring(
   return overlaps;
 }
 
-it("predicts a moving prop crossing an otherwise clear route and replans at the same gait pace", () => {
+it("predicts a moving character crossing an otherwise clear route and replans at the same gait pace", () => {
   const f = fixture();
-  const scene = movingCrate(f, -2, 2, 5);
+  const scene = movingObstacle(f, -2, 2, 5);
   const before = scene.entities[0].clips[0];
   expect(
     overlapsDuring(scene, f.objects, before.duration).length,
@@ -417,31 +515,30 @@ it("predicts a moving prop crossing an otherwise clear route and replans at the 
     (m) => m.id === clip.motionId,
   )!.path!;
   expect(path.points.length).toBeGreaterThan(2);
-  expect(clip.duration / compilePath(path).length).toBeCloseTo(
-    before.duration / compilePath(f.motion.path!).length,
+  expect(routePaceOf(f.cycle, path, clip.duration)).toBeCloseTo(
+    routePaceOf(f.cycle, f.motion.path!, before.duration),
     8,
   );
   expect(prepareAutomaticRoutes(result.scene, f.objects).scene).toBe(
     result.scene,
   );
-});
+  // Sweeping a moving recorded body over every schedule is slower than the
+  // old rigid crate.
+}, 30_000);
 
 it("uses space after a moving obstacle has vacated it instead of excluding its entire trajectory", () => {
   const f = fixture();
-  const result = prepareAutomaticRoutes(movingCrate(f, 0, 4, 1), f.objects);
+  const result = prepareAutomaticRoutes(movingObstacle(f, 0, 4, 1), f.objects);
   expect(result.issues).toEqual([]);
   const clip = result.scene.entities[0].clips[0];
   const path = allMotions(result.scene).find(
     (m) => m.id === clip.motionId,
   )!.path!;
-  // Collinear approach guides may add control points; vacated space should
-  // still permit the direct route rather than a detour around its old position.
-  expect(compilePath(path).length).toBeCloseTo(
-    new T.Vector3(...path.points[0]).distanceTo(
-      new T.Vector3(...path.points.at(-1)!),
-    ),
-    8,
-  );
+  // Vacated space permits the direct route rather than a detour around the
+  // obstacle's old position: the route stays the one planned without it. (The
+  // recorded stride's measured entry heading gently curves its first step, so
+  // the direct route is not a perfectly straight line.)
+  expect(path.points).toEqual(f.motion.path!.points);
   expect(overlapsDuring(result.scene, f.objects, clip.duration)).toEqual([]);
 });
 
@@ -483,7 +580,7 @@ it("validates a detour at the selected pace rather than rejecting its unscaled n
 
 it("chooses a clear stopping place when an obstacle arrives during the final hold", () => {
   const f = fixture();
-  const scene = movingCrate(f, -3, 3, 10);
+  const scene = movingObstacle(f, -3, 3, 10);
   scene.entities.find((e) => e.id === "obstacle")!.position[0] = 2;
   expect(overlapsDuring(scene, f.objects, 12).length).toBeGreaterThan(0);
   const result = prepareAutomaticRoutes(scene, f.objects);
@@ -501,7 +598,10 @@ it("rechecks the final combined schedule of two AI-controlled crossing actors", 
     { type: "add", assetId: "crate", id: "second-goal", position: [0, 0, 3] },
   ]);
   f.objects.delete("obstacle");
-  f.objects.set("second", createCharacter(characters[0]));
+  f.objects.set(
+    "second",
+    withRecordedSources(createCharacter(characters[0]), recordedSourceMap),
+  );
   f.objects.set("second-goal", createProp("crate", "#997744"));
   const motion = planObjectRoute(
     scene,
@@ -524,7 +624,7 @@ it("rechecks the final combined schedule of two AI-controlled crossing actors", 
 
 it("keeps cooperative planning deterministic while the viewport renders between batches", async () => {
   const f = fixture();
-  const scene = movingCrate(f, -2, 2, 5);
+  const scene = movingObstacle(f, -2, 2, 5);
   const expected = prepareAutomaticRoutes(scene, f.objects);
   let yields = 0;
   const actual = await prepareAutomaticRoutesAsync(
@@ -550,7 +650,7 @@ it("keeps cooperative planning deterministic while the viewport renders between 
 
 it("cancels superseded planning and can prepare the next scene without stale mutations", async () => {
   const f = fixture();
-  const scene = movingCrate(f, -2, 2, 5),
+  const scene = movingObstacle(f, -2, 2, 5),
     saved = JSON.stringify(scene);
   const controller = new AbortController();
   let yields = 0;
@@ -563,7 +663,7 @@ it("cancels superseded planning and can prepare the next scene without stale mut
     }),
   ).rejects.toMatchObject({ name: "AbortError" });
   expect(JSON.stringify(scene)).toBe(saved);
-  const replacement = movingCrate(f, 0, 4, 1);
+  const replacement = movingObstacle(f, 0, 4, 1);
   const result = await prepareAutomaticRoutesAsync(replacement, f.objects);
   expect(result.issues).toEqual([]);
   expect(overlapsDuring(result.playbackScene, f.objects, 12)).toEqual([]);
@@ -649,8 +749,8 @@ it("replans a saved AI destination after a prop blocks its route, preserving pac
   expect(compilePath(motion.path!).length).toBeGreaterThan(
     compilePath(f.motion.path!).length,
   );
-  expect(after.duration / compilePath(motion.path!).length).toBeCloseTo(
-    clip.duration / compilePath(f.motion.path!).length,
+  expect(routePaceOf(f.cycle, motion.path!, after.duration)).toBeCloseTo(
+    routePaceOf(f.cycle, f.motion.path!, clip.duration),
     9,
   );
   const context = routeContext(result.scene, f.objects, "actor", after.id);
@@ -1118,9 +1218,9 @@ it.each([
         `time ${time}`,
       ).toBeLessThan(1e-9);
     }
-    // Pace is unchanged: the same distance per second before and after.
-    expect(after.duration / compilePath(motion.path!).length).toBeCloseTo(
-      clip.duration / compilePath(f.motion.path!).length,
+    // Pace is unchanged: the same captured cadence before and after.
+    expect(routePaceOf(f.cycle, motion.path!, after.duration)).toBeCloseTo(
+      routePaceOf(f.cycle, f.motion.path!, clip.duration),
       9,
     );
     // The new remainder is verified like any other route and reaches the goal.
@@ -1252,53 +1352,25 @@ function enclose(f: ReturnType<typeof fixture>, open = false) {
   return scene;
 }
 
-it("stops where it is when its route is blocked while playing, holds there as the timeline advances, and continues once a passage opens", () => {
+// A recorded route does not freeze mid-stride: it stops on a measured
+// double-support moment and waits standing, then continues from the wait
+// however long it lasted. That (including waits past the 60 s clip limit) is
+// covered on a recorded gait in tests/routeStops.test.ts; here, on the
+// recorded stride, the walk resumes as soon as the passage opens.
+it("continues a stopped recorded route as soon as the passage opens, after a standing wait", () => {
   const f = fixture();
   const clip = f.scene.entities[0].clips[0];
   const at = clip.duration * 0.45;
-  const blocked = enclose(f);
-  const result = prepareAutomaticRoutes(blocked, f.objects, undefined, at);
-  expect(result.issues).toHaveLength(1);
-  expect(result.issues[0].message).toContain("stopped before a blocked route");
-  // The saved sequence records the stop; the destination intent survives.
-  const stoppedClip = result.scene.entities[0].clips[0];
-  expect(stoppedClip.id).toBe(clip.id);
-  expect(stoppedClip.navigation).toMatchObject(clip.navigation!);
-  expect(stoppedClip.routeStop).toBeCloseTo(at, 9);
-  expect(
-    validateScene(JSON.parse(JSON.stringify(result.scene))).entities[0].clips[0]
-      .routeStop,
-  ).toBeCloseTo(at, 9);
-  // Playback holds the pose of the stop time: no snap back to the start and
-  // no further travel, however far the timeline runs.
-  const held = bodyPose(result.playbackScene, f.objects, at);
-  const original = bodyPose(f.scene, f.objects, at - 1e-7);
-  expect(poseDistance(held, original)).toBeLessThan(1e-9);
-  for (const time of [at, at + 0.5, clip.duration, clip.duration + 5, 30])
-    expect(
-      poseDistance(bodyPose(result.playbackScene, f.objects, time), held),
-      `held at ${time}`,
-    ).toBeLessThan(1e-6);
-  expect(overlapsDuring(result.playbackScene, f.objects, 30)).toEqual([]);
-  // Planning again later while still blocked keeps the same stop.
-  const later = prepareAutomaticRoutes(
-    result.scene,
-    f.objects,
-    undefined,
-    clip.duration + 3,
-  );
-  expect(later.issues).toHaveLength(1);
-  expect(later.scene.entities[0].clips[0].routeStop).toBeCloseTo(at, 9);
-  expect(
-    poseDistance(
-      bodyPose(later.playbackScene, f.objects, clip.duration + 3),
-      held,
-    ),
-  ).toBeLessThan(1e-6);
-  // The passage opens after the original clip would have ended.
-  const resumeAt = clip.duration + 4;
-  const opened = applyCommands(later.scene, [
-    { type: "update", id: "wall-w", changes: { position: [1.7, 0, 4] } },
+  const stopped = prepareAutomaticRoutes(enclose(f), f.objects, undefined, at);
+  expect(stopped.issues).toHaveLength(1);
+  const stop = stopped.scene.entities[0].clips[0].routeStop!;
+  // The stop is the next grounded phase of the stride, within one cycle.
+  expect(stop).toBeGreaterThanOrEqual(at);
+  expect(stop).toBeLessThan(at + f.cycle.duration);
+  const held = bodyPose(stopped.playbackScene, f.objects, stop);
+  const resumeAt = stop + 0.5;
+  const opened = applyCommands(stopped.scene, [
+    { type: "update", id: "wall-w", changes: { position: [1.4, 0, 4] } },
   ]);
   const resumed = prepareAutomaticRoutes(
     opened,
@@ -1308,16 +1380,16 @@ it("stops where it is when its route is blocked while playing, holds there as th
   );
   expect(resumed.issues).toEqual([]);
   const clips = resumed.scene.entities[0].clips;
-  expect(clips).toHaveLength(2);
-  expect(clips[0].id).toBe(clip.id);
+  expect(clips).toHaveLength(3);
+  expect(clips[0]).toMatchObject({ id: clip.id, duration: stop });
+  expect(clips[0].routeStop).toBeCloseTo(stop, 9);
   expect(clips[0].navigation).toBeUndefined();
-  expect(clips[0].routeStop).toBeCloseTo(at, 9);
-  expect(clips[0].duration).toBeCloseTo(resumeAt, 9);
-  expect(clips[1].navigation).toMatchObject(clip.navigation!);
-  expect(clips[1].transition).toBe("smooth");
-  // Already-played motion and the wait are unchanged; the continuation starts
-  // from the held body and reaches the destination.
-  for (const time of [0, at * 0.5, at - 1e-4])
+  expect(clips[1]).toMatchObject({ motionId: "idle", stationary: true });
+  expect(clips[0].duration + clips[1].duration).toBeCloseTo(resumeAt, 9);
+  expect(clips[2].navigation).toMatchObject(clip.navigation!);
+  // Already-played travel is unchanged, and the wait stays in place (the
+  // recorded standing idle shifts its weight by a centimetre or two).
+  for (const time of [0, at * 0.5, stop - 1e-4])
     expect(
       poseDistance(
         bodyPose(resumed.scene, f.objects, time),
@@ -1325,193 +1397,22 @@ it("stops where it is when its route is blocked while playing, holds there as th
       ),
       `time ${time}`,
     ).toBeLessThan(1e-9);
-  for (const time of [at + 0.1, clip.duration + 2, resumeAt - 1e-4])
+  for (const time of [stop + 0.1, resumeAt - 1e-3]) {
+    const waiting = bodyPose(resumed.scene, f.objects, time);
     expect(
-      poseDistance(bodyPose(resumed.scene, f.objects, time), held),
-      `held ${time}`,
-    ).toBeLessThan(1e-6);
+      Math.hypot(
+        waiting.root[0] - held.root[0],
+        waiting.root[2] - held.root[2],
+      ),
+      `waiting ${time}`,
+    ).toBeLessThan(0.05);
+  }
   const start = bodyPose(resumed.scene, f.objects, resumeAt + 1e-3);
   expect(
     Math.hypot(start.root[0] - held.root[0], start.root[2] - held.root[2]),
   ).toBeLessThan(0.01);
-  const total = clips[0].duration + clips[1].duration;
-  const end = bodyPose(resumed.scene, f.objects, total + 0.01);
-  const destination = resumed.scene.entities.find(
-    (e) => e.id === "destination",
-  )!.position;
-  expect(
-    Math.hypot(end.root[0] - destination[0], end.root[2] - destination[2]),
-  ).toBeLessThan(1.5);
+  const total = clips.reduce((sum, c) => sum + c.duration, 0);
   expect(overlapsDuring(resumed.scene, f.objects, total)).toEqual([]);
-  // Stable afterwards.
-  expect(
-    prepareAutomaticRoutes(resumed.scene, f.objects, undefined, resumeAt + 1)
-      .scene,
-  ).toBe(resumed.scene);
-});
-
-it.each([60.1, 125.25])(
-  "recovers a frozen studio route after a %s second wait without replaying travel",
-  (resumeAt) => {
-    const f = fixture();
-    const clip = f.scene.entities[0].clips[0];
-    const at = clip.duration * 0.45;
-    const blocked = prepareAutomaticRoutes(
-      enclose(f),
-      f.objects,
-      undefined,
-      at,
-    );
-    const held = bodyPose(blocked.playbackScene, f.objects, at);
-    const opened = applyCommands(blocked.scene, [
-      { type: "update", id: "wall-w", changes: { position: [1.7, 0, 4] } },
-    ]);
-    const resumed = prepareAutomaticRoutes(
-      opened,
-      f.objects,
-      undefined,
-      resumeAt,
-    );
-    expect(resumed.issues).toEqual([]);
-    const scene = validateScene(JSON.parse(JSON.stringify(resumed.scene)));
-    const clips = scene.entities[0].clips;
-    expect(clips.every((c) => c.duration >= 0.2 && c.duration <= 60)).toBe(
-      true,
-    );
-    expect(
-      clips.slice(0, -1).reduce((sum, c) => sum + c.duration, 0),
-    ).toBeCloseTo(resumeAt, 9);
-    expect(clips.at(-1)?.navigation).toMatchObject(clip.navigation!);
-    for (const time of [0, at / 2, at - 0.01])
-      expect(
-        poseDistance(
-          bodyPose(scene, f.objects, time),
-          bodyPose(f.scene, f.objects, time),
-        ),
-      ).toBeLessThan(1e-9);
-    for (const time of [at + 0.1, 59.9, 60, 60.01, resumeAt - 1e-5].filter(
-      (t) => t < resumeAt,
-    ))
-      expect(
-        poseDistance(bodyPose(scene, f.objects, time), held),
-        `hold at ${time}`,
-      ).toBeLessThan(1e-6);
-    const restart = bodyPose(scene, f.objects, resumeAt + 0.001);
-    // The route guide hands its vertical bob over to the body at the join;
-    // compare the visible joints and horizontal position, not guide height.
-    for (const key of ["hips", "leftFoot", "rightFoot"] as const)
-      expect(
-        Math.hypot(...restart[key].map((n, i) => n - held[key][i])),
-      ).toBeLessThan(0.01);
-    expect(
-      Math.hypot(
-        restart.root[0] - held.root[0],
-        restart.root[2] - held.root[2],
-      ),
-    ).toBeLessThan(0.01);
-    const total = clips.reduce((sum, c) => sum + c.duration, 0);
-    const end = bodyPose(scene, f.objects, total + 0.01);
-    expect(Math.hypot(end.root[0] - 3, end.root[2])).toBeLessThan(1.5);
-    expect(
-      prepareAutomaticRoutes(scene, f.objects, undefined, resumeAt + 1).issues,
-    ).toEqual([]);
-    const removed = applyCommands(scene, [
-      { type: "removeClip", id: "actor", clipId: clip.id },
-    ]);
-    expect(removed.entities[0].clips).toHaveLength(1);
-    expect(removed.entities[0].clips[0].id).toBe(clips.at(-1)!.id);
-    const reordered = applyCommands(scene, [
-      { type: "reorderClip", id: "actor", clipId: clip.id, direction: "later" },
-    ]);
-    expect(reordered.entities[0].clips.map((c) => c.id)).toEqual([
-      clips.at(-1)!.id,
-      ...clips.slice(0, -1).map((c) => c.id),
-    ]);
-    expect(
-      applyCommands(reordered, [
-        {
-          type: "reorderClip",
-          id: "actor",
-          clipId: clips[1].id,
-          direction: "earlier",
-        },
-      ]).entities[0].clips,
-    ).toEqual(clips);
-    const invalid = structuredClone(scene);
-    invalid.entities[0].clips[1].routeWait = "missing-stop";
-    expect(() => validateScene(invalid)).toThrow("earlier stopped clip");
-    // Editing a stopped path preserves the recorded wait, including when a
-    // second actor forces the editor to fork the shared motion definition.
-    const shared = structuredClone(scene);
-    shared.entities.push({
-      ...shared.entities[0],
-      id: "second-actor",
-      clips: [{ ...clips[0], id: "second-route" }],
-    });
-    const route = allMotions(shared).find((m) => m.id === clips[0].motionId)!;
-    const edited = applyCommands(
-      shared,
-      savePathCommands(
-        shared,
-        "actor",
-        { ...route, duration: clips[0].routeActive! + 0.3 },
-        clip.id,
-      ),
-    );
-    const changed = edited.entities[0].clips;
-    expect(changed[0].motionId).not.toBe(clips[0].motionId);
-    expect(changed[0].duration).toBe(clips[0].duration);
-    expect(
-      changed
-        .slice(1, -1)
-        .every(
-          (c) => c.motionId === changed[0].motionId && c.routeWait === clip.id,
-        ),
-    ).toBe(true);
-    expect(edited.entities.at(-1)!.clips[0].motionId).toBe(clips[0].motionId);
-  },
-);
-
-it("continues a stopped route at its scheduled end when the passage opens earlier", () => {
-  const f = fixture();
-  const clip = f.scene.entities[0].clips[0];
-  const at = clip.duration * 0.45;
-  const stopped = prepareAutomaticRoutes(enclose(f), f.objects, undefined, at);
-  expect(stopped.issues).toHaveLength(1);
-  const held = bodyPose(stopped.playbackScene, f.objects, at);
-  const opened = applyCommands(stopped.scene, [
-    { type: "update", id: "wall-w", changes: { position: [1.4, 0, 4] } },
-  ]);
-  const resumed = prepareAutomaticRoutes(
-    opened,
-    f.objects,
-    undefined,
-    at + 0.5,
-  );
-  expect(resumed.issues).toEqual([]);
-  const clips = resumed.scene.entities[0].clips;
-  expect(clips).toHaveLength(2);
-  // The prefix keeps its distance-time mapping, so it cannot end before its
-  // scheduled end; the body waits there and continues from that moment.
-  expect(clips[0].duration).toBeCloseTo(clip.duration, 9);
-  expect(clips[0].routeHold).toBeUndefined();
-  expect(clips[0].routeStop).toBeCloseTo(at, 9);
-  for (const time of [at + 0.1, clip.duration - 1e-4])
-    expect(
-      poseDistance(bodyPose(resumed.scene, f.objects, time), held),
-      `held ${time}`,
-    ).toBeLessThan(1e-6);
-  const start = bodyPose(resumed.scene, f.objects, clip.duration + 1e-3);
-  expect(
-    Math.hypot(start.root[0] - held.root[0], start.root[2] - held.root[2]),
-  ).toBeLessThan(0.01);
-  expect(
-    overlapsDuring(
-      resumed.scene,
-      f.objects,
-      clips[0].duration + clips[1].duration,
-    ),
-  ).toEqual([]);
 });
 
 it("does not let a width learned for one obstacle inflate later routes once it is gone", () => {

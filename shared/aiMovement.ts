@@ -1,5 +1,6 @@
 import { allAssets, allMotions, validateScene, type Scene } from "./scene";
 import { samplePath, type MotionPath } from "./path";
+import { recordedInPlace } from "./motionLibrary";
 
 /** Persist navigation intent at AI authoring boundaries. Ordinary manual edits
  * do not acquire it. Existing clips retain their IDs, timing and source gait;
@@ -43,15 +44,19 @@ export function withAutomaticMovement(previous: Scene, incoming: Scene): Scene {
       )
         continue;
       const direct =
-        (motion.kind === "walk" || motion.kind === "run") &&
+        (motion.role === "walk" || motion.role === "run") &&
         Math.abs(motion.distance) >= 0.05;
+      // Library recordings that perform in place (a wave, a bow) carry no
+      // travel to preserve or replan.
+      if (motion.kind === "imported" && !motion.path && recordedInPlace(motion))
+        continue;
       if (motion.kind === "imported" && !motion.path) {
         next ??= structuredClone(incoming);
         const changed = next.entities
           .find((e) => e.id === actor.id)!
           .clips.find((c) => c.id === clip.id)!;
         changed.navigation = {
-          movement: "walk",
+          movement: motion.role === "run" ? "run" : "walk",
           native: {
             motionId: motion.id,
             duration: clip.duration,
@@ -100,7 +105,7 @@ export function withAutomaticMovement(previous: Scene, incoming: Scene): Scene {
       changed.navigation = {
         point: [...path.points.at(-1)!],
         endHeading: heading,
-        movement: motion.kind === "run" ? "run" : "walk",
+        movement: motion.role === "run" ? "run" : "walk",
       };
     }
   }

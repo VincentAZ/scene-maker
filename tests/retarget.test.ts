@@ -17,12 +17,17 @@ import { bakeAnimation } from "../src/bakeAnimation";
 import { exportSnapshot } from "../src/exportSnapshot";
 import { requiredMotionSources } from "../src/importedAsset";
 import { offlinePlan } from "../server/ai";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 const world = (object: T.Object3D) => object.getWorldPosition(new T.Vector3());
 const turn = (angle: number) =>
   new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), angle);
 function imported(tPose: boolean, rollOffset: number) {
-  const body = createCharacter(characters[0]),
+  const body = withRecordedSources(
+      createCharacter(characters[0]),
+      recordedSourceMap,
+    ),
     group = new T.Group();
   const bones = body.userData.bones as Record<string, T.Bone>;
   if (tPose) {
@@ -93,7 +98,7 @@ function fixture() {
   actor.scale = 1.3;
   actor.clips = [
     { id: "shared", motionId: "turn-wave", duration: 4 },
-    { id: "walk", motionId: "walk", duration: 4 },
+    { id: "walk", motionId: "walk", duration: 4, playbackRate: 1 },
   ];
   scene.entities = [actor];
   scene.customAssets.push({
@@ -112,8 +117,11 @@ function fixture() {
     sourceAssetId: "original",
     animationName: clip.name,
   });
-  const target = createCharacter(characters[0]);
-  setMotionSources(target, new Map([["original", source.group]]));
+  // The receiver plays the shared original and, after it, the recorded Walk.
+  const target = withRecordedSources(
+    createCharacter(characters[0]),
+    new Map([...recordedSourceMap, ["original", source.group]]),
+  );
   const sample = (time: number, group = target) => {
     applyAnimatedEntityPose(group, actor, scene, time);
     group.updateWorldMatrix(true, true);
@@ -269,8 +277,10 @@ describe("shared imported humanoid actions", () => {
   });
   it("carries travel and final facing into the next action and supports independent reverse scrubbing", () => {
     const f = fixture(),
-      other = createCharacter(characters[1]);
-    setMotionSources(other, new Map([["original", f.source.group]]));
+      other = withRecordedSources(
+        createCharacter(characters[1]),
+        new Map([...recordedSourceMap, ["original", f.source.group]]),
+      );
     f.sample(2);
     const middle = world(f.target.userData.bones.rightForearm);
     f.sample(0.4, other);
@@ -282,18 +292,34 @@ describe("shared imported humanoid actions", () => {
     f.sample(4 - 1e-6);
     const before = world(f.target.userData.bones.hips);
     f.sample(4 + 1e-6);
-    expect(world(f.target.userData.bones.hips).distanceTo(before)).toBeLessThan(
+    // Travel continues exactly through the cut; only the hips' height
+    // changes, to the recorded stride's first frame.
+    const after = world(f.target.userData.bones.hips);
+    expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(
       1e-5,
     );
-    f.sample(8);
-    const delta = new T.Vector3(1, 0, 2).applyQuaternion(turn(-Math.PI / 2));
-    delta
-      .add(new T.Vector3(0, 0, 2).applyQuaternion(turn(Math.PI / 2)))
+    expect(Math.abs(after.y - before.y)).toBeLessThan(0.03);
+    // The original travels (1, 0, 2) in its start frame and turns a
+    // quarter; the recorded Walk then performs exactly as it would alone
+    // from that place and facing.
+    const arrival = new T.Vector3(1, 0, 2)
+      .applyQuaternion(turn(-Math.PI / 2))
       .multiplyScalar(f.actor.scale)
       .applyQuaternion(turn(f.actor.rotation))
       .add(new T.Vector3(...f.actor.position));
-    expect(f.target.position.distanceTo(delta)).toBeLessThan(1e-6);
-    expect(f.target.rotation.y).toBeCloseTo(f.actor.rotation + Math.PI / 2, 6);
+    const alone = {
+      ...f.actor,
+      position: arrival.toArray(),
+      rotation: f.actor.rotation + Math.PI / 2,
+      clips: [{ ...f.actor.clips[1], transition: "cut" as const }],
+    };
+    applyAnimatedEntityPose(f.target, alone, f.scene, 4);
+    const expected = f.target.position.clone(),
+      heading = f.target.rotation.y;
+    expect(expected.distanceTo(arrival)).toBeGreaterThan(2);
+    f.sample(8);
+    expect(f.target.position.distanceTo(expected)).toBeLessThan(1e-6);
+    expect(f.target.rotation.y).toBeCloseTo(heading, 6);
   });
   it("keeps complete turns when the transferred action repeats", () => {
     const f = fixture(),

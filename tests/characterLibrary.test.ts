@@ -15,11 +15,15 @@ import {
   allAssets,
 } from "../shared/scene";
 import { prepareImportedAsset } from "../src/importedAsset";
-import { humanoidWarning } from "../src/rig";
+import { humanoidWarning, nativeRootMotion } from "../src/rig";
+import { locomotionScale } from "../src/locomotion";
+import { roleMotion } from "../shared/motionLibrary";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
 import { BAKE_SAMPLE_FPS, bakeAnimation } from "../src/bakeAnimation";
 import { exportSnapshot } from "../src/exportSnapshot";
 import { offlineCommands } from "../server/ai";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 async function load(asset: (typeof libraryCharacters)[number]) {
   const bytes = await fs.readFile("public" + asset.url);
@@ -27,7 +31,10 @@ async function load(asset: (typeof libraryCharacters)[number]) {
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     "",
   );
-  return prepareImportedAsset(asset, gltf);
+  return withRecordedSources(
+    prepareImportedAsset(asset, gltf),
+    recordedSourceMap,
+  );
 }
 
 it("loads and articulates every shipped humanoid using the actual GLB files", async () => {
@@ -42,9 +49,27 @@ it("loads and articulates every shipped humanoid using the actual GLB files", as
     ]);
     const entity = scene.entities[0];
     entity.clips = [
-      { id: "walk", motionId: "walk", duration: 4 },
-      { id: "wave", motionId: "wave", duration: 2, transition: "smooth" },
+      { id: "walk", motionId: "walk", duration: 4, playbackRate: 1 },
+      {
+        id: "wave",
+        motionId: "wave",
+        duration: 2,
+        playbackRate: 1,
+        transition: "smooth",
+      },
     ];
+    // The recorded Walk travels its captured distance, scaled to the
+    // character's standing height, along the character's facing (+Z).
+    const walkSource = recordedSourceMap.get(
+      roleMotion("walk").sourceAssetId!,
+    )!;
+    const walked = nativeRootMotion(
+      walkSource,
+      walkSource.userData.animations[0],
+    )!.delta;
+    const travel =
+      Math.hypot(walked.x, walked.z) * locomotionScale(walkSource, group);
+    expect(travel, asset.name).toBeGreaterThan(1.5);
     const bones = group.userData.bones as Record<string, T.Bone>;
     for (const name of boneNames)
       expect(bones[name], asset.name + " " + name).toBeInstanceOf(T.Bone);
@@ -65,7 +90,16 @@ it("loads and articulates every shipped humanoid using the actual GLB files", as
           arm.angleTo(bones.rightArm.getWorldQuaternion(new T.Quaternion())),
           asset.name,
         ).toBeGreaterThan(0.3);
-      if (time === 6) expect(group.position.z, asset.name).toBeCloseTo(2, 4);
+      if (time === 6) {
+        // Within 1 cm: the stopped body stands where its last frame plants.
+        expect(
+          Math.abs(Math.hypot(group.position.x, group.position.z) - travel),
+          asset.name,
+        ).toBeLessThan(0.01);
+        expect(group.position.z, asset.name).toBeGreaterThan(
+          5 * Math.abs(group.position.x),
+        );
+      }
     }
     const bounds = new T.Box3().setFromObject(group);
     expect(bounds.max.y - bounds.min.y, asset.name).toBeCloseTo(1.85, 1);
@@ -75,48 +109,53 @@ it("loads and articulates every shipped humanoid using the actual GLB files", as
   }
 });
 
-it("bakes a library performance into a separate rig with matching joint positions", async () => {
-  const asset = libraryCharacters.find((a) => a.style === "Doctor")!;
-  const group = await load(asset),
-    scene = applyCommands(starterScene(), [
-      { type: "clear" },
-      { type: "add", assetId: asset.id, position: [0, 0, 0] },
-    ]);
-  const entity = scene.entities[0];
-  entity.clips = [
-    { id: "walk", motionId: "walk", duration: 2 },
-    { id: "wave", motionId: "wave", duration: 2, transition: "smooth" },
-  ];
-  const sample = (time: number) => {
-    applyAnimatedEntityPose(group, entity, scene, time);
-    group.updateMatrixWorld(true);
-  };
-  const animation = bakeAnimation([group], 4, sample);
-  sample(0);
-  const exported = exportSnapshot(group),
-    mixer = new T.AnimationMixer(exported);
-  const action = mixer.clipAction(animation).setLoop(T.LoopOnce, 1);
-  action.clampWhenFinished = true;
-  // Compare exact bake sample instants; between samples playback interpolates.
-  for (const time of [0, 1, 2, 2 + 8 / BAKE_SAMPLE_FPS, 3, 4]) {
-    sample(time);
-    action.reset().play();
-    mixer.setTime(time);
-    exported.updateMatrixWorld(true);
-    for (const name of boneNames) {
-      const bone = group.userData.bones[name] as T.Bone;
-      const copy = exported.getObjectByProperty("uuid", bone.uuid)!;
-      expect(
-        copy
-          .getWorldPosition(new T.Vector3())
-          .distanceTo(bone.getWorldPosition(new T.Vector3())),
-        name,
-      ).toBeLessThan(1e-4);
+// Baking samples the recorded walk and wave transferred onto the rig.
+it(
+  "bakes a library performance into a separate rig with matching joint positions",
+  { timeout: 30000 },
+  async () => {
+    const asset = libraryCharacters.find((a) => a.style === "Doctor")!;
+    const group = await load(asset),
+      scene = applyCommands(starterScene(), [
+        { type: "clear" },
+        { type: "add", assetId: asset.id, position: [0, 0, 0] },
+      ]);
+    const entity = scene.entities[0];
+    entity.clips = [
+      { id: "walk", motionId: "walk", duration: 2 },
+      { id: "wave", motionId: "wave", duration: 2, transition: "smooth" },
+    ];
+    const sample = (time: number) => {
+      applyAnimatedEntityPose(group, entity, scene, time);
+      group.updateMatrixWorld(true);
+    };
+    const animation = bakeAnimation([group], 4, sample);
+    sample(0);
+    const exported = exportSnapshot(group),
+      mixer = new T.AnimationMixer(exported);
+    const action = mixer.clipAction(animation).setLoop(T.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    // Compare exact bake sample instants; between samples playback interpolates.
+    for (const time of [0, 1, 2, 2 + 8 / BAKE_SAMPLE_FPS, 3, 4]) {
+      sample(time);
+      action.reset().play();
+      mixer.setTime(time);
+      exported.updateMatrixWorld(true);
+      for (const name of boneNames) {
+        const bone = group.userData.bones[name] as T.Bone;
+        const copy = exported.getObjectByProperty("uuid", bone.uuid)!;
+        expect(
+          copy
+            .getWorldPosition(new T.Vector3())
+            .distanceTo(bone.getWorldPosition(new T.Vector3())),
+          name,
+        ).toBeLessThan(1e-4);
+      }
     }
-  }
-  disposeObject(group);
-  disposeObject(exported);
-});
+    disposeObject(group);
+    disposeObject(exported);
+  },
+);
 
 it("keeps catalogue file access bounded and exposes collections and assistant names", () => {
   const scene = starterScene();

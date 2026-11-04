@@ -56,6 +56,8 @@ export function solveLimb(
 }
 export type RigContacts = {
   hand: T.Vector3;
+  /** Hips height above the character root when contacts were measured. */
+  hipsHeight?: number;
   leftHand?: T.Vector3;
   leftFoot?: T.Vector3;
   rightFoot?: T.Vector3;
@@ -100,6 +102,7 @@ export function configureRigContacts(group: T.Group): RigContacts | null {
         0.35 / 0.4,
         bones[side + "Foot"],
       );
+  if (bones.hips) contacts.hipsHeight = group.worldToLocal(point(bones.hips)).y;
   group.userData.contacts = contacts;
   return contacts;
 }

@@ -22,6 +22,7 @@ import {
   validateScene,
   type Scene,
 } from "../shared/scene";
+import { roleMotion } from "../shared/motionLibrary";
 import {
   readConversationStream,
   mergeConversationTurn,
@@ -55,6 +56,10 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+// The starter scene ends when Leo finishes his recorded Talk and Take a
+// sip; Mila's recorded Wave hello and Talk end earlier.
+const starterEnd = roleMotion("talk").duration + roleMotion("sip").duration;
+const milaEnd = roleMotion("wave").duration + roleMotion("talk").duration;
 describe("dialogue staged in the scene", () => {
   it("uses the speaker's held cup and avoids a sip when their hand holds another prop", () => {
     const s = starterScene(),
@@ -115,7 +120,8 @@ describe("dialogue staged in the scene", () => {
     });
     const a = dialogueTiming(next, next.transcript[0])!,
       b = dialogueTiming(next, next.transcript[1])!;
-    expect(a.start).toBe(7);
+    expect(starterEnd).toBeCloseTo(15.6, 5);
+    expect(a.start).toBeCloseTo(starterEnd, 6);
     expect(b.start).toBeGreaterThanOrEqual(a.end);
     expect(dialogueAt(next, a.start).map((line) => line.name)).toEqual([
       "Mila",
@@ -137,7 +143,16 @@ describe("dialogue staged in the scene", () => {
     const moved = applyCommands(spoken, [
       { type: "reorderClip", id, clipId, direction: "earlier" },
     ]);
-    expect(dialogueTiming(moved, moved.transcript[0])!.start).toBe(6);
+    // Mila waits for Leo before speaking; moving her line ahead of that
+    // wait starts it as soon as her own recorded actions finish.
+    expect(dialogueTiming(spoken, spoken.transcript[0])!.start).toBeCloseTo(
+      starterEnd,
+      6,
+    );
+    expect(dialogueTiming(moved, moved.transcript[0])!.start).toBeCloseTo(
+      milaEnd,
+      6,
+    );
     const removed = applyCommands(moved, [{ type: "removeClip", id, clipId }]);
     expect(removed.transcript[0].text).toBe("Hello there.");
     expect(dialogueTiming(removed, removed.transcript[0])).toBeNull();
@@ -157,7 +172,7 @@ describe("dialogue staged in the scene", () => {
       action: "talk",
     });
     expect(dialogueSubtitles(next)).toBe(
-      "1\n00:00:07,000 --> 00:00:10,000\nMila: Please stay.\n",
+      "1\n00:00:15,600 --> 00:00:18,600\nMila: Please stay.\n",
     );
     expect(validateScene(s).transcript[0].text).toBe("Older dialogue");
   });
@@ -384,16 +399,14 @@ describe("HTTP conversation stream", () => {
     expect(latest.transcript.map((line) => line.clipIds?.length)).toEqual([
       2, 2,
     ]);
-    expect(dialogueTiming(latest, latest.transcript[0])).toEqual({
-      start: 7,
-      end: 11,
-    });
-    expect(dialogueTiming(latest, latest.transcript[1])).toEqual({
-      start: 11,
-      end: 15,
-    });
+    const first = dialogueTiming(latest, latest.transcript[0])!,
+      second = dialogueTiming(latest, latest.transcript[1])!;
+    expect(first.start).toBeCloseTo(starterEnd, 6);
+    expect(first.end).toBeCloseTo(starterEnd + 4, 6);
+    expect(second.start).toBeCloseTo(starterEnd + 4, 6);
+    expect(second.end).toBeCloseTo(starterEnd + 8, 6);
     expect(dialogueSubtitles(latest)).toContain(
-      "00:00:11,000 --> 00:00:15,000",
+      "00:00:19,600 --> 00:00:23,600",
     );
   });
   it("delivers the first turn while the next provider is still pending", async () => {

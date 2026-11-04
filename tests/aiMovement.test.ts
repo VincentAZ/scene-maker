@@ -71,7 +71,10 @@ it.each([false, true])(
   },
 );
 
-it("converts newly AI-chained straight travel into a private route without changing timing or the library", () => {
+// Studio Run is a recorded take with its own root travel, so an AI-chained run
+// keeps that original performance as native intent (measured once its source
+// is loaded) instead of being rewritten as a fixed-distance procedural route.
+it("keeps newly AI-chained recorded travel as a native performance without changing timing or the library", () => {
   const f = fixture();
   const next = applyCommands(f.scene, [
     { type: "chain", id: f.scene.entities[0].id, motionId: "run", duration: 3 },
@@ -79,18 +82,20 @@ it("converts newly AI-chained straight travel into a private route without chang
   const result = withAutomaticMovement(f.scene, next),
     clip = result.entities[0].clips[0];
   const original = allMotions(f.scene).find((m) => m.id === "run")!;
+  expect(original).toMatchObject({ kind: "imported", role: "run" });
   expect(clip.id).toBe(next.entities[0].clips[0].id);
+  expect(clip.motionId).toBe("run");
   expect(clip.duration).toBe(3);
-  expect(clip.navigation).toMatchObject({
+  expect(clip.navigation).toEqual({
+    // A replan that falls back to a planned route must keep running.
     movement: "run",
-    point: [0, 0, original.distance],
+    native: {
+      motionId: "run",
+      duration: 3,
+      playbackRate: next.entities[0].clips[0].playbackRate,
+    },
   });
-  expect(
-    allMotions(result).find((m) => m.id === clip.motionId)?.path?.points,
-  ).toEqual([
-    [0, 0, 0],
-    [0, 0, original.distance],
-  ]);
+  expect(result.customMotions).toEqual(next.customMotions);
   expect(allMotions(result).find((m) => m.id === "run")).toEqual(original);
 });
 

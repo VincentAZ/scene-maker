@@ -147,8 +147,9 @@ it("splits long waits into legal clips and retains stable IDs when recomputed", 
   changed.entities[0].clips.splice(
     1,
     0,
-    { id: "continuation-1", motionId: "talk", duration: 60 },
-    { id: "continuation-2", motionId: "talk", duration: 20 },
+    // Recorded Talk clips, at the speed the editor gives them.
+    { id: "continuation-1", motionId: "talk", duration: 60, playbackRate: 1 },
+    { id: "continuation-2", motionId: "talk", duration: 20, playbackRate: 1 },
   );
   changed.transcript[0].clipIds = [
     changed.transcript[0].clipId!,

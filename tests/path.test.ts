@@ -15,15 +15,22 @@ import {
   allAssets,
   type Motion,
 } from "../shared/scene";
+import { capturedRouteGaits } from "../shared/motionLibrary";
 import { offlineCommands, offlinePlan } from "../server/ai";
 import { validatePlan } from "../shared/studio";
 import { createCharacter, applyAnimatedEntityPose } from "../src/world";
 import { bakeAnimation } from "../src/bakeAnimation";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
+// Routes travel on the recorded walking stride (its source take interval).
+const stride = capturedRouteGaits[0];
 const route = (): Motion => ({
   id: "route",
   name: "Arc around the crate",
-  kind: "walk",
+  kind: "imported",
+  sourceAssetId: stride.sourceAssetId,
+  animationName: stride.animationName,
   duration: 8,
   distance: 0,
   poses: [],
@@ -34,6 +41,7 @@ const route = (): Motion => ({
       [4, 0, 0],
     ],
     smooth: true,
+    sourceRange: { ...stride.path!.sourceRange! },
   },
 });
 function fixture() {
@@ -93,16 +101,36 @@ describe("authored walking paths", () => {
       { type: "chain", id: actor.id, motionId: "wave", duration: 2 },
       { type: "chain", id: actor.id, motionId: "walk", duration: 4 },
     ]);
+    // Studio Walk is a recording whose root travel is measured from its
+    // loaded source; stand in a measured 2 m straight stride for it here.
+    const options = {
+      nativeRoot: (m: Motion) =>
+        m.id === "walk"
+          ? {
+              start: [0, 0, 0] as [number, number, number],
+              delta: [0, 0, 2] as [number, number, number],
+            }
+          : undefined,
+    };
+    // The recorded body carries that travel while the take plays (the rig's
+    // root track), so the scene root advances by it when the take completes.
     const a = next.entities[0],
-      before = entityPose(a, next, 4 - 1e-7),
-      start = entityPose(a, next, 4);
+      start = entityPose(a, next, 4, options);
     expect(
-      new T.Vector3(...start.root).distanceTo(new T.Vector3(...before.root)),
-    ).toBeLessThan(1e-5);
+      new T.Vector3(...start.root).distanceTo(
+        new T.Vector3(
+          ...pathToWorld([0, 0, 2], {
+            position: actor.position,
+            heading: actor.rotation,
+            scale: actor.scale,
+          }),
+        ),
+      ),
+    ).toBeLessThan(1e-6);
     expect(start.heading).toBeCloseTo(actor.rotation, 5);
-    const end = entityPose(a, next, 12),
-      duringWave = entityPose(a, next, 13),
-      final = entityPose(a, next, 18);
+    const end = entityPose(a, next, 12, options),
+      duringWave = entityPose(a, next, 13, options),
+      final = entityPose(a, next, 18, options);
     const expected = pathToWorld([4, 0, 2], {
       position: actor.position,
       heading: actor.rotation,
@@ -287,8 +315,9 @@ describe("authored walking paths", () => {
       scene,
       savePathCommands(scene, actor.id, route()),
     );
-    const rig = createCharacter(
-      allAssets(next).find((a) => a.id === actor.assetId)!,
+    const rig = withRecordedSources(
+      createCharacter(allAssets(next).find((a) => a.id === actor.assetId)!),
+      recordedSourceMap,
     );
     rig.name = "entity_" + actor.id;
     const sample = (time: number) =>

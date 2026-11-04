@@ -162,7 +162,7 @@ describe("route locomotion selection", () => {
     expect(ids).not.toContain("prop");
   });
 
-  it("copies only native identity, and removes native metadata when selecting a procedural gait", () => {
+  it("copies only native identity, including the recorded take behind studio Run", () => {
     const { scene, walk } = fixture();
     expect(routeLocomotionFields(walk)).toEqual({
       kind: "imported",
@@ -173,7 +173,11 @@ describe("route locomotion selection", () => {
       routeLocomotionFields(
         allMotions(scene).find((motion) => motion.id === "run")!,
       ),
-    ).toEqual({ kind: "run" });
+    ).toEqual({
+      kind: "imported",
+      sourceAssetId: "cmu-capture-35-17",
+      animationName: "35_17",
+    });
     expect(() =>
       routeLocomotionFields({ ...walk, sourceAssetId: undefined }),
     ).toThrow("locomotion");
@@ -220,8 +224,6 @@ describe("distance-driven original gait timing", () => {
     expect(() => routePace({ ...walk, animationName: "Run_Carry" })).toThrow(
       "Measure this imported gait",
     );
-    expect(routePace({ ...walk, kind: "walk" })).toBe(1.1);
-    expect(routePace({ ...walk, kind: "run" })).toBe(2.6);
     for (const cycle of [
       { distance: -1, duration: -1 },
       { distance: 1, duration: Infinity },

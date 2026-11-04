@@ -23,6 +23,8 @@ import {
 import { configureRigContacts, type RigContacts } from "../src/ik";
 import { applyInteractions } from "../src/interactions";
 import { offlineCommands } from "../server/ai";
+import { recordedSources, withRecordedSources } from "./recordedSources";
+const recordedSourceMap = await recordedSources();
 
 function fixture() {
   const empty = starterScene();
@@ -41,7 +43,10 @@ function renderer(scene: Scene) {
     const asset = allAssets(scene).find((a) => a.id === entity.assetId)!;
     const object =
       asset.category === "characters"
-        ? createCharacter(asset, entity.color)
+        ? withRecordedSources(
+            createCharacter(asset, entity.color),
+            recordedSourceMap,
+          )
         : createProp(asset.style, entity.color, asset.parts, asset.ladder);
     root.add(object);
     configureRigContacts(object);
@@ -174,9 +179,11 @@ describe("targeted ladder choreography", () => {
     const end = entityPose(actor, scene, 6);
     actor.clips.push({ id: "walk", motionId: "walk", duration: 3 });
     expect(entityPose(actor, scene, 6).root).toEqual(end.root);
-    const walked = entityPose(actor, scene, 9);
-    expect(walked.root[2]).toBeCloseTo(end.root[2] - 2, 5);
-    expect(walked.heading).toBeCloseTo(Math.PI, 5);
+    // The recorded walk starts from the climb's endpoint and facing; its own
+    // travel comes from the take once its source is loaded.
+    const walked = entityPose(actor, scene, 6.5);
+    expect(walked.root).toEqual(end.root);
+    expect(walked.heading).toBeCloseTo(end.heading!, 5);
   });
   it("starts the approach from accumulated native root travel", () => {
     const { scene, actor } = fixture();

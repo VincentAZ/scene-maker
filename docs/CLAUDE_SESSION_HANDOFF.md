@@ -146,3 +146,34 @@ removed. Gates: route 140 (0.008496 mm), cuts 140, native exact, all 19
 cross-rig deltas unchanged, wait 3.448e-8 / 6.005 mm, export ≤0.0035 mm, real
 UI unchanged. Evidence: `.data/natural-motion-investigation/claude-session/final/`.
 Only Vite 4682 (and Codex's 4609–4614, API 4413, Chrome 9451) remain running.
+
+## Session 2 (2026-11-02 evening): Blender-dependent checks — UNCOMMITTED
+
+Changes are in the working tree of this worktree, not committed (D35–D41):
+`engine/convert.py` (FBX bind-frame repair, takes start at 0, empty takes
+dropped), `engine/mixamo_bundle.py` (takes start at 0), `src/rig.ts`
+(bind-scale round-off tolerance), `server/index.ts` + `src/App.tsx`
+(mesh-less imports go to Actions), tests in `rigConventions`,
+`importedTakeNames`, `test_actorcore.py`, `test_engine_generated.py`.
+New drivers: `test-results/claude-fbx-import.mjs` (recognition, FBX-vs-GLB
+equivalence, transfer matrix), `claude-fbx-gallery.mjs` (raw / prepared /
+driven stills with joint markers), `claude-fbx-ui.mjs` (real dialog),
+`claude-api4414.config.ts` (Vite → API 4414).
+
+- The app uses the bundled Blender 4.5.3, not Ubuntu's 5.0.1 (broken for FBX,
+  D35). Run Python Blender tests with
+  `BLENDER_PATH=/home/vincent/Repos/scene-maker/.data/tools/blender/blender`.
+- Runtime added: API 4414 (this worktree's server, private data) and Vite 4684
+  → 4414; Vite 4683 → 4413. API 4413 is older server code (no `hasMesh`).
+- Evidence: `/tmp/scene-natural-motion/claude-session/blender/` (inputs `in/`,
+  reports `fbx-report-v5.json`, `vrm-report.json`, stills `stills-v5/`,
+  `stills-vrm/`, dialog `ui/`, matrix `matrix/`, smoke `smoke/`).
+
+## Session 3 — recorded-only motion (UNCOMMITTED, on top of session 2)
+
+See CLAUDE_AUTONOMOUS_LOG.md D44–D52 and docs/MOTION_ASSETS.md "Recorded studio actions".
+- Runtime moved off tmpfs after a reboot wiped /tmp: private data `.data/private-runtime` (Blender path only, no API keys), API 4414, Vite 4684 (`test-results/restart-vite.sh`, kills by PID), headless Chrome 9451 (profile under .data/private-runtime). User service 4311 was down after the reboot and was not restarted.
+- CMU sources: `.data/natural-motion-investigation/cmu-library/<subject>/` (ASF/AMC/converted GLB); rebuild with `node scripts/build-cmu-library.mjs <dir>`.
+- Suite: 1,310 passed, 3 failing (known limits): Stand up previewed on its raw CMU skeleton warns (legs out of reach); quaternius-witch misses a cup grip by >2.5 cm with the recorded Pick up; rig.test "rotated bone axes and helper bones" exposes a pre-existing transfer dependence on bone axes (0.4–7 cm root, head 5–23 cm with a neck helper).
+- All 25 real projects load through the migration (read-only check, `.data/private-runtime/scripts/migrate-check.ts`).
+- Restored after the reboot (D53): `captured-stand-walk-stop-party-review` with all 8 imports. After any reboot run `test-results/start-4684.sh`.

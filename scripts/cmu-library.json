@@ -1,0 +1,446 @@
+[
+  {
+    "trial": "141_20",
+    "name": "Waiting",
+    "category": "Standing",
+    "description": "Stands and waits, shifting weight and glancing around."
+  },
+  {
+    "trial": "141_13",
+    "name": "Stretch and yawn",
+    "category": "Standing",
+    "description": "Raises both arms in a stretch and yawns."
+  },
+  {
+    "trial": "141_27",
+    "name": "Mope",
+    "category": "Emotions",
+    "description": "Walks off slowly with a dejected posture.",
+    "travels": true
+  },
+  {
+    "trial": "143_29",
+    "name": "Pacing",
+    "category": "Standing",
+    "description": "Paces back and forth while thinking.",
+    "travels": true
+  },
+  {
+    "trial": "40_10",
+    "name": "Waiting for the bus",
+    "category": "Standing",
+    "description": "A long, natural wait: weight shifts, looks around, small fidgets."
+  },
+  {
+    "trial": "141_16",
+    "name": "Wave hello",
+    "category": "Gestures",
+    "role": "wave",
+    "description": "Raises the right hand and waves hello."
+  },
+  {
+    "trial": "143_25",
+    "name": "Waving",
+    "category": "Gestures",
+    "description": "A longer, energetic wave."
+  },
+  {
+    "trial": "141_21",
+    "name": "Shrug",
+    "category": "Gestures",
+    "description": "Shrugs the shoulders with open hands."
+  },
+  {
+    "trial": "141_22",
+    "name": "High five",
+    "category": "Gestures",
+    "description": "Steps in and gives a high five.",
+    "travels": true
+  },
+  {
+    "trial": "141_23",
+    "name": "Shake hands",
+    "category": "Gestures",
+    "description": "Steps forward and offers a handshake.",
+    "travels": true
+  },
+  {
+    "trial": "141_26",
+    "name": "Curtsey",
+    "category": "Gestures",
+    "description": "A low curtsey."
+  },
+  {
+    "trial": "113_02",
+    "excerpt": [0.2, 3.2],
+    "name": "Bow",
+    "category": "Gestures",
+    "role": "bow",
+    "description": "Bows from the waist and straightens up."
+  },
+  {
+    "trial": "141_18",
+    "name": "Peekaboo",
+    "category": "Gestures",
+    "description": "Covers the face with both hands and reveals it."
+  },
+  {
+    "trial": "80_14",
+    "excerpt": [2, 10],
+    "key": "80_14_talk",
+    "name": "Talk",
+    "category": "Talking",
+    "role": "talk",
+    "description": "Talks with natural hand gestures."
+  },
+  {
+    "trial": "80_14",
+    "name": "Teaching",
+    "category": "Talking",
+    "description": "A long explanation with natural hand gestures, as when teaching a class."
+  },
+  {
+    "trial": "80_48",
+    "name": "Arguing",
+    "category": "Talking",
+    "description": "Argues with emphatic arm gestures."
+  },
+  {
+    "trial": "79_36",
+    "name": "Answer the phone",
+    "category": "Everyday",
+    "description": "Picks up an imagined phone and talks. No phone is included."
+  },
+  {
+    "trial": "79_69",
+    "name": "Very happy",
+    "category": "Emotions",
+    "description": "Shows great joy with the whole body."
+  },
+  {
+    "trial": "79_70",
+    "name": "Laughing",
+    "category": "Emotions",
+    "description": "Laughs, doubling over."
+  },
+  {
+    "trial": "79_71",
+    "name": "Sad",
+    "category": "Emotions",
+    "description": "Shows sadness with slumped posture."
+  },
+  {
+    "trial": "79_72",
+    "name": "Crying",
+    "category": "Emotions",
+    "description": "Cries with hands to the face."
+  },
+  {
+    "trial": "79_73",
+    "name": "Scared",
+    "category": "Emotions",
+    "description": "Startles and shrinks back in fear."
+  },
+  {
+    "trial": "79_74",
+    "name": "Upset",
+    "category": "Emotions",
+    "description": "Shows frustration and anger."
+  },
+  {
+    "trial": "79_68",
+    "name": "Cold",
+    "category": "Emotions",
+    "description": "Shivers and rubs the arms against the cold."
+  },
+  {
+    "trial": "113_15",
+    "excerpt": [1.2, 4.2],
+    "key": "113_15_sit",
+    "name": "Sit down",
+    "category": "Sitting",
+    "role": "sit",
+    "timing": [0.08, 0.5],
+    "description": "Sits down onto a chair behind. With a seat chosen, the body is placed on it."
+  },
+  {
+    "trial": "113_15",
+    "excerpt": [4.2, 6.4],
+    "key": "113_15_stand",
+    "name": "Stand up",
+    "category": "Sitting",
+    "role": "stand",
+    "timing": [0.09, 0.73],
+    "description": "Rises from a chair to standing."
+  },
+  {
+    "trial": "143_18",
+    "name": "Sit down and get up",
+    "category": "Sitting",
+    "description": "Sits on a low seat and stands again, twice."
+  },
+  {
+    "trial": "141_17",
+    "name": "Sit on a stool",
+    "category": "Sitting",
+    "description": "Perches on a high stool and gets up."
+  },
+  {
+    "trial": "114_05",
+    "name": "Sitting in a chair",
+    "category": "Sitting",
+    "description": "Sits down, settles, shifts and gets up again."
+  },
+  {
+    "trial": "13_01",
+    "name": "High stool, sit and stand",
+    "category": "Sitting",
+    "description": "Sits on a high stool and stands, several times."
+  },
+  {
+    "trial": "143_11",
+    "name": "Walk and pick up a box",
+    "category": "Objects",
+    "description": "Walks over, squats and lifts a box. No box is included.",
+    "travels": true
+  },
+  {
+    "trial": "111_17",
+    "name": "Pick up from the floor",
+    "category": "Objects",
+    "description": "Bends down to the floor and picks something up."
+  },
+  {
+    "trial": "80_08",
+    "excerpt": [3.3, 9.9],
+    "key": "80_08_pick",
+    "name": "Pick up",
+    "category": "Objects",
+    "role": "pick",
+    "description": "Reaches down and picks something up. With a prop chosen, the hand takes it."
+  },
+  {
+    "trial": "80_27",
+    "excerpt": [2.0, 7.0],
+    "key": "80_27_place",
+    "name": "Put down",
+    "category": "Objects",
+    "role": "place",
+    "description": "Sets a glass down in front. With a prop chosen, the hand places it."
+  },
+  {
+    "trial": "79_41",
+    "name": "Sipping coffee",
+    "category": "Objects",
+    "description": "Holds a cup and takes several sips. No cup is included."
+  },
+  {
+    "trial": "79_38",
+    "excerpt": [1.2, 8.8],
+    "key": "79_38_sip",
+    "name": "Take a sip",
+    "category": "Objects",
+    "role": "sip",
+    "description": "Raises a drink and sips. With a cup chosen, the hand holds it."
+  },
+  {
+    "trial": "13_09",
+    "name": "Drink a soda",
+    "category": "Objects",
+    "description": "Drinks from a bottle. No bottle is included."
+  },
+  {
+    "trial": "143_37",
+    "name": "Up and down a short ladder",
+    "category": "Climbing",
+    "description": "Climbs a few rungs and comes back down."
+  },
+  {
+    "trial": "13_33",
+    "excerpt": [1.8, 6.8],
+    "key": "13_33_climb",
+    "name": "Climb a ladder",
+    "category": "Climbing",
+    "role": "climb",
+    "description": "Climbs up a ladder. With a ladder chosen, the hands and feet hold its rungs."
+  },
+  {
+    "trial": "111_03",
+    "name": "Crawl",
+    "category": "Climbing",
+    "role": "crawl",
+    "description": "Gets down and crawls on hands and knees.",
+    "travels": true
+  },
+  {
+    "trial": "13_11",
+    "name": "Forward jump",
+    "category": "Sports",
+    "role": "jump",
+    "description": "Crouches and jumps forward.",
+    "travels": true
+  },
+  {
+    "trial": "143_06",
+    "name": "Jump up",
+    "category": "Sports",
+    "description": "Jumps straight up for height."
+  },
+  {
+    "trial": "141_12",
+    "name": "Twist dance",
+    "category": "Dance",
+    "role": "dance",
+    "description": "Dances the twist."
+  },
+  {
+    "trial": "143_35",
+    "name": "Macarena",
+    "category": "Dance",
+    "description": "Dances the Macarena."
+  },
+  {
+    "trial": "143_34",
+    "name": "Chicken dance",
+    "category": "Dance",
+    "description": "Dances the chicken dance."
+  },
+  {
+    "trial": "05_02",
+    "name": "Modern dance",
+    "category": "Dance",
+    "description": "Expressive modern dance with a pirouette.",
+    "travels": true
+  },
+  {
+    "trial": "141_19",
+    "name": "Casual walk",
+    "category": "Walking",
+    "description": "An unhurried walk.",
+    "travels": true
+  },
+  {
+    "trial": "143_39",
+    "name": "Walk backwards",
+    "category": "Walking",
+    "description": "Walks backwards.",
+    "travels": true
+  },
+  {
+    "trial": "143_40",
+    "name": "Walk sideways",
+    "category": "Walking",
+    "description": "Side-steps.",
+    "travels": true
+  },
+  {
+    "trial": "143_41",
+    "name": "Sneak",
+    "category": "Walking",
+    "description": "Sneaks on bent knees.",
+    "travels": true
+  },
+  {
+    "trial": "17_03",
+    "name": "Stealthy walk",
+    "category": "Walking",
+    "description": "Walks stealthily around a space.",
+    "travels": true
+  },
+  {
+    "trial": "82_10",
+    "name": "Sad walk",
+    "category": "Walking",
+    "description": "A slow walk with dropped shoulders.",
+    "travels": true
+  },
+  {
+    "trial": "77_19",
+    "name": "Limp",
+    "category": "Walking",
+    "description": "Limps on a hurt right leg.",
+    "travels": true
+  },
+  {
+    "trial": "143_17",
+    "name": "Walk up steps",
+    "category": "Walking",
+    "description": "Walks up a few steps and over. No steps are included.",
+    "travels": true
+  },
+  {
+    "trial": "143_02",
+    "name": "Run to a stop",
+    "category": "Running",
+    "description": "Runs and stops.",
+    "travels": true
+  },
+  {
+    "trial": "143_03",
+    "name": "Start running",
+    "category": "Running",
+    "description": "Starts from standing into a run.",
+    "travels": true
+  },
+  {
+    "trial": "141_29",
+    "name": "Wandering walk",
+    "category": "Walking",
+    "description": "Walks around at random.",
+    "travels": true
+  },
+  {
+    "trial": "79_31",
+    "name": "Write on a board",
+    "category": "Everyday",
+    "description": "Writes on a chalkboard. No board is included."
+  },
+  {
+    "trial": "79_85",
+    "name": "Type on a laptop",
+    "category": "Everyday",
+    "description": "Types on an imagined laptop held in front."
+  },
+  {
+    "trial": "79_44",
+    "name": "Wash a window",
+    "category": "Everyday",
+    "description": "Wipes a window in front."
+  },
+  {
+    "trial": "79_55",
+    "name": "Sweep",
+    "category": "Everyday",
+    "description": "Sweeps the floor with a broom. No broom is included."
+  },
+  {
+    "trial": "79_75",
+    "name": "Channel surfing",
+    "category": "Everyday",
+    "description": "Points a remote at a TV, changing channels."
+  },
+  {
+    "trial": "143_23",
+    "name": "Punching",
+    "category": "Sports",
+    "description": "Throws a series of punches."
+  },
+  {
+    "trial": "143_24",
+    "name": "Kicking",
+    "category": "Sports",
+    "description": "Throws a series of kicks."
+  },
+  {
+    "trial": "140_01",
+    "name": "Get up from lying face down",
+    "category": "Climbing",
+    "description": "Pushes up from the floor to standing."
+  },
+  {
+    "trial": "139_16",
+    "name": "Get up from the ground",
+    "category": "Climbing",
+    "description": "Gets up from the ground to standing."
+  }
+]
