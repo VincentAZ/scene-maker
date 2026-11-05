@@ -61,7 +61,7 @@ import {
   sceneObstacles,
 } from "../src/assetManipulation";
 import { aces, extractSun, texelDirection } from "../src/hdriBackdrop";
-import { glbBounds } from "../src/importedAsset";
+import { glbBounds, loadImportedAsset } from "../src/importedAsset";
 import { disposeObject } from "../src/world";
 
 const staging: SetBlock = {
@@ -1117,6 +1117,102 @@ describe("measuring a creator's set before it loads", () => {
     expect(bounds.min.toArray().map((n) => +n.toFixed(6))).toEqual([-1, 0, 1]);
     expect(bounds.max.toArray().map((n) => +n.toFixed(6))).toEqual([3, 3, 3]);
     expect(glbBounds(new ArrayBuffer(8)).isEmpty()).toBe(true);
+  });
+});
+
+describe("streaming a set's model", () => {
+  /** A one-triangle GLB, small enough to stream in a few pieces. */
+  const triangle = () => {
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    let text = JSON.stringify({
+      asset: { version: "2.0" },
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0, name: "floor" }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      buffers: [{ byteLength: positions.byteLength }],
+      bufferViews: [{ buffer: 0, byteLength: positions.byteLength }],
+      accessors: [
+        {
+          bufferView: 0,
+          componentType: 5126,
+          count: 3,
+          type: "VEC3",
+          min: [0, 0, 0],
+          max: [1, 0, 1],
+        },
+      ],
+    });
+    while (text.length % 4) text += " ";
+    const json = new TextEncoder().encode(text);
+    const bytes = new Uint8Array(12 + 8 + json.length + 8 + 36);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(0, 0x46546c67, true);
+    view.setUint32(4, 2, true);
+    view.setUint32(8, bytes.length, true);
+    view.setUint32(12, json.length, true);
+    view.setUint32(16, 0x4e4f534a, true);
+    bytes.set(json, 20);
+    view.setUint32(20 + json.length, 36, true);
+    view.setUint32(24 + json.length, 0x004e4942, true);
+    bytes.set(new Uint8Array(positions.buffer), 28 + json.length);
+    return bytes;
+  };
+  const serve = (bytes: Uint8Array, pieces = 3) =>
+    vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const size = Math.ceil(bytes.length / pieces);
+      let sent = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(stream) {
+          if (init?.signal?.aborted) {
+            stream.error(init.signal.reason);
+            return;
+          }
+          if (sent >= bytes.length) return stream.close();
+          stream.enqueue(bytes.slice(sent, sent + size));
+          sent += size;
+        },
+      });
+      return new Response(body, {
+        headers: { "Content-Length": String(bytes.length) },
+      });
+    });
+  const own = (): Asset => ({ ...set, url: "/uploads/streamed.glb" });
+
+  it("reports progress as the file arrives and keeps nothing in the cache", async () => {
+    const bytes = triangle();
+    const fetch = serve(bytes);
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const reported: [number, number][] = [];
+      const model = await loadImportedAsset(own(), (received, total) =>
+        reported.push([received, total]),
+      );
+      expect(model.getObjectByName("floor")).toBeInstanceOf(T.Mesh);
+      expect(reported.length).toBeGreaterThanOrEqual(3);
+      expect(reported.at(-1)).toEqual([bytes.length, bytes.length]);
+      expect(reported.every(([, total]) => total === bytes.length)).toBe(true);
+      // A set is fetched again each time rather than kept in memory.
+      await loadImportedAsset(own());
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stops when the creator leaves the set", async () => {
+    vi.stubGlobal("fetch", serve(triangle(), 50));
+    try {
+      const leave = new AbortController();
+      const loading = loadImportedAsset(
+        own(),
+        (received) => received > 100 && leave.abort(),
+        leave.signal,
+      );
+      await expect(loading).rejects.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
