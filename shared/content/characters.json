@@ -1838,5 +1838,65 @@
       "license": "MIT",
       "source": "https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Children/Male_Child_02"
     }
+  },
+  {
+    "id": "grab3d-man-base-character",
+    "name": "Man in a T-shirt",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "masculine",
+    "url": "/content/characters/grab3d-man-base-character.glb",
+    "thumbnail": "/content/characters/grab3d-man-base-character.png",
+    "description": "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot. An AI-assisted model.",
+    "credit": {
+      "author": "Alexander Popov (Grab3D), AI-assisted",
+      "license": "CC0",
+      "source": "https://grab3d.com/models/characters/man-base-character/"
+    }
+  },
+  {
+    "id": "grab3d-woman-base-character",
+    "name": "Woman in a sports top",
+    "category": "characters",
+    "style": "Everyday",
+    "body": "feminine",
+    "url": "/content/characters/grab3d-woman-base-character.glb",
+    "thumbnail": "/content/characters/grab3d-woman-base-character.png",
+    "description": "A woman with her dark hair in a bun, in a taupe sports top and fitted charcoal shorts, barefoot. An AI-assisted model.",
+    "credit": {
+      "author": "Alexander Popov (Grab3D), AI-assisted",
+      "license": "CC0",
+      "source": "https://grab3d.com/models/characters/woman-base-character/"
+    }
+  },
+  {
+    "id": "grab3d-pirate",
+    "name": "Pirate captain",
+    "category": "characters",
+    "style": "Historical",
+    "body": "masculine",
+    "url": "/content/characters/grab3d-pirate.glb",
+    "thumbnail": "/content/characters/grab3d-pirate.png",
+    "description": "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots. An AI-assisted model.",
+    "credit": {
+      "author": "Alexander Popov (Grab3D), AI-assisted",
+      "license": "CC0",
+      "source": "https://grab3d.com/models/characters/pirate/"
+    }
+  },
+  {
+    "id": "grab3d-ninja",
+    "name": "Ninja",
+    "category": "characters",
+    "style": "Historical",
+    "body": "masculine",
+    "url": "/content/characters/grab3d-ninja.glb",
+    "thumbnail": "/content/characters/grab3d-ninja.png",
+    "description": "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back. An AI-assisted model.",
+    "credit": {
+      "author": "Alexander Popov (Grab3D), AI-assisted",
+      "license": "CC0",
+      "source": "https://grab3d.com/models/characters/ninja/"
+    }
   }
 ]

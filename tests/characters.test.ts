@@ -26,9 +26,13 @@ import { recordedSources, withRecordedSources } from "./recordedSources";
 const content = path.resolve(process.env.SCENE_MAKER_CONTENT || "content");
 const file = (url: string) => path.join(content, url.slice("/content/".length));
 // The files are downloaded by `node scripts/build-content.mjs characters`.
+// Other sources (Grab3D) have their own tests.
+const entries = characters.filter((c) => c.id.startsWith("rocketbox-"));
 const built =
-  characters.length > 0 && characters.every((c) => fs.existsSync(file(c.url)));
-const assets = contentAssets.filter((a) => a.category === "characters");
+  entries.length > 0 && entries.every((c) => fs.existsSync(file(c.url)));
+const assets = contentAssets.filter(
+  (a) => a.category === "characters" && a.id.startsWith("rocketbox-"),
+);
 
 function readGlb(url: string) {
   const data = fs.readFileSync(file(url));

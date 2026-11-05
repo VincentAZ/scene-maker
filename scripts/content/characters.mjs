@@ -1,7 +1,8 @@
 // Realistic characters come from several sources, one module per source in
 // scripts/content/characters/<source>.mjs, each exporting
 // build({ out, cache, root, log }) → catalogue entries. Every module in that
-// folder runs, in name order, and the entries are concatenated.
+// folder runs, everyday people first (see LEAD), and the entries are
+// concatenated.
 // CHARACTER_SOURCES=rocketbox,grab3d limits a run to those sources; the other
 // sources' entries are then kept from the current catalogue. A module may
 // export `idPrefix`, the start of every id it owns, so that such a run also
@@ -15,12 +16,20 @@ const folder = path.join(
   "characters",
 );
 
+// The library lists everyday people first: these sources lead, in this order,
+// and any other source follows by name.
+const LEAD = ["rocketbox", "grab3d", "blender-studio"];
+const rank = (name) => {
+  const i = LEAD.indexOf(name);
+  return i < 0 ? LEAD.length : i;
+};
+
 function sources() {
   return fs
     .readdirSync(folder)
     .filter((f) => f.endsWith(".mjs"))
     .map((f) => f.slice(0, -".mjs".length))
-    .sort();
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 export async function build({ out, cache, root, log }) {
@@ -50,7 +59,8 @@ export async function build({ out, cache, root, log }) {
   }
   const ids = new Set();
   for (const entry of built) {
-    if (ids.has(entry.id)) throw Error(`Two characters share the id ${entry.id}`);
+    if (ids.has(entry.id))
+      throw Error(`Two characters share the id ${entry.id}`);
     ids.add(entry.id);
   }
   if (!chosen) return built;
