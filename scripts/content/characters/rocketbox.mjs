@@ -166,8 +166,10 @@ function stem(a) {
   return twin ? `${parent}_${name}` : name;
 }
 const avatarName = (a) => a.folder.split("/")[1];
+/** Every id this source gives out starts with it (see characters.mjs). */
+export const idPrefix = "rocketbox-";
 export const idOf = (a) =>
-  "rocketbox-" + stem(a).toLowerCase().replaceAll("_", "-");
+  idPrefix + stem(a).toLowerCase().replaceAll("_", "-");
 
 async function upstreamTree(cache, log) {
   const file = path.join(cache, "tree.json");

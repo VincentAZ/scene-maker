@@ -12,7 +12,12 @@ import {
 } from "../shared/scene";
 import { contentAssets, contentCredits } from "../shared/contentLibrary";
 import characters from "../shared/content/characters.json";
-import { cast, idOf } from "../scripts/content/characters/rocketbox.mjs";
+import { mergeCatalogue } from "../scripts/content/characters.mjs";
+import {
+  cast,
+  idOf,
+  idPrefix,
+} from "../scripts/content/characters/rocketbox.mjs";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning } from "../src/rig";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
@@ -124,6 +129,34 @@ describe("realistic character catalogue", () => {
     expect(idOf({ folder: "Professions/Police_Male_01" })).toBe(
       "rocketbox-police-male-01",
     );
+  });
+
+  it("rebuilds one source without touching the others or keeping what it dropped", () => {
+    expect(cast.every((a) => idOf(a).startsWith(idPrefix))).toBe(true);
+    const entry = (id: string, name = id) => ({ id, name });
+    const current = [
+      entry("rocketbox-a"),
+      entry("rocketbox-removed"),
+      entry("grab3d-soldier"),
+      entry("rocketbox-b"),
+    ];
+    const built = [
+      entry("rocketbox-a", "A renamed"),
+      entry("rocketbox-b"),
+      entry("rocketbox-new"),
+    ];
+    // Rebuilt entries stay in place, new ones follow, the removed one goes,
+    // and another source's entry is kept.
+    expect(mergeCatalogue({ current, built, owned: [idPrefix] })).toEqual([
+      entry("rocketbox-a", "A renamed"),
+      entry("grab3d-soldier"),
+      entry("rocketbox-b"),
+      entry("rocketbox-new"),
+    ]);
+    // A source that declares no prefix cannot tell what it dropped.
+    expect(
+      mergeCatalogue({ current, built, owned: [] }).map((e) => e.id),
+    ).toContain("rocketbox-removed");
   });
 });
 

@@ -13,6 +13,7 @@ export type RocketboxAvatar = {
 type Log = (...message: unknown[]) => void;
 
 export const cast: RocketboxAvatar[];
+export const idPrefix: string;
 export function idOf(avatar: Pick<RocketboxAvatar, "folder">): string;
 export function downloadAll(options: {
   cache: string;
