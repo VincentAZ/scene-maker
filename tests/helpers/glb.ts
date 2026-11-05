@@ -12,7 +12,9 @@ interface GLTFDocument {
   bufferViews?: { buffer: number; byteOffset?: number; byteLength: number }[];
   images?: { uri?: string; bufferView?: number; mimeType?: string }[];
   accessors?: { min?: number[]; max?: number[]; bufferView?: number }[];
-  meshes?: { primitives: { attributes: Record<string, number> }[] }[];
+  meshes?: {
+    primitives: { attributes: Record<string, number>; material?: number }[];
+  }[];
   nodes?: {
     mesh?: number;
     children?: number[];
@@ -25,7 +27,20 @@ interface GLTFDocument {
   }[];
   scenes?: { nodes: number[] }[];
   scene?: number;
-  materials?: { alphaMode?: string; doubleSided?: boolean }[];
+  materials?: {
+    name?: string;
+    alphaMode?: string;
+    doubleSided?: boolean;
+    emissiveFactor?: number[];
+    emissiveTexture?: unknown;
+    pbrMetallicRoughness?: {
+      baseColorFactor?: number[];
+      baseColorTexture?: unknown;
+      metallicFactor?: number;
+      roughnessFactor?: number;
+      metallicRoughnessTexture?: unknown;
+    };
+  }[];
 }
 
 export function readGLB(bytes: Uint8Array): GLB {
@@ -93,11 +108,13 @@ function imageSize(data: Uint8Array) {
   return { width: 0, height: 0 };
 }
 
-/** The world-space bounds of every mesh node, with its extras. */
+/** The world-space bounds of every mesh primitive (what three.js makes a
+ * mesh of), with its node's extras and its material index. */
 export function meshBounds({ json }: GLB) {
   const results: {
     name?: string;
     role?: string;
+    material?: number;
     min: number[];
     max: number[];
   }[] = [];
@@ -123,6 +140,7 @@ export function meshBounds({ json }: GLB) {
           name: node.name,
           role: (node.extras?.sceneMaker as { role?: string } | undefined)
             ?.role,
+          material: primitive.material,
           min: [0, 1, 2].map((k) => Math.min(...corners.map((c) => c[k]))),
           max: [0, 1, 2].map((k) => Math.max(...corners.map((c) => c[k]))),
         });

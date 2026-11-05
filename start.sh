@@ -50,9 +50,10 @@ if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.j
   npm install >>"$LOG" 2>&1
 fi
 # The realistic library (characters, props, sets) is downloaded, not stored in git: fetch what is missing.
+# The real 3D sets (about 2 GB of downloads that Blender converts) are left for the background build below.
 if ! "$NODE" scripts/build-content.mjs --check >/dev/null 2>&1; then
   echo "Downloading the Scene Maker library (first start can take several minutes)…"
-  SCENE_MAKER_DATA="$DATA" "$NODE" scripts/build-content.mjs >>"$LOG" 2>&1 || echo "Some library items could not be downloaded. See $LOG" >&2
+  SCENE_MAKER_DATA="$DATA" "$NODE" scripts/build-content.mjs --defer-3d-sets >>"$LOG" 2>&1 || echo "Some library items could not be downloaded. See $LOG" >&2
 fi
 COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 if [ ! -f dist/index.html ] || [ "$(cat dist/.commit 2>/dev/null)" != "$COMMIT" ]; then
@@ -77,6 +78,15 @@ if ! running; then
     sleep 1
   done
   running || { echo "The service did not answer within a minute. See $LOG" >&2; exit 1; }
+fi
+
+# Build the missing real 3D sets in the background, once at a time, while the studio is open: each one's card
+# works as soon as its files are written. Without Blender 4.2 or later this only notes that in the log.
+SETS_PID="$DATA/sets-build.pid"
+if ! { [ -f "$SETS_PID" ] && kill -0 "$(cat "$SETS_PID")" 2>/dev/null; } && ! "$NODE" scripts/build-content.mjs --check >/dev/null 2>&1; then
+  echo "Building the 3D sets in the background (log: $LOG)"
+  SCENE_MAKER_DATA="$DATA" setsid nohup nice -n 10 "$NODE" scripts/build-content.mjs sets >>"$LOG" 2>&1 &
+  echo $! >"$SETS_PID"
 fi
 
 # Open the studio as its own window with a Chromium-family browser, using a profile that belongs only to

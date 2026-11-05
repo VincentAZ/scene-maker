@@ -74,10 +74,35 @@ const insidePolygon = ([x, z]: number[], polygon: number[][]) => {
   }
   return hit;
 };
+/** Distance from (x, z) to the polygon's nearest edge. */
+const edgeDistance = ([x, z]: number[], polygon: number[][]) => {
+  let nearest = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [ax, az] = polygon[j];
+    const [bx, bz] = polygon[i];
+    const dx = bx - ax;
+    const dz = bz - az;
+    const length = dx * dx + dz * dz;
+    const t = length
+      ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / length))
+      : 0;
+    nearest = Math.min(nearest, Math.hypot(x - ax - dx * t, z - az - dz * t));
+  }
+  return nearest;
+};
+const polygonArea = (polygon: number[][]) =>
+  Math.abs(
+    polygon.reduce((sum, [x, z], i) => {
+      const [nx, nz] = polygon[(i + 1) % polygon.length];
+      return sum + x * nz - nx * z;
+    }, 0),
+  ) / 2;
 
 describe("3D sets catalogue", () => {
   it("lists real sets first, each with a model, a thumbnail and a complete set block", () => {
     expect(modelSets.length).toBeGreaterThanOrEqual(1);
+    // Two cards of the same name would only differ by their pictures.
+    expect(new Set(sets.map((set) => set.name)).size).toBe(sets.length);
     expect(sets.slice(0, modelSets.length)).toEqual(modelSets);
     expect(photoSets.length + modelSets.length).toBe(sets.length);
     const offered = offeredAssets(starterScene()).map((asset) => asset.id);
@@ -128,7 +153,24 @@ describe("3D sets catalogue", () => {
       expect(bounds.min[1]).toBeLessThanOrEqual(0.02);
       if (walkable) {
         expect(walkable.length).toBeGreaterThanOrEqual(3);
+        expect(walkable.length).toBeLessThanOrEqual(256);
         expect(insidePolygon([0, 0], walkable)).toBe(true);
+        // The studio moves a new cast member that stands closer than its
+        // body radius (0.25 m) to the edge of the floor.
+        expect(edgeDistance([0, 0], walkable)).toBeGreaterThanOrEqual(0.3);
+        expect(polygonArea(walkable)).toBeGreaterThanOrEqual(5);
+        // No needle: an edge never turns straight back along the last one.
+        walkable.forEach((b, i) => {
+          const a = walkable.at(i - 1)!;
+          const c = walkable[(i + 1) % walkable.length];
+          const ab = [b[0] - a[0], b[1] - a[1]];
+          const bc = [c[0] - b[0], c[1] - b[1]];
+          const lengths = Math.hypot(...ab) * Math.hypot(...bc);
+          expect(lengths).toBeGreaterThan(0);
+          expect((ab[0] * bc[0] + ab[1] * bc[1]) / lengths).toBeGreaterThan(
+            -0.99,
+          );
+        });
       }
       expect(["furniture", "none"]).toContain(collision);
       const credit = contentCredits.get(set.id)!;

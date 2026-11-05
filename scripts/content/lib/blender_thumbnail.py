@@ -18,7 +18,9 @@ def luminances(image):
 def render_thumbnail(scene, camera, path, width=640, height=400):
     scene.camera = camera
     r = scene.render
-    r.engine = "BLENDER_EEVEE_NEXT"
+    # Blender 4.2–4.5 calls its EEVEE "EEVEE Next"; 4.1 and 5.x plain EEVEE.
+    engines = {item.identifier for item in r.bl_rna.properties["engine"].enum_items}
+    r.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
     r.resolution_x, r.resolution_y, r.resolution_percentage = width, height, 100
     r.film_transparent = False
     r.image_settings.file_format = "PNG"

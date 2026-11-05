@@ -9,17 +9,20 @@
 // this module records all of it in the catalogue's `set` block.
 // Idempotent: sources are cached in content/.cache/sets-models/<slug>/ and a
 // set is converted again only when its GLB, thumbnail or measurement is
-// missing or was made by an older converter.
+// missing or was made by an older converter. A set that cannot be built on
+// this machine (no Blender 4.2+, a failed download or conversion) keeps its
+// committed catalogue entry, so the library never loses it silently; its
+// files stay missing until a later build makes them.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extract, findFile } from "../lib/archive.mjs";
-import { findBlender, runBlender } from "../lib/blender.mjs";
+import { findBlender, runBlender, blenderVersion } from "../lib/blender.mjs";
 import { download, fetchJSON, mb } from "../lib/download.mjs";
 import { blenderLib } from "../lib/thumbnail.mjs";
 
 // Bump to convert every set again after changing the converter.
-const CONVERTER_VERSION = 4;
+const CONVERTER_VERSION = 6;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // NVIDIA's stable download URL bounces to a signed, short-lived link; the zip
@@ -42,7 +45,10 @@ const bistro = {
 // `focus` (a pattern of object names the home view should frame, when the
 // most furnished view is not the one the set is about),
 // `maxTriangles` (a budget met by decimating the heaviest meshes), `scale`,
-// `camera` (the artist's camera to use), `materials`, `maxTexture`.
+// `camera` (the artist's camera to use), `materials`, `maxTexture`,
+// `blank` (image file names → "flat" or "columns": pictures the set must
+// not carry, painted over), `maps` (material name → a texture the archive
+// ships but its MTL file never names).
 export const sets = [
   {
     id: "set-classroom",
@@ -90,29 +96,6 @@ export const sets = [
       author: "Marek Moravec (bed by Lech Sokolowski)",
       license: "CC0",
       source: "https://download.blender.org/demo/eevee/archiviz/README.txt",
-    },
-  },
-  {
-    id: "set-italian-flat",
-    slug: "italian-flat",
-    name: "Italian flat",
-    style: "Indoor",
-    description:
-      "A lived-in Italian apartment: a living room with a sofa and bookshelves opening onto a kitchen.",
-    files: [
-      {
-        url: "https://download.blender.org/demo/cycles/flat-archiviz.blend",
-        file: "flat-archiviz.blend",
-      },
-    ],
-    main: /^flat-archiviz\.blend$/,
-    format: "blend",
-    // The living room, not the view through the sliding doors.
-    convert: { focus: "^(Sofa|Poliform_JANE_armchair)" },
-    credit: {
-      author: "Flavio Della Tommasa",
-      license: "CC BY",
-      source: "https://www.blender.org/download/demo-files/",
     },
   },
   {
@@ -259,6 +242,8 @@ export const sets = [
     licence: { file: "LICENSE.txt", text: "released under a CC-BY license" },
     main: /^scene_v3\.xml$/,
     format: "mitsuba",
+    // The radio's dial is a scan of a real maker's dial, logo included.
+    convert: { blank: { "^radio-dial": "flat" } },
     credit: {
       author: "Jay-Artist",
       license: "CC BY 3.0",
@@ -268,7 +253,7 @@ export const sets = [
   {
     id: "set-white-living-room",
     slug: "living-room",
-    name: "Living room",
+    name: "White living room",
     style: "Indoor",
     description:
       "A white living room with a sofa, cushions, a bookcase and framed pictures.",
@@ -282,6 +267,15 @@ export const sets = [
     // The archive carries no licence file; the archive page states CC BY 3.0.
     main: /^living_room\.obj$/,
     format: "obj",
+    // Family photographs (a child among them), a magazine's cover and a
+    // shelf of real book spines are someone else's likeness or artwork.
+    convert: {
+      blank: {
+        "^photo\\d": "flat",
+        "^magazine$": "flat",
+        "^book-spines$": "columns",
+      },
+    },
     credit: {
       author: "Jay-Artist",
       license: "CC BY 3.0",
@@ -305,8 +299,13 @@ export const sets = [
     licence: { file: "license.txt", text: "Creative Commons Attribution 3.0" },
     main: /^breakfast_room\.obj$/,
     format: "obj",
-    // Modelled in feet: the table top sits 2.3 units up.
-    convert: { scale: 0.3048, focus: "^(tabletop|Chair_seats)" },
+    // Modelled in feet: the table top sits 2.3 units up. The archive ships
+    // the table's marble, but its MTL file never names it.
+    convert: {
+      scale: 0.3048,
+      focus: "^(tabletop|Chair_seats)",
+      maps: { White_Marble: "marble.jpg" },
+    },
     credit: {
       author: "Wig42",
       license: "CC BY 3.0",
@@ -330,7 +329,8 @@ export const sets = [
     format: "blend",
     // A fog volume box around the room and rig widgets are not scenery; 6.9
     // million triangles as published, half of that keeps it under 100 MB.
-    convert: { drop: "^(ENV-|WGT-)", maxTriangles: 3500000 },
+    // Its 2048 px maps would take most of a laptop's video memory.
+    convert: { drop: "^(ENV-|WGT-)", maxTriangles: 3500000, maxTexture: 1024 },
     credit: {
       author: "Blender Studio (Agent 327)",
       license: "CC BY",
@@ -342,9 +342,14 @@ export const sets = [
 // Not shipped: San Miguel (McGuire archive, San_Miguel.zip) is listed as
 // CC BY 3.0 on the archive page, but the license.txt inside the archive only
 // allows "research and educational use", so it stays out until the archive
-// resolves the contradiction. The Junk Shop (Blender 2.81 splash, CC BY) is
-// a diorama built for one shot: 37 merged meshes, a backdrop running 110 m
-// and little open floor, so no view of it works as a set.
+// resolves the contradiction. The Italian flat (flat-archiviz.blend, CC BY
+// on blender.org) stays out too: its TV shows a still from a Disney film,
+// and its kitchen, rug, armchair and lamps are library models (Chocofur,
+// Poliform from Design Connected, a SketchUp warehouse model) whose own
+// terms forbid passing them on; the scene's licence cannot cover them. The
+// Junk Shop (Blender 2.81 splash, CC BY) is a diorama built for one shot:
+// 37 merged meshes, a backdrop running 110 m and little open floor, so no
+// view of it works as a set.
 
 const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 const roundAll = (v, d = 2) => v.map((n) => round(n, d));
@@ -386,10 +391,53 @@ async function polyHaven(name, file, cache, log) {
   };
 }
 
-export async function build({ out, cache, root, log, only }) {
+// The catalogue entries committed with the code, by id: what a set keeps
+// when this machine cannot build it.
+function committedEntries(root) {
+  const file = path.join(root, "shared/content/sets.json");
+  if (!fs.existsSync(file)) return new Map();
+  const entries = JSON.parse(fs.readFileSync(file, "utf8"));
+  return new Map(entries.filter((e) => e.url).map((e) => [e.id, e]));
+}
+
+// The converter needs EEVEE Next and the 4.2+ Python API.
+function usableBlender(root) {
+  const blender = findBlender(root);
+  const [major, minor] = blenderVersion(blender);
+  if (major < 4 || (major === 4 && minor < 2))
+    throw Error(`Blender ${major}.${minor} is too old (4.2 or later).`);
+  return blender;
+}
+
+export async function build({ out, cache, root, log, only, deferModels }) {
   const dir = path.join(out, "sets");
   const sources = path.join(cache, "sets-models");
   fs.mkdirSync(dir, { recursive: true });
+  const committed = committedEntries(root);
+  const kept = (set, why) => {
+    const entry = committed.get(set.id);
+    log(
+      entry
+        ? `${set.id}: kept as listed; ${why}`
+        : `${set.id}: left out; ${why}`,
+    );
+    return entry;
+  };
+  if (deferModels)
+    return sets
+      .map((set) => kept(set, "3D sets are built separately"))
+      .filter(Boolean);
+  let blender;
+  try {
+    blender = usableBlender(root);
+  } catch (error) {
+    // Without Blender nothing is downloaded: 2 GB of sources would wait.
+    return sets
+      .map((set) =>
+        kept(set, `its files need Blender to be built. ${error.message}`),
+      )
+      .filter(Boolean);
+  }
   const entries = [];
   const lights = new Map();
   for (const set of sets) {
@@ -399,9 +447,15 @@ export async function build({ out, cache, root, log, only }) {
     const png = path.join(dir, `${set.id}.png`);
     const hdr = path.join(dir, `${set.id}.hdr`);
     const active = !only || only.includes(set.id);
+    const keep = (why) => {
+      const entry = kept(set, why);
+      if (entry) entries.push(entry);
+    };
     if (!active) {
-      if (!fs.existsSync(measureFile)) {
-        log(`${set.id}: not built yet (SETS_ONLY left it out)`);
+      const built =
+        fs.existsSync(measureFile) && fs.existsSync(glb) && fs.existsSync(png);
+      if (!built) {
+        keep("SETS_ONLY left it out and it is not built here");
         continue;
       }
       // The light's credit comes from the cached Poly Haven details.
@@ -417,29 +471,34 @@ export async function build({ out, cache, root, log, only }) {
         );
     } else {
       const say = (m) => log(`${set.id}: ${m}`);
-      for (const source of set.files) {
-        const file = path.join(base, source.file);
-        await download(source.url, file, { log: say });
-        if (source.extract) extract(file, path.join(base, "src"), { log: say });
-      }
-      if (!checkLicence(set, base, log)) continue;
-      if (set.hdri) {
-        if (!fs.existsSync(hdr)) {
-          const shipped = findFile(base, set.hdri);
-          if (!shipped)
-            throw Error(`${set.id}: ${set.hdri} not found in ${base}`);
-          fs.copyFileSync(shipped, hdr);
+      try {
+        for (const source of set.files) {
+          const file = path.join(base, source.file);
+          await download(source.url, file, { log: say });
+          if (source.extract)
+            extract(file, path.join(base, "src"), { log: say });
         }
-      } else
-        lights.set(
-          set.id,
-          await polyHaven(
-            set.sky ?? set.light ?? ROOM_LIGHT,
-            hdr,
-            sources,
-            say,
-          ),
-        );
+        if (!checkLicence(set, base, log)) continue;
+        if (set.hdri) {
+          if (!fs.existsSync(hdr)) {
+            const shipped = findFile(base, set.hdri);
+            if (!shipped) throw Error(`${set.hdri} not found in ${base}`);
+            fs.copyFileSync(shipped, hdr);
+          }
+        } else
+          lights.set(
+            set.id,
+            await polyHaven(
+              set.sky ?? set.light ?? ROOM_LIGHT,
+              hdr,
+              sources,
+              say,
+            ),
+          );
+      } catch (error) {
+        keep(`its sources could not be fetched: ${error.message}`);
+        continue;
+      }
       const measured = fs.existsSync(measureFile)
         ? JSON.parse(fs.readFileSync(measureFile, "utf8"))
         : {};
@@ -451,7 +510,13 @@ export async function build({ out, cache, root, log, only }) {
         !measured.error;
       if (!current) {
         const main = findFile(base, set.main);
-        if (!main) throw Error(`${set.id}: ${set.main} not found in ${base}`);
+        if (!main) {
+          keep(`${set.main} is not in its sources`);
+          continue;
+        }
+        // Blender writes beside the finished files, which stay in place
+        // (and in use by a running studio) until the new ones are whole.
+        const fresh = { glb: `${glb}.new.glb`, png: `${png}.new.png` };
         const job = path.join(base, `${set.id}.job.json`);
         fs.writeFileSync(
           job,
@@ -462,8 +527,7 @@ export async function build({ out, cache, root, log, only }) {
               format: set.format,
               indoor: set.style === "Indoor",
               source: main,
-              glb,
-              png,
+              ...fresh,
               measure: measureFile,
               work: path.join(base, `work-${set.id}`),
               lib: blenderLib,
@@ -478,23 +542,25 @@ export async function build({ out, cache, root, log, only }) {
         say("converting with Blender");
         const started = Date.now();
         try {
-          await runBlender(
-            findBlender(root),
-            path.join(here, "blender_set.py"),
-            [job],
-            { log: say, timeout: 90 * 60 * 1000 },
-          );
+          await runBlender(blender, path.join(here, "blender_set.py"), [job], {
+            log: say,
+            timeout: 90 * 60 * 1000,
+          });
         } catch (error) {
           // One broken source must not take the whole library down.
-          say(`left out, its conversion failed: ${error.message}`);
+          for (const file of Object.values(fresh))
+            fs.rmSync(file, { force: true });
+          keep(`its conversion failed: ${error.message}`);
           continue;
         }
+        fs.renameSync(fresh.glb, glb);
+        fs.renameSync(fresh.png, png);
         say(`converted in ${Math.round((Date.now() - started) / 1000)} s`);
       }
     }
     const m = JSON.parse(fs.readFileSync(measureFile, "utf8"));
     if (m.error) {
-      log(`${set.id}: left out, its conversion failed: ${m.error}`);
+      keep(`its conversion failed: ${m.error}`);
       continue;
     }
     const [w, h, d] = [0, 1, 2].map((i) => m.bounds.max[i] - m.bounds.min[i]);

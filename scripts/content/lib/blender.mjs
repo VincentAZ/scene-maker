@@ -22,6 +22,17 @@ export function findBlender(root) {
   );
 }
 
+/** [major, minor] of a Blender binary, from `blender --version`. */
+export function blenderVersion(blender) {
+  const run = spawnSync(blender, ["--version"], {
+    encoding: "utf8",
+    timeout: 60000,
+  });
+  const found = /Blender (\d+)\.(\d+)/.exec(run.stdout ?? "");
+  if (!found) throw Error(`${blender} did not say which Blender it is.`);
+  return [Number(found[1]), Number(found[2])];
+}
+
 /** Runs `script` with `args` after "--". Lines of stdout starting with
  * `prefix` are passed to `log` as they come, so a long bake shows progress;
  * the rest is kept quiet. Resolves when Blender exits cleanly; rejects with
