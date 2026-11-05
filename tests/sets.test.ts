@@ -42,7 +42,14 @@ interface SetEntry {
     heading: number;
     walkable?: number[][];
     collision: string;
+    lighting?: {
+      exposure?: number;
+      hemisphere?: number;
+      fog?: boolean;
+      sky?: boolean;
+    };
   };
+  lightCredit?: { author: string; license: string; source: string };
 }
 const sets = catalogue as SetEntry[];
 // Real 3D sets come first in the catalogue, photographic backdrops last.
@@ -82,13 +89,24 @@ describe("3D sets catalogue", () => {
       expect(["Indoor", "Outdoor"]).toContain(set.style);
       expect(set.url).toBe(`/content/sets/${set.id}.glb`);
       expect(set.thumbnail).toBe(`/content/sets/${set.id}.png`);
-      if (set.hdri) expect(set.hdri).toBe(`/content/sets/${set.id}.hdr`);
+      // Every 3D set is lit by its own HDR, shown as the sky only outdoors
+      // (indoors the windows would show another room).
+      expect(set.hdri).toBe(`/content/sets/${set.id}.hdr`);
+      const lighting = set.set!.lighting!;
+      expect(lighting.exposure).toBeGreaterThanOrEqual(0.15);
+      expect(lighting.exposure).toBeLessThanOrEqual(3);
+      expect(lighting.fog).toBe(false);
+      expect(lighting.sky).toBe(set.style === "Outdoor");
+      expect(set.lightCredit!.author.length).toBeGreaterThan(2);
+      expect(set.lightCredit!.license).toMatch(licences);
+      expect(set.lightCredit!.source).toMatch(/^https:\/\//);
       expect(set.description).toMatch(/\d+ by \d+ metres/);
       expect(set.backdrop).toBeUndefined();
       const { camera, bounds, spawn, heading, walkable, collision } = set.set!;
       const size = [0, 1, 2].map((k) => bounds.max[k] - bounds.min[k]);
-      expect(size[0]).toBeGreaterThanOrEqual(3);
-      expect(size[2]).toBeGreaterThanOrEqual(3);
+      // From a narrow bathroom (2.5 by 5 m) to a street block.
+      expect(Math.max(size[0], size[2])).toBeGreaterThanOrEqual(3);
+      expect(Math.min(size[0], size[2])).toBeGreaterThanOrEqual(2);
       expect(size[1]).toBeGreaterThanOrEqual(2);
       expect(Math.max(size[0], size[2])).toBeLessThanOrEqual(120);
       expect(inside(camera.position, bounds.min, bounds.max)).toBe(true);
@@ -99,7 +117,13 @@ describe("3D sets catalogue", () => {
       expect(camera.maxDistance).toBeGreaterThanOrEqual(4);
       expect(camera.maxDistance).toBeLessThanOrEqual(25);
       expect(spawn).toEqual([0, 0, 0]);
-      expect(heading).toBe(0);
+      // The set keeps its own axes (the camera is within 45° of +Z) and the
+      // cast's heading turns it to face the camera.
+      expect(Math.abs(heading)).toBeLessThanOrEqual(Math.PI / 4 + 0.01);
+      expect(Math.atan2(camera.position[0], camera.position[2])).toBeCloseTo(
+        heading,
+        2,
+      );
       expect(inside(spawn, bounds.min, bounds.max)).toBe(true);
       expect(bounds.min[1]).toBeLessThanOrEqual(0.02);
       if (walkable) {

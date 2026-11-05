@@ -58,16 +58,17 @@ describe.skipIf(!built.length)("built 3D set files", () => {
             mesh.max[2] >= -0.3,
         ),
       ).toBe(true);
+      // The catalogue bounds come from the vertices; the boxes read here
+      // are each node's local box turned into place, so a sofa set at an
+      // angle reads a little larger, never smaller.
       const { bounds } = set.set!;
       for (let k = 0; k < 3; k++) {
-        expect(Math.min(...meshes.map((mesh) => mesh.min[k]))).toBeCloseTo(
-          bounds.min[k],
-          1,
-        );
-        expect(Math.max(...meshes.map((mesh) => mesh.max[k]))).toBeCloseTo(
-          bounds.max[k],
-          1,
-        );
+        const low = Math.min(...meshes.map((mesh) => mesh.min[k]));
+        const high = Math.max(...meshes.map((mesh) => mesh.max[k]));
+        expect(low).toBeLessThanOrEqual(bounds.min[k] + 0.02);
+        expect(low).toBeGreaterThanOrEqual(bounds.min[k] - 1.5);
+        expect(high).toBeGreaterThanOrEqual(bounds.max[k] - 0.02);
+        expect(high).toBeLessThanOrEqual(bounds.max[k] + 1.5);
       }
     },
   );

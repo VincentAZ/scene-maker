@@ -342,7 +342,9 @@ export const sets = [
 // Not shipped: San Miguel (McGuire archive, San_Miguel.zip) is listed as
 // CC BY 3.0 on the archive page, but the license.txt inside the archive only
 // allows "research and educational use", so it stays out until the archive
-// resolves the contradiction.
+// resolves the contradiction. The Junk Shop (Blender 2.81 splash, CC BY) is
+// a diorama built for one shot: 37 merged meshes, a backdrop running 110 m
+// and little open floor, so no view of it works as a set.
 
 const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 const roundAll = (v, d = 2) => v.map((n) => round(n, d));
