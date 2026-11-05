@@ -847,6 +847,14 @@ def touching_surface(obj, centre, reach=0.03):
     return best
 
 
+def reaches(source, point, margin=0.05):
+    """Whether a source's bounds come near a point: a helper that only the
+    film's pose brings to the part (one lying by the feet for Einar's
+    satchel buttons) has no weights to give it."""
+    corners = [source.matrix_world @ Vector(c) for c in source.bound_box]
+    return all(min(c[i] for c in corners) - margin <= point[i] <= max(c[i] for c in corners) + margin for i in range(3))
+
+
 def skin(obj, seen=()):
     if has_weights(obj):
         return True
@@ -859,14 +867,16 @@ def skin(obj, seen=()):
         bind(obj, pairs)
         log("skinned", obj.name, "to", ", ".join(sorted({n for n, _ in pairs})))
         return True
+    centre = centres.get(obj) or obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
     for source in (surface_of.get(obj, deform_target(obj)), original_parent.get(obj, obj.parent)):
-        if source is not None and source != obj and skin(source, seen):
+        if source is None or source == obj or not reaches(source, centre):
+            continue
+        if skin(source, seen):
             transfer_weights(obj, source)
             # A helper can pass on nothing a deform bone carries.
             if has_weights(obj):
                 log("skinned", obj.name, "like", source.name)
                 return True
-    centre = centres.get(obj) or obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
     if centre.length < 0.05:
         # Nothing places it: a leftover at the scene origin, between the feet.
         return False
