@@ -12,14 +12,16 @@ export type SetLight = {
   skyIrradiance: number;
 };
 
-/** A loaded real 3D set: how it is staged and, when its catalogue entry
- * provides an HDR, the light that falls on it. */
+/** A loaded real 3D set: how it is staged, when its catalogue entry
+ * provides an HDR the light that falls on it, and for an interior the room
+ * the camera stays in. */
 export class ModelSet {
   readonly bounds: T.Box3;
   constructor(
     readonly asset: Asset,
     readonly set: SetBlock,
     readonly light: SetLight | null,
+    readonly room: T.Box3 | null = null,
   ) {
     this.bounds = new T.Box3(
       new T.Vector3(...set.bounds.min),
@@ -30,6 +32,62 @@ export class ModelSet {
   dispose() {
     this.light?.map.dispose();
   }
+}
+
+/** How close the camera may come to an interior's walls and ceiling. */
+const WALL_GAP = 0.3,
+  CEILING_GAP = 0.25;
+
+/**
+ * The height of an interior's ceiling over the cast: the lowest part of the
+ * set's shell (not a hanging lamp) straight above the home view's target or
+ * the spawn point, higher than a standing person. Null under an open sky.
+ */
+export function measureCeiling(model: T.Object3D, set: SetBlock) {
+  model.updateWorldMatrix(true, true);
+  const ray = new T.Raycaster();
+  ray.far = 100;
+  for (const [x, , z] of [set.camera.target, set.spawn]) {
+    ray.set(new T.Vector3(x, 1.2, z), new T.Vector3(0, 1, 0));
+    const hit = ray
+      .intersectObject(model, true)
+      .find((hit) => hit.object.userData.passable && hit.point.y > 1.9);
+    if (hit) return hit.point.y;
+  }
+  return null;
+}
+
+/** The space an interior's camera stays in: the set's bounds less a gap
+ * from the walls, and below its ceiling when it has one. */
+export function cameraRoom(set: SetBlock, ceiling: number | null) {
+  const { min, max } = set.bounds;
+  const room = new T.Box3(
+    new T.Vector3(min[0] + WALL_GAP, min[1], min[2] + WALL_GAP),
+    new T.Vector3(
+      max[0] - WALL_GAP,
+      (ceiling ?? max[1]) - CEILING_GAP,
+      max[2] - WALL_GAP,
+    ),
+  );
+  return room.isEmpty() ? null : room;
+}
+
+/** How far a camera may stand from `target` in `direction` and still be in
+ * the room; unlimited when the target is not in it. */
+export function reachInRoom(
+  room: T.Box3,
+  target: T.Vector3,
+  direction: T.Vector3,
+) {
+  if (!room.containsPoint(target)) return Infinity;
+  const unit = direction.clone().normalize();
+  let reach = Infinity;
+  for (const axis of ["x", "y", "z"] as const) {
+    if (Math.abs(unit[axis]) < 1e-9) continue;
+    const wall = unit[axis] > 0 ? room.max[axis] : room.min[axis];
+    reach = Math.min(reach, (wall - target[axis]) / unit[axis]);
+  }
+  return reach;
 }
 
 /** The set's staging: its catalogue block, or one derived from the model's

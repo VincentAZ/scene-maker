@@ -32,9 +32,12 @@ import {
   photoSetAsset,
 } from "../src/environmentModel";
 import {
+  cameraRoom,
   fitSunShadow,
   floorIrradiance,
   markSetCollision,
+  measureCeiling,
+  reachInRoom,
   ModelSet,
   setBlockFor,
   setHome,
@@ -360,6 +363,60 @@ describe("a 3D set in the environment model", () => {
     const flat = defaultSetBlock({ min: [-3, 0, -3], max: [3, 0, 3] });
     expect(flat.bounds.max[1]).toBeGreaterThan(flat.bounds.min[1]);
     expect(() => setSchema.parse(flat)).not.toThrow();
+  });
+});
+
+describe("the camera in a 3D interior", () => {
+  it("stays between the walls and under the ceiling, not under a lamp", () => {
+    const model = room();
+    // A pendant lamp right above the cast is not the ceiling.
+    model.add(box("lamp", [0.4, 0.3, 0.4], [0, 2.3, 0]));
+    markSetCollision(model, staging);
+    const ceiling = measureCeiling(model, staging);
+    expect(ceiling).toBeCloseTo(2.95);
+    const space = cameraRoom(staging, ceiling)!;
+    expect(space.min.toArray()).toEqual([-4.7, -0.1, -3.7]);
+    expect(space.max.x).toBeCloseTo(4.7);
+    expect(space.max.y).toBeCloseTo(2.7);
+    expect(space.max.z).toBeCloseTo(5.7);
+    const target = new T.Vector3(0, 1, 0);
+    expect(reachInRoom(space, target, new T.Vector3(0, 0, 1))).toBeCloseTo(5.7);
+    expect(reachInRoom(space, target, new T.Vector3(0, 1, 0))).toBeCloseTo(1.7);
+    // Looking down from above at 45°, the ceiling comes first.
+    expect(reachInRoom(space, target, new T.Vector3(0, 1, 1))).toBeCloseTo(
+      1.7 * Math.SQRT2,
+    );
+    expect(
+      reachInRoom(space, new T.Vector3(9, 1, 0), new T.Vector3(1, 0, 0)),
+    ).toBe(Infinity);
+    // No ceiling over an open courtyard: the bounds cap it.
+    const open = room();
+    open.remove(open.children[1]);
+    markSetCollision(open, staging);
+    expect(measureCeiling(open, staging)).toBeNull();
+  });
+
+  it("is kept inside for interiors and creators' rooms, not for exteriors", async () => {
+    const shown = async (style: string) => {
+      const show = vi.fn();
+      const environment = new EnvironmentModel(
+        new T.Group(),
+        () => Promise.resolve(room()),
+        { load: () => Promise.reject(Error("not a photo")), show },
+      );
+      const own: Asset = { ...set, style };
+      delete own.hdri;
+      environment.update(
+        withSet(own),
+        () => {},
+        () => {},
+      );
+      await new Promise((done) => setTimeout(done));
+      return (show.mock.lastCall?.[0] as ModelSet).room;
+    };
+    expect((await shown("Indoor"))?.max.y).toBeCloseTo(2.7);
+    expect((await shown("Imported"))?.max.y).toBeCloseTo(2.7);
+    expect(await shown("Outdoor")).toBeNull();
   });
 });
 

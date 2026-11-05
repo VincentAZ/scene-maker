@@ -3,8 +3,10 @@ import { allAssets, type Asset, type Scene } from "../shared/scene";
 import type { PhotoSet } from "./hdriBackdrop";
 import { loadImportedAsset, type DownloadProgress } from "./importedAsset";
 import {
+  cameraRoom,
   loadSetLight,
   markSetCollision,
+  measureCeiling,
   ModelSet,
   setBlockFor,
   type SetLight,
@@ -209,7 +211,15 @@ export class EnvironmentModel {
       this.furniture = snapshotCollider(object, obstacleMesh).boxes.filter(
         (box) => box.max.y > FLOOR_TOP && box.min.y < BODY_HEIGHT,
       );
-      this.modelSet = new ModelSet(asset, set, loaded);
+      // An interior keeps the camera inside its walls and under its ceiling;
+      // a creator's own set counts as one when it has a ceiling over the cast.
+      const ceiling =
+        asset.style === "Outdoor" ? null : measureCeiling(object, set);
+      const room =
+        asset.style === "Indoor" || ceiling !== null
+          ? cameraRoom(set, ceiling)
+          : null;
+      this.modelSet = new ModelSet(asset, set, loaded, room);
       this.viewer?.progress?.(null);
       this.viewer?.show(this.modelSet);
       this.pending = null;

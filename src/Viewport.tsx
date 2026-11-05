@@ -43,7 +43,7 @@ import {
   loadPhotoSet,
   PhotoSet,
 } from "./hdriBackdrop";
-import { loadSetLight, ModelSet, setHome } from "./modelSet";
+import { loadSetLight, ModelSet, reachInRoom, setHome } from "./modelSet";
 import { applyStageLighting, type StageView } from "./stageLighting";
 import { libraryEntry } from "../shared/characterLibrary";
 import type { SeatBody } from "../shared/seating";
@@ -695,6 +695,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
             camera.position.copy(home.position);
             controls.target.copy(home.target);
             controls.maxDistance = home.maxDistance;
+            controls.minDistance = 2;
             // Only a photo holds the camera near where it was taken; a 3D set
             // is seen from every side, down to the floor like the studio.
             const photo =
@@ -809,7 +810,35 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           lastWarning = interactionWarning;
           live.current.onInteractionWarning(interactionWarning);
         }
+        // In an interior the orbit's own distance limit keeps the camera
+        // between the walls and under the ceiling in whatever direction it
+        // looks from: orbiting toward a wall brings it closer, zooming out
+        // stops at the wall, and the cast is never seen through one.
+        const set = context.current?.environment.modelSet;
+        const room = set?.room;
+        if (room) {
+          const reach = reachInRoom(
+            room,
+            controls.target,
+            camera.position.clone().sub(controls.target),
+          );
+          controls.maxDistance = Math.max(
+            0.3,
+            Math.min(setHome(set.set).maxDistance, reach),
+          );
+          controls.minDistance = Math.min(2, controls.maxDistance);
+        }
         if (controls.enabled) controls.update();
+        if (room) {
+          // Anything else that placed the camera beyond a wall (framing an
+          // object, following an actor) moves it in toward what it looks at.
+          const offset = camera.position.clone().sub(controls.target);
+          const reach = reachInRoom(room, controls.target, offset);
+          if (offset.length() > reach)
+            camera.position
+              .copy(controls.target)
+              .addScaledVector(offset.normalize(), reach);
+        }
         const photo = context.current?.environment.photo;
         if (photo) {
           // The orbit limits keep the camera inside the photo by themselves;
