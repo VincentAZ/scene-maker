@@ -173,6 +173,7 @@ const MAP_WIDTH = 600,
   MAP_HEIGHT = 400;
 const minimumGap = 0.05;
 const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
+// Seconds as a creator reads them; measured values are long fractions.
 const hundredths = (seconds: number) => Math.round(seconds * 100) / 100;
 
 export function PathEditor({
@@ -1310,7 +1311,7 @@ export function PathEditor({
                     <option key={candidate.id} value={candidate.id}>
                       {candidate.name}
                       {candidate.path?.sourceRange
-                        ? ` · source ${candidate.path.sourceRange.start}–${candidate.path.sourceRange.end}s`
+                        ? ` · source ${hundredths(candidate.path.sourceRange.start)}–${hundredths(candidate.path.sourceRange.end)}s`
                         : ""}
                       {candidate.sourceAssetId === actor.assetId
                         ? " · original character"
@@ -1392,7 +1393,7 @@ export function PathEditor({
             {locomotion.path?.strideScale !== undefined &&
               ` ${path.sourceProgress ? "Average step length" : "Step length"}: ${Math.round(locomotion.path.strideScale * 100)}% of the captured gait.`}
             {locomotion.path?.sourceRange &&
-              ` Selected source interval: ${locomotion.path.sourceRange.start}–${locomotion.path.sourceRange.end}s.`}
+              ` Selected source interval: ${hundredths(locomotion.path.sourceRange.start)}–${hundredths(locomotion.path.sourceRange.end)}s.`}
           </p>
         )}
         {gait.status === "loading" && (

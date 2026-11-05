@@ -514,6 +514,9 @@ describe("PathEditor production gait measurement", () => {
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
     ).toBe("2.23");
     expect(container.textContent).toContain("Measured natural pace: 2.69 m/s");
+    expect(container.textContent).toContain(
+      "Selected source interval: 1.1–2.22s.",
+    );
     expect(locomotionProfile).toHaveBeenCalledWith(
       source,
       source.userData.animations[0],

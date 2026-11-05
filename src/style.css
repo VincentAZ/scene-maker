@@ -2653,6 +2653,11 @@ label > span {
   color: #737e68;
   margin: 20px 0;
 }
+/* A field reached with Tab, or otherwise scrolled into view, stops above the
+   sticky footer rather than behind it. */
+.path-editor :is(input, select, summary, button):not(.path-footer *) {
+  scroll-margin-bottom: 80px;
+}
 .path-footer {
   /* Stays in view however far the dialog scrolls, so Save, Cancel and the
      discard question are never below the fold. */
