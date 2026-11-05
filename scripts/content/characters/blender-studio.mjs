@@ -8,8 +8,9 @@
 // (character_thumbnail.py). The GLB's materials are made dielectric and
 // self-contained the way the Rocketbox converter does it. Idempotent: a
 // character is converted again only when its GLB, card or converter stamp is
-// missing. The site's credit line follows from an entry: "<name> (CC) Blender
-// Foundation | studio.blender.org", with the version in credit.source.
+// missing. The site's credit line follows from an entry: "<name> v<version>
+// (CC) Blender Foundation | studio.blender.org", the version being the last
+// part of credit.source.
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -21,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 5;
+const CONVERTER_VERSION = 6;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../blender",
@@ -359,7 +360,7 @@ export async function build({ out, cache, root, log }) {
   const only = process.env.CHARACTERS_ONLY?.split(",");
   const chosen = only ? cast.filter((c) => only.includes(idOf(c))) : cast;
   // Each conversion bakes on the GPU; two side by side keep it busy. A
-  // character that fails is reported and left out of the catalogue.
+  // character that fails is reported; the catalogue lists the GLBs there are.
   await pool(chosen, 2, async (character) => {
     try {
       await convert(character, { out, cache, root, log });

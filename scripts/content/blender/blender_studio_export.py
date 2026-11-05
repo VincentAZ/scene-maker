@@ -109,12 +109,24 @@ def object_ancestors(obj):
     return chain
 
 
-def belongs_to_rig(obj):
-    if any(m.type == "ARMATURE" and m.object == rig for m in obj.modifiers):
+SHAPED_BY = ("CURVE", "SHRINKWRAP", "SURFACE_DEFORM", "MESH_DEFORM", "LATTICE")
+
+
+def belongs_to_rig(obj, seen=()):
+    """Skinned, hooked or constrained to the rig, hanging from it, or shaped
+    by something that is: a mouth line bent along a hooked guide curve, an
+    eye white projected onto the head."""
+    if obj is None or obj in seen:
+        return False
+    if any(m.type in ("ARMATURE", "HOOK") and m.object == rig for m in obj.modifiers):
         return True
-    if any(getattr(c, "target", None) == rig for c in obj.constraints):
+    for c in obj.constraints:
+        if getattr(c, "target", None) == rig or any(t.target == rig for t in getattr(c, "targets", [])):
+            return True
+    if rig in object_ancestors(obj):
         return True
-    return rig in object_ancestors(obj)
+    return any(belongs_to_rig(getattr(m, "object", None) or getattr(m, "target", None), (*seen, obj))
+               for m in obj.modifiers if m.type in SHAPED_BY)
 
 
 def renderable(obj):
@@ -133,7 +145,14 @@ def exportable(obj):
     """What the film shows: renderable meshes, plus the viewport stand-ins
     for things only a film renderer can draw (particle hair), minus the
     emitters and helpers behind them."""
-    if obj.type != "MESH" or not len(obj.data.polygons) or not belongs_to_rig(obj):
+    if obj.type == "MESH":
+        if not len(obj.data.polygons):
+            return False
+    # The Settlers draw eyes, lashes and mouths with filled curves; a curve
+    # without a material is a guide or a rig helper.
+    elif obj.type != "CURVE" or not obj.data.splines or not any(obj.data.materials):
+        return False
+    if not belongs_to_rig(obj):
         return False
     if any(p.search(obj.name) for p in SKIP):
         return False
@@ -171,9 +190,11 @@ def control_weights(obj):
 
 
 def deform_target(obj):
-    """The skinned mesh a part is glued to by a Surface or Mesh Deform."""
+    """The skinned mesh a part is glued to by a Surface or Mesh Deform, or
+    projected onto by a Shrinkwrap."""
     return next((m.target for m in obj.modifiers
-                 if m.type in ("SURFACE_DEFORM", "MESH_DEFORM") and m.target and m.target.type == "MESH"), None)
+                 if m.type in ("SURFACE_DEFORM", "MESH_DEFORM", "SHRINKWRAP") and m.target and m.target.type == "MESH"),
+                None)
 
 
 # How each unskinned part followed the rig in the film, read before the
@@ -273,6 +294,26 @@ for obj in meshes:
         continue
     mesh.name = "EXPORT-" + obj.name
     world = evaluated.matrix_world.copy()
+    if obj.type == "CURVE":
+        # The curve's shape becomes a mesh object of its own, which keeps
+        # the name and what moved the curve in the film; the curve is left
+        # behind with the rig's other helpers.
+        curve, name = obj, obj.name
+        curve.name = name + "-curve"
+        obj = bpy.data.objects.new(name, mesh)
+        export_collection.objects.link(obj)
+        for table in (controls, original_parent, surface_of):
+            table[obj] = table.pop(curve)
+        # A filled curve faces the way it winds, so a mirrored eye or mouth
+        # line can face into the head; it should face out of the surface it
+        # was projected onto.
+        surface = surface_of.get(obj)
+        if surface is not None:
+            inside = surface.matrix_world @ (sum((Vector(c) for c in surface.bound_box), Vector()) / 8)
+            facing = world.to_3x3() @ sum((p.normal * p.area for p in mesh.polygons), Vector())
+            middle = world @ (sum((v.co for v in mesh.vertices), Vector()) / len(mesh.vertices))
+            if facing.dot(middle - inside) < 0:
+                mesh.flip_normals()
     centres[obj] = world @ (sum((v.co for v in mesh.vertices), Vector()) / len(mesh.vertices))
     obj.modifiers.clear()
     obj.constraints.clear()
@@ -861,8 +902,10 @@ def clear_shader(node):
 
 
 def sees_through(mat):
-    """A refractive or glass shell (a cornea) only ray tracing can draw."""
-    return all(clear_shader(n) for n in shader_leaves(surface_node(mat)))
+    """A refractive or glass shell (a cornea) only ray tracing can draw. A
+    material with no shader at all renders black, like a film's lashes."""
+    leaves = shader_leaves(surface_node(mat))
+    return bool(leaves) and all(clear_shader(n) for n in leaves)
 
 
 def translucent(mat):
@@ -907,7 +950,10 @@ def albedo_view():
     black (a gold chain, an earring, lips); EEVEE's Shader to RGB toon
     lighting reads as black in Cycles too. For the bakes every Principled
     surface turns plain diffuse, and each toon light reads as fully lit,
-    or as nothing when it adds a highlight or rim on top."""
+    or as nothing when it adds a highlight or rim on top. A bake looks at
+    each point along its normal, so a shader that follows the view (a
+    painted pupil's parallax) is shown the character from the front, as
+    the characters face -Y."""
     trees = [m.node_tree for m in bpy.data.materials if m.use_nodes and m.node_tree]
     trees += [g for g in bpy.data.node_groups if g.bl_idname == "ShaderNodeTree"]
     for tree in trees:
@@ -920,6 +966,14 @@ def albedo_view():
                     for link in list(socket.links):
                         tree.links.remove(link)
                     socket.default_value = 0.0
+            elif node.bl_idname == "ShaderNodeNewGeometry" and node.outputs["Incoming"].links:
+                front = tree.nodes.new("ShaderNodeCombineXYZ")
+                front.inputs["Y"].default_value = -1.0
+                sockets = [link.to_socket for link in node.outputs["Incoming"].links]
+                for link in list(node.outputs["Incoming"].links):
+                    tree.links.remove(link)
+                for socket in sockets:
+                    tree.links.new(front.outputs[0], socket)
             elif node.bl_idname == "ShaderNodeShaderToRGB":
                 level = 0.0 if adds_light(node) else 1.0
                 constant = tree.nodes.new("ShaderNodeRGB")
@@ -976,18 +1030,39 @@ def uv_quality(obj, layer):
 
 
 def choose_uv(obj):
-    scored = {l.name: uv_quality(obj, l) for l in obj.data.uv_layers}
-    return min(obj.data.uv_layers, key=lambda l: (round(scored[l.name][0], 2), -scored[l.name][1]))
+    usable = [l for l in obj.data.uv_layers if uv_area(obj, l) >= 1e-8] or list(obj.data.uv_layers)
+    scored = {l.name: uv_quality(obj, l) for l in usable}
+    return min(usable, key=lambda l: (round(scored[l.name][0], 2), -scored[l.name][1]))
 
 
+def uv_area(obj, layer):
+    uv = np.empty(len(obj.data.loops) * 2, dtype=np.float32)
+    layer.data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2)
+    area = 0.0
+    for poly in obj.data.polygons:
+        x, y = uv[poly.loop_start:poly.loop_start + poly.loop_total].T
+        area += abs(float(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))) / 2
+    return area
+
+
+# A curve turned mesh, or a card, can carry UVs collapsed onto a line, which
+# no bake can fill: such a part bakes into a fresh unwrap, while its shader
+# keeps reading textures through the flat layer.
+reads = {}
 for obj in meshes:
-    if not obj.data.uv_layers:
-        select_only([obj])
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.02)
-        bpy.ops.object.mode_set(mode="OBJECT")
-        log("unwrapped", obj.name)
+    flat = [l.name for l in obj.data.uv_layers if uv_area(obj, l) < 1e-8]
+    if obj.data.uv_layers and len(flat) < len(obj.data.uv_layers):
+        continue
+    if flat:
+        reads[obj] = next((l.name for l in obj.data.uv_layers if l.active_render), flat[0])
+        obj.data.uv_layers.active = obj.data.uv_layers.new(name="unwrapped")
+    select_only([obj])
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.02)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    log("unwrapped", obj.name)
 
 
 def mesh_area(obj):
@@ -1030,6 +1105,7 @@ for obj in meshes:
     bake_objects.append(obj)
     layer = choose_uv(obj)
     layer_name = layer.name
+    read_name = reads.get(obj, layer_name)
     size = bake_size(mesh_area(obj))
     uv = np.empty(len(obj.data.loops) * 2, dtype=np.float32)
     layer.data.foreach_get("uv", uv)
@@ -1068,10 +1144,10 @@ for obj in meshes:
             obj.data.materials.append(targets[key].copy)
     obj.data.polygons.foreach_set("material_index", new_index)
     # Layer references go stale as layers come and go: work by name.
-    for name in [l.name for l in obj.data.uv_layers if l.name != layer_name]:
+    for name in [l.name for l in obj.data.uv_layers if l.name not in (layer_name, read_name)]:
         obj.data.uv_layers.remove(obj.data.uv_layers[name])
     obj.data.uv_layers.new(name="baked").data.foreach_set("uv", wrapped.ravel())
-    obj.data.uv_layers[layer_name].active_render = True
+    obj.data.uv_layers[read_name].active_render = True
 
 if targets:
     albedo_view()
@@ -1096,8 +1172,8 @@ if targets:
         bpy.ops.object.bake(type=kind, pass_filter={"COLOR"} if kind == "DIFFUSE" else set(), uv_layer="baked")
         log("baked", name)
     for obj in bake_objects:
-        for extra in [l for l in obj.data.uv_layers if l.name != "baked"]:
-            obj.data.uv_layers.remove(extra)
+        for name in [l.name for l in obj.data.uv_layers if l.name != "baked"]:
+            obj.data.uv_layers.remove(obj.data.uv_layers[name])
         obj.data.uv_layers["baked"].active = True
         obj.data.uv_layers["baked"].active_render = True
 
