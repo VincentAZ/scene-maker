@@ -25,10 +25,12 @@ const CONVERTER_VERSION = 1;
 // The cast is the vetted subset of Grab3D's human characters: the ones whose
 // faces, hands and textures hold up as real people (docs/CHARACTER_ASSETS.md
 // lists the rejected ones and why). slug: the model page
-// grab3d.com/models/characters/<slug>/. metal: the outfit has armour, buckles
-// or tools whose painted metal mask is kept; otherwise the character is fully
-// dielectric so stray mask values cannot darken skin or cloth.
-// body: feminine | masculine.
+// grab3d.com/models/characters/<slug>/. metal: the outfit has small metal
+// parts (buckles, a blade, a prosthetic) whose painted metal mask is kept;
+// otherwise the character is fully dielectric so stray mask values cannot
+// darken skin or cloth. The knight's plate stays dielectric too: the studio
+// stage has little for a metal to reflect, so a mostly-metal outfit turns
+// almost black there. body: feminine | masculine.
 export const cast = [
   // Everyday
   { slug: "man-base-character", name: "Man in a T-shirt", body: "masculine", style: "Everyday", description: "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot." },
@@ -40,7 +42,7 @@ export const cast = [
   { slug: "pirate", name: "Pirate captain", body: "masculine", style: "Historical", metal: true, description: "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots." },
   { slug: "ninja", name: "Ninja", body: "masculine", style: "Historical", description: "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back." },
   // Fantasy
-  { slug: "armored-knight", name: "Armoured knight", body: "masculine", style: "Fantasy", metal: true, description: "A young knight in polished plate armour edged with gold, a royal-blue tabard with a golden sun and a tall blue plume." },
+  { slug: "armored-knight", name: "Armoured knight", body: "masculine", style: "Fantasy", description: "A young knight in polished plate armour edged with gold, a royal-blue tabard with a golden sun and a tall blue plume." },
   // Sci-fi
   { slug: "sci-fi-soldier", name: "Sci-fi trooper", body: "masculine", style: "Sci-fi", description: "A futuristic trooper in slim white armour plates over a dark undersuit, with cyan accent lines and a visored helmet that hides the face." },
   { slug: "cyborg", name: "Cyborg courier", body: "masculine", style: "Sci-fi", metal: true, description: "A courier with an orange prosthetic left arm and lower leg, in a charcoal bomber jacket, cargo trousers and a backpack." },
