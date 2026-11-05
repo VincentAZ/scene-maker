@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import * as T from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Asset } from "../shared/scene";
 import { api } from "./api";
-import { prepareImportedAsset } from "./importedAsset";
+import { gltfLoader, prepareImportedAsset } from "./importedAsset";
+import { clearHomeView, setBlockFor } from "./modelSet";
 
 // Imported models get a real rendered preview instead of a drawn placeholder.
 // Each is rendered once, one at a time, uploaded, and remembered per browser.
@@ -27,7 +27,8 @@ let queue: Promise<unknown> = Promise.resolve();
 let renderer: T.WebGLRenderer | undefined;
 
 async function render(asset: Asset): Promise<string | null> {
-  const gltf = await new GLTFLoader().loadAsync(asset.url!);
+  // The studio's own loader reads compressed (Draco, meshopt, KTX2) files.
+  const gltf = await gltfLoader().loadAsync(asset.url!);
   const model = prepareImportedAsset(asset, gltf);
   const scene = new T.Scene();
   scene.add(model);
@@ -43,12 +44,26 @@ async function render(asset: Asset): Promise<string | null> {
   const width = 320,
     height = 250;
   const camera = new T.PerspectiveCamera(30, width / height, 0.01, 1000);
-  const fit =
-    Math.max(size.y, size.x / camera.aspect) /
-    2 /
-    Math.tan(T.MathUtils.degToRad(camera.fov / 2));
-  camera.position.set(centre.x, centre.y, centre.z + fit * 1.15 + size.z / 2);
-  camera.lookAt(centre);
+  if (asset.category === "environments") {
+    // A set is seen as the studio opens it: from its home view, inside it,
+    // rather than as a box from outside.
+    const { position, target } = clearHomeView(
+      model,
+      setBlockFor(asset, model),
+    ).camera;
+    camera.fov = 38;
+    camera.near = 0.05;
+    camera.updateProjectionMatrix();
+    camera.position.set(...position);
+    camera.lookAt(...target);
+  } else {
+    const fit =
+      Math.max(size.y, size.x / camera.aspect) /
+      2 /
+      Math.tan(T.MathUtils.degToRad(camera.fov / 2));
+    camera.position.set(centre.x, centre.y, centre.z + fit * 1.15 + size.z / 2);
+    camera.lookAt(centre);
+  }
   renderer ??= new T.WebGLRenderer({
     antialias: true,
     alpha: true,

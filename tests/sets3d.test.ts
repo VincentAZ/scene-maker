@@ -25,7 +25,11 @@ import {
   type SetBlock,
 } from "../shared/sets";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { creditGroups, contentCredits } from "../shared/contentLibrary";
+import {
+  creditGroups,
+  contentCredits,
+  licenseURL,
+} from "../shared/contentLibrary";
 import {
   EnvironmentModel,
   modelSetAsset,
@@ -976,6 +980,17 @@ describe("library credits", () => {
         "CC BY-SA 3.0",
       ]).toContain(item.license);
     }
+    // Each licence links to its text.
+    for (const group of groups)
+      for (const item of group.items)
+        expect(licenseURL(item.license)).toMatch(/^https:\/\//);
+    expect(licenseURL("CC BY 3.0")).toBe(
+      "https://creativecommons.org/licenses/by/3.0/",
+    );
+    expect(licenseURL("CC BY-SA")).toBe(
+      "https://creativecommons.org/licenses/by-sa/4.0/",
+    );
+    expect(licenseURL("Proprietary")).toBeUndefined();
     // Props and sets of one collection are sorted by category, then name.
     const categories = polyHaven.items.map((item) => item.category);
     expect(categories.indexOf("environments")).toBeGreaterThan(
@@ -1015,9 +1030,14 @@ describe("packaging a 3D set", () => {
         await zip.file("assets/sets/test-set-room.glb")!.async("string"),
       ).toBe("set bytes");
       expect(zip.file("assets/sets/test-set-room.hdr")).not.toBeNull();
-      expect(
-        await zip.file("assets/sets/CREDITS.txt")!.async("string"),
-      ).toContain("Christophe Seux");
+      const credits = await zip
+        .file("assets/sets/CREDITS.txt")!
+        .async("string");
+      expect(credits).toContain("Christophe Seux");
+      expect(credits).toContain(
+        "https://creativecommons.org/publicdomain/zero/1.0/",
+      );
+      expect(credits).toContain("Converted for Scene Maker");
     } finally {
       contentAssets.splice(contentAssets.indexOf(set), 1);
       contentCredits.delete(set.id);

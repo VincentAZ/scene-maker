@@ -29,7 +29,7 @@ export const contentURL = /^\/content\/[a-zA-Z0-9_./-]+$/;
 const collections: [RegExp, string][] = [
   [/polyhaven\.com/, "Poly Haven"],
   [/github\.com\/microsoft\/Microsoft-Rocketbox/, "Microsoft Rocketbox"],
-  [/blender\.org/, "Blender Studio demo files"],
+  [/blender\.org/, "Blender demo files"],
   [/developer\.nvidia\.com/, "NVIDIA ORCA"],
   [/casual-effects\.com/, "McGuire Computer Graphics Archive"],
   [/intel\.com/, "Intel Graphics Research"],
@@ -44,6 +44,23 @@ export function creditCollection(source: string) {
     return source;
   }
 }
+
+/** The text of a licence the library uses (CC0, CC BY, CC BY-SA, MIT); an
+ * unversioned CC licence is read as the current 4.0. */
+export function licenseURL(license: string) {
+  if (license === "CC0")
+    return "https://creativecommons.org/publicdomain/zero/1.0/";
+  if (license === "MIT") return "https://opensource.org/license/mit";
+  const cc = /^CC BY(-SA)?(?: ([34])\.0)?$/.exec(license);
+  return cc
+    ? `https://creativecommons.org/licenses/${cc[1] ? "by-sa" : "by"}/${cc[2] ?? "4"}.0/`
+    : undefined;
+}
+
+/** Every library item is converted for Scene Maker, which licences such as
+ * CC BY ask the credits to say. */
+export const CONVERTED =
+  "Converted for Scene Maker: file format, textures and size were changed.";
 
 export type CreditGroup = {
   collection: string;

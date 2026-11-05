@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { creditGroups } from "../shared/contentLibrary";
+import { CONVERTED, creditGroups, licenseURL } from "../shared/contentLibrary";
 
 const kinds = {
   characters: "Character",
@@ -14,7 +14,7 @@ export function Credits() {
     <div className="credits">
       <p className="muted">
         The library is built from the work of these artists and archives, shared
-        under open licences. Thank them when you share your films.
+        under open licences. Thank them when you share your films. {CONVERTED}
       </p>
       {groups.map((group) => (
         <section key={group.collection}>
@@ -31,7 +31,18 @@ export function Credits() {
                 <span className="credit-kind">{kinds[item.category]}</span>
                 <strong>{item.name}</strong>
                 <span>
-                  {item.author} · {item.license}
+                  {item.author} ·{" "}
+                  {licenseURL(item.license) ? (
+                    <a
+                      href={licenseURL(item.license)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {item.license}
+                    </a>
+                  ) : (
+                    item.license
+                  )}
                 </span>
                 <a
                   href={item.source}

@@ -1,7 +1,12 @@
 import JSZip from "jszip";
 import { dialogueSubtitles } from "../shared/conversation";
 import { allMotions, type Scene } from "../shared/scene";
-import { contentAssets, contentCredits } from "../shared/contentLibrary";
+import {
+  CONVERTED,
+  contentAssets,
+  contentCredits,
+  licenseURL,
+} from "../shared/contentLibrary";
 import { motionSource, capturedMotionSources } from "../shared/motionLibrary";
 import {
   libraryCharacters,
@@ -59,7 +64,13 @@ export async function productionPackage(
   if (set && credit)
     zip.file(
       "assets/sets/CREDITS.txt",
-      `${set.name} by ${credit.author}, ${credit.license}\n${credit.source}\n`,
+      [
+        `${set.name} by ${credit.author}`,
+        `Licence: ${credit.license}${licenseURL(credit.license) ? ` (${licenseURL(credit.license)})` : ""}`,
+        `Source: ${credit.source}`,
+        CONVERTED,
+        "",
+      ].join("\n"),
     );
   const files = [
     ...(set
