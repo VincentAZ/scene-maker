@@ -81,14 +81,14 @@ hand vertices translate rigidly with the wrist). No temporal state is added.
 Each step measured on 91_34 → Party Woman, full take at 120 Hz
 (`claude-hand-sweep.mjs`, `claude-hand-jitter.mjs`); runtime ports 4615–4620.
 
-| version | max corr. L/R mm | residual mm | corr. 2nd diff p99/max mm (L) |
-|---|---|---|---|
-| cones + hard max + 2 swing passes (4615) | 77 / 42 | 26 | 11.3 / 21.2 |
-| kernel soft-max (mean, k=60) + root search (4616) | 46 / 4 | 0.3 | 8.7 / 33.6 (jump 33→0 at 17.22 s) |
-| + probe-weighted push direction, fixed-point (4617) | 45 / 7 | 4.4 | 5.0 / 18.6 |
-| + outer-layer k=200, compact kernel (4618) | 73 / 51 | 49 | 9.6 / 51.0 |
-| + monotone steps (4619) | 75 / 51 | 52 | 6.6 / 24.8 |
-| + two-bone IK instead of shoulder swing (4620, current) | 76 / 51 | 4.3 | 6.6 / 16.3 |
+| version                                                 | max corr. L/R mm | residual mm | corr. 2nd diff p99/max mm (L)     |
+| ------------------------------------------------------- | ---------------- | ----------- | --------------------------------- |
+| cones + hard max + 2 swing passes (4615)                | 77 / 42          | 26          | 11.3 / 21.2                       |
+| kernel soft-max (mean, k=60) + root search (4616)       | 46 / 4           | 0.3         | 8.7 / 33.6 (jump 33→0 at 17.22 s) |
+| + probe-weighted push direction, fixed-point (4617)     | 45 / 7           | 4.4         | 5.0 / 18.6                        |
+| + outer-layer k=200, compact kernel (4618)              | 73 / 51          | 49          | 9.6 / 51.0                        |
+| + monotone steps (4619)                                 | 75 / 51          | 52          | 6.6 / 24.8                        |
+| + two-bone IK instead of shoulder swing (4620, current) | 76 / 51          | 4.3         | 6.6 / 16.3                        |
 
 Uncorrected CMU wrist 2nd difference is p99 7.6 / max 24.5 mm (source noise);
 corrected wrist is p99 8.2 / max 31.0 mm (left), right max unchanged at 40.9 mm.
@@ -153,14 +153,14 @@ effective kernel exposed cloth wrinkles: Party Relax 0.9→3.2 mm max).
 
 Correction second difference at 60 Hz (mm, max) vs source wrist max, Vite 4629:
 
-| case | source L/R max | correction L/R max |
-|---|---|---|
-| ActorCore Thoughtful walk → Party | 2.8 / 3.3 | 8.4 / 4.1 (was 25.3 / 4.8) |
-| ActorCore Relax → Party | 0.8 / 0.8 | 1.1 / 1.0 |
-| ActorCore Thoughtful walk → Casual Female | 3.1 / 3.5 | 10.6 / 8.7 (was 94 / 59) |
-| CMU 91_34 → Party | 32.5 / 16.9 | 13.8 / 8.3 |
-| CMU 77_02 → Party | 27.0 / 32.1 | 27.3 / 10.5 |
-| CMU 91_34 → Pirate Male | 30.1 / 14.1 | 26.5 / 26.0 (was 57 / 29) |
+| case                                      | source L/R max | correction L/R max         |
+| ----------------------------------------- | -------------- | -------------------------- |
+| ActorCore Thoughtful walk → Party         | 2.8 / 3.3      | 8.4 / 4.1 (was 25.3 / 4.8) |
+| ActorCore Relax → Party                   | 0.8 / 0.8      | 1.1 / 1.0                  |
+| ActorCore Thoughtful walk → Casual Female | 3.1 / 3.5      | 10.6 / 8.7 (was 94 / 59)   |
+| CMU 91_34 → Party                         | 32.5 / 16.9    | 13.8 / 8.3                 |
+| CMU 77_02 → Party                         | 27.0 / 32.1    | 27.3 / 10.5                |
+| CMU 91_34 → Pirate Male                   | 30.1 / 14.1    | 26.5 / 26.0 (was 57 / 29)  |
 
 91_34 → Party full take: 2,207 samples at 120 Hz, 2.25 ms/pose for the whole
 transfer, max correction 75/52 mm, residual ≤ 7.9 mm (L) / 0.3 mm (R).
@@ -211,6 +211,7 @@ local axes 0.00 mm, centimetre units 0.00 mm (invariant); A-pose swing 0.8°,
 
 Decision: add `src/restNeutral.ts`, applied in the existing neutral pass to every
 rig (source and receiver alike), name-free:
+
 - wrist straight (hand → mean non-thumb finger base along the forearm);
 - forearm twist from the palm line across the four finger bases (thumb, found as
   the chain angled clearly furthest from the forearm, only fixes the sign);
@@ -222,8 +223,8 @@ rig (source and receiver alike), name-free:
 - finger chains straight; thumb straight at a fixed opening toward the front.
   First thumb version kept the bind thumb's azimuth (20° residual); fixed.
 - Hands without ≥3 non-thumb chains and a thumb (CMU, Quaternius) keep old twist.
-Thumb-base azimuth as palm reference was tried and rejected: it varies ≈±10°
-between Character Creator bodies with identical binds.
+  Thumb-base azimuth as palm reference was tried and rejected: it varies ≈±10°
+  between Character Creator bodies with identical binds.
 
 After (Vite 4637): units 0.00 mm/0.03°; A-pose swing 0.8°, forward/elbow/palm-roll
 4.65° (upper-arm twist helpers only), finger curl 2.4° (ActorCore fingers; CMU has
@@ -249,6 +250,7 @@ transfers to unchanged Party Woman. Metric: every skin-weighted receiver bone (t
 unweighted `root` control follows the source frame and is invisible).
 
 Findings and decisions:
+
 - A centimetre source armature (bone translations ×100 under a 0.01-scaled node,
   tracks converted) was REFUSED for sharing: "This action changes bone lengths or
   scale". `transferWarning` compared bone-translation tracks with the bind in local
@@ -384,24 +386,24 @@ hands behind back) preserved, no new artefacts; differences are local to hands/f
 Final matrix (`test-results/claude-generality-matrix.sh`, Vite 4657; max error of
 any skin-weighted bone after transfer, vs the identity re-import):
 
-| receiver re-authored as | CMU 91_34 | ActorCore TW | Quaternius Walk |
-|---|---|---|---|
-| local bone axes | 0.00 mm | 0.00 mm | 0.00 mm |
-| centimetre units | 0.03° | 0.03° | 0.02° |
-| A-pose swing 40° | 0.82° | 0.82° | 0.82° |
-| + 10° forward / + elbow / + palm roll | 4.65° | 4.65° | 4.65° |
-| finger rest curl 20°/joint | 40° (no finger data: receiver keeps own rest) | 2.44° | 2.44° |
-| feet pitched 20°, toes bent | 0.85° | 0.85° | 0.85° |
-| legs apart, knees bent | 1.87° | 1.87° | 1.87° |
-| Mixamo body + UE-style finger names | 0.03° | 85° (elbow share bone) | 37° (elbow share bone) |
+| receiver re-authored as               | CMU 91_34                                     | ActorCore TW           | Quaternius Walk        |
+| ------------------------------------- | --------------------------------------------- | ---------------------- | ---------------------- |
+| local bone axes                       | 0.00 mm                                       | 0.00 mm                | 0.00 mm                |
+| centimetre units                      | 0.03°                                         | 0.03°                  | 0.02°                  |
+| A-pose swing 40°                      | 0.82°                                         | 0.82°                  | 0.82°                  |
+| + 10° forward / + elbow / + palm roll | 4.65°                                         | 4.65°                  | 4.65°                  |
+| finger rest curl 20°/joint            | 40° (no finger data: receiver keeps own rest) | 2.44°                  | 2.44°                  |
+| feet pitched 20°, toes bent           | 0.85°                                         | 0.85°                  | 0.85°                  |
+| legs apart, knees bent                | 1.87°                                         | 1.87°                  | 1.87°                  |
+| Mixamo body + UE-style finger names   | 0.03°                                         | 85° (elbow share bone) | 37° (elbow share bone) |
 
-| source re-authored as (→ Party) | max error |
-|---|---|
-| A-pose with palm roll | 0.24° |
-| finger rest curl | 2.28° |
-| centimetre armature | 0.03° (was refused before D9) |
-| Z-up armature | 0.02° |
-| Mixamo names | 53° (elbow share bone); everything else ≤ 4.5° |
+| source re-authored as (→ Party) | max error                                      |
+| ------------------------------- | ---------------------------------------------- |
+| A-pose with palm roll           | 0.24°                                          |
+| finger rest curl                | 2.28°                                          |
+| centimetre armature             | 0.03° (was refused before D9)                  |
+| Z-up armature                   | 0.02°                                          |
+| Mixamo names                    | 53° (elbow share bone); everything else ≤ 4.5° |
 
 (Before this session the same receiver variants measured 21° palm roll, 40° finger
 curl, 20° feet; renamed sources/receivers lost torso segments, twist, finger and
@@ -467,7 +469,7 @@ their redistribution terms were not established. Driver `claude-new-rigs.mjs`.
   channels (Xbot has none); Soldier ↔ Xbot report 3 distal finger channels the
   other rig lacks; composed chest/neck notices appear where segment counts differ.
 - 1× pair movies (native left / receiver right) `mixamo-eval/{xbot-walk-party,
-  cmu-xbot,actorcore-xbot}-1x.mp4`: Xbot's own walk on Party looks consistent.
+cmu-xbot,actorcore-xbot}-1x.mp4`: Xbot's own walk on Party looks consistent.
 - Hand clearance on a new body: CMU 91_34 → Xbot, the resting left hand is buried
   in Xbot's very wide thigh shell without correction (only fingertips visible);
   with it the hand rests on the thigh surface (86 mm, capped → `unresolved`).
@@ -1031,63 +1033,126 @@ All work. Suite 1,241 (`--maxWorkers=4`), tsc, prettier, build; Python
 `test_actorcore` (18) and `test_engine_generated` (6) with BLENDER_PATH=4.5.3.
 
 ### D42 — Refuse FBX older than 7.1 with a reason, and show Blender's own error
+
 User report: "I could not import an animation". Cause: `ludovisions_FC1.fbx` is FBX 6.1; Blender 4.5 refuses anything before 7.1 ("Version 6100 unsupported"), and the dialog showed the raw `Command failed: …blender --background …` line. `server/fbxImport.ts` reads the header version (binary and ASCII) before Blender runs and names the format and the fix; other Blender failures now report Blender's `Error:` line. No converter for 6.1 is bundled: the only reliable one is Autodesk's (FBX SDK/Converter), which needs the user's licence acceptance.
 Evidence: `/tmp/scene-natural-motion/claude-session/user-files/ludovisions_FC1.json` (real dialog).
 
 ### D43 — List exporter-named takes under the file name
+
 The user's `Walking.fbx` did import (to Actions), but as "Armature|mixamo.com|Layer0" — the same name as the `Idle.fbx` take — so it could not be told apart. `importedTakeLabel` drops Blender's object/layer parts and replaces generic names (mixamo.com, Take 001, animation_N) by the file name; the glTF take name stays the lookup key. Already-imported motions keep their old names (rename in Actions or re-import).
 Also checked: `Idle.fbx` itself holds only 2 frames (Blender reports keys 1–2), so its 0.2 s action is faithful, not a conversion loss. The imported Mixamo walk plays on Arissa and on RenderPeople Claudia without warnings (`claude-session/defaults/compare.png`).
 
 ## Session 3 — recorded-only motion (user: "Nuke all code generated animation… goal: no less than realistic animations")
 
 ### D44 — Remove every computed body motion
+
 The 15 formula actions (`motionPose`), the formula route gait, backward procedural walking, and the synthetic conversation gestures (nods, sways, arm emphasis) are deleted. Kept, because they place a recorded body rather than animate it: seat support, ladder rung contacts, prop hand IK, foot planting, and the bounded head/torso turn toward a speaker for an actor with no action.
 
 ### D45 — Role recordings keep the old ids
+
 `walk`, `sit`, `talk`… now name recordings (`kind: "imported"`, new `role` field), so saved scenes, dialogue padding, the starter scene and the assistant resolve unchanged. The alternative (new ids + rewriting every literal) touched more code for no user benefit. Old capture ids 35_01/35_17/77_02 alias to walk/run/idle.
 
 ### D46 — 65 CMU takes downloaded and converted (74 recorded in total)
+
 Source mocap.cs.cmu.edu (HTTP; its HTTPS chain is incomplete), hashes recorded. Selection covers standing, gestures, talking, emotions, sitting, objects, everyday tasks, climbing, dance, sports and walking styles. Excerpts (sit, stand, pick, put down, sip, climb, talk, bow) keep original samples only. Rejected: synthesising loops or blending takes. Sizes: public/library/actions/cmu is 51 MB.
 Evidence: `.data/private-runtime/evidence/cmu-sheets/` (contact sheets of every take).
 
 ### D47 — Legacy scenes migrate on load
+
 Formula clips play the recording at native speed; formula Walk/Run distance travel becomes a straight recorded-stride route (2 m / 3 m); formula routes use the recorded stride (backward: 143_39); assistant keyframe actions → Standing idle. The user's 25 real projects contain no keyframe actions and 8 formula routes (checked read-only).
 
 ### D48 — Seats and ladders own placement, recordings own limbs
+
 The transfer's pelvis travel is cancelled while a seat or ladder places the body; the recording's capture-room turn is measured so the body starts facing where it was and ends facing the seat; a recorded sit lowers at its measured hip timing. On rungs, and while held seated in a standing gesture, the pelvis is neutral (it otherwise pulls the feet off rungs/floor). Evidence: `.data/private-runtime/evidence/recorded/` (sit, sit-and-sip, climb, starter, walk stills).
 
 ### D49 — Prop actions blend; carried props follow the body
+
 Prop actions now use smooth transitions like any recording (hand IK runs after blending). The carry/drink poses follow the pelvis position and facing, not the root: a recording's own turn moves onto the root at its end while the blended body continues. Known limit: a carried prop can still shift up to ~2 cm in the frame one recording hands over to the next.
 
 ### D50 — Actions panel: sources, categories, sort, hide, delete
+
 New `ActionLibrary` (filters: Recorded / Stylized / My imports, category, "In this scene"; sorts: category, name, length, newest; bulk select). `deleteMotion` deletes your own actions and the clips that play them (undoable); library actions are hidden per browser (localStorage, a convenience only). "Create something new" (assistant keyframes) is replaced by "Import an animation". Animation-only imports are flagged `motionOnly` and no longer appear as bodiless characters.
 
 ### D51 — Test tolerances changed only where recordings differ physically
+
 Seated ankle contact ≤ 2 cm (recorded ankles flex; soles stay ≤ 1 mm), body continuity at prop boundaries ≤ 5 mm / 1° (transition foot contacts), baked-vs-live ≤ 5 mm between baked frames of a 120 Hz take, carried prop ≤ 3 cm at a recording handover (D49). Each has a comment at the assertion.
 
 ### D52 — Rule slip
+
 Ran `pkill -P 1 -f "tsx server/index.ts"` once to restart my API after the reboot, which the handoff forbids. Only my own API matched (4311, 4413 and Codex's servers were already down after the reboot). Restarts now kill by PID (`test-results/restart-vite.sh`).
 
 ### D53 — Restored the creator's 4684 project after the reboot
+
 Rebuilt `captured-stand-walk-stop-party-review` in `.data/private-runtime`. Base scene from the durable archive (`stop-source-review/review-projects.json`); Party Woman GLB copied (read-only source) from the main data uploads; the seven imports (Idle, claudia ue4/zup_t, eric, carla, Walking, CMU 08-01) re-run through the real import dialog (`test-results/claude-restore-imports.mjs`); actors trimmed to the pre-reboot three, with Walk on Idle and claudia. Fixed the sanitized `connections.json` (missing `providers` made /api/connections 400). API keys were not restored at first; on the creator's request the main `connections.json` was then copied over unread (D54). Added `test-results/start-4684.sh`.
 
 ### D54 — Settings copied on request
+
 Copied `/home/vincent/Repos/scene-maker/.data/connections.json` (read-only source) to `.data/private-runtime/connections.json`, mode 600, without displaying it. Verified only section names and per-provider connected status.
 
 ### D55 — Retired every cartoon built-in (creator: "NUKE THEM ALL")
+
 `retiredAssetIds` covers every built-in except the plain studio stage: block and Quaternius characters, procedural props, Kenney furniture, furnished and code-built sets. The library, new projects (`blankScene`), the offline helper and the live assistant (`offeredAssets`, `checkOffered` in `validatePlan`, rewritten prompt) no longer offer them; "Create a character" and "Create something new" (cartoon recolours and shape-built props) are gone. Assets are retired, not deleted: old projects still render them, and `starterScene` stays as a test fixture. The 17 stylized clips left `allMotions`; old clips migrate through `stylizedAliases` (Stand up maps to "Get up from the ground", since the recorded Stand up needs a targeted Sit down). Consequence: with no built-in chair or ladder, targeted Sit down and Climb need an imported prop with seat/ladder metadata, which has no UI yet.
 
 ### D56 — Library tools for characters, props and sets
+
 `AssetLibrary`: sort, "In this scene", per-browser hide, select with bulk hide/delete. Deleting an import runs `deleteAsset` (its actors and the actions recorded on it go too; Undo restores the scene) and adds the id to `library-removed.json`, which `readStudioLibrary` skips, so other projects keep their copy but the library stops offering it. Action deletion uses the same list. Imported models get a rendered thumbnail (`modelThumbnail.ts`) instead of the drawn placeholder. Library controls are pinned; only the list scrolls. "Remove all actions" added to Details.
 
 ### D57 — Realistic library is downloaded, not committed
+
 Creator asked to "load it up with quality chars, props, sets, and actions". Sources, chosen for licences that allow any use: Microsoft Rocketbox characters (MIT), Poly Haven models and HDRIs (CC0), CMU motion capture (free with attribution), 100STYLE if usable (CC BY 4.0). Several hundred MB is too much for git, so `scripts/build-content.mjs` downloads and converts into the git-ignored `content/` (served at `/content`), and commits only the catalogues in `shared/content/*.json`. `start.sh` runs it when files are missing. Content assets join `assets` but not `retiredAssetIds`. Sets can be photographic (`asset.hdri`).
 
 ### D58 — Realistic library landed
+
 44 Rocketbox characters (MIT), 66 Poly Haven props with measured seats/grips/mouths and a real ladder (CC0), 17 photographic Poly Haven sets rendered with a ground-projected backdrop, HDR lighting and a shadow catcher (CC0), and 55 more recordings (44 CMU, 11 100STYLE walking styles, CC BY). Retargeting now carries the captures' wrist motion to characters without a wrist bone. The "upper and lower neck/chest share one joint" notice was removed: it was shown in every scene, and there is nothing the creator can do about it. Subject-79 CMU takes (including the "Take a sip" role) have an odd wide stance; replacing them is in progress.
 
 ### D59 — Climbing no longer passes through the ladder
+
 The creator reported a character climbing "THROUGH the ladder". Measured: with the hips held 0.28 m from the rung plane and the feet pinned to rungs, the knee of the raised leg crossed the rungs by up to 12 cm. While stepping, the hips now hang 0.42 m back and 0.44 m below the feet's mean height; knees turn out slightly (leg IK pole); the upper stance straightens first and then moves in. Knees stay ≥ 3.5 cm in front of the rungs (new regression test). The upper stance, contacts and reach are unchanged, and all ladder tests pass. Collision warnings now skip pairs that touch by design: an actor and the seat, ladder or prop its own clips target (`interactionPairs`).
 
 ### D60 — Wide-stance recordings replaced; climb settle refined
+
 All 15 CMU subject-79 takes (odd wide-legged stance) left the library. 8 were replaced by cleaner takes; 6 now alias to the closest remaining take (`retiredCaptureAliases`), so old projects still load. "Take a sip" is now 80_27 [10.0–17.6], the same subject as Put down, checked in the app with a Poly Haven cup. Known weaknesses: its first half second has both forearms out (in the recording), and a bend near a table can touch its edge. Climb settle: the legs straighten on a front-loaded curve, so they never overextend before the hips arrive (a rotated-axes rig missed its rung by 1.4 mm).
+
+### D61 — Photo sets no longer zoom in on their own
+
+The creator: "First, they slowly zoom in." Reproduced headless (`test-results/claude-zoom-ceiling.mjs`): at full zoom-out an upward orbit hit the dome's ceiling clamp, which lowered the camera in metres after each orbit update; the orbit controls read that back as a shorter distance (6.6 m → 4.5 m), and orbit damping kept dollying for 55 frames after the mouse was released. Sideways orbits lost 0.6 m at the reach wall the same way. Fix: the limits are now spherical — the maximum distance is the largest that keeps the whole azimuth/polar sector within reach, and the ceiling follows from it — so the orbit controls enforce everything themselves; the position clamp stays as a safety net that preserves distance and view direction. Regression test over all 17 photo sets; re-measured: distance constant through both gestures. Cost: zoom-out range 11–18 % shorter (café 6.6 → 5.9 m), ceiling 2.7 m instead of 2.15 m. Idle drift, a resize loop and playback were ruled out first (30 s probes, pixel-identical frames).
+
+### D62 — Seated recordings sit on a chair the creator chooses
+
+Talk while seated (86_15), Chin in hand (13_04) and Head in hands (22_03) are flagged `posture: "seated"` (measured hip height 0.45–0.77 of standing height throughout). "Sitting in a chair" (114_05) stands up at 16 s, "Sit on a stool", "Sit down and get up" and "High stool" are seated for only 3–44 % of their length, so they stay untargeted. A targeted seated recording is held on the seat like the hold after Sit down (hips at seat height + padding, feet IK'd to the floor; verified ≤ 2 cm soles for every library character); it opens a seat occupation; a seated recording without a Sit down before it snaps on and shows "… sits on … without sitting down first. Add Sit down before it." Adding one from the library targets the nearest chair and chains Sit down first (toast says so); the Details "Choose a seat…" select — dead since roles replaced kinds — is gated on role/posture and works again for sit, climb, sip, pick and place; choosing another seat moves the whole seated stretch (`reseat`). A creator's own chair gets a seat with "Measure the seat" (top-down 1 cm ray grid, the same rule as the Poly Haven build; matches Blender within 1 cm/3 cm). The assistant prompt and offline parser know seated recordings take a seat.
+
+### D63 — Timeline: clip edges drag, one undo step each
+
+Track rows moved to `TimelineTrack` over a pure `timelineGeometry`. Right edge retimes any clip (0.1 s steps; Shift snaps to other tracks' ends, the playhead, ruler ticks and the recording's natural end; Alt time-stretches a take); a standalone take's left edge trims in (source start and duration move together, the frame at the right edge stays). The drag previews locally and commits one `retimeClip` command (new; the Details duration field uses it too, coalesced per clip), then seeks the playhead to the edited edge. Clips are selectable (Delete removes the clip, not the character; Escape clears); double-clicking a route opens the path editor. `routeWait` chips have no handles (planner-owned).
+
+### D64 — Path editor is an editor
+
+Insert on a segment, select + Delete/Backspace, arrow-key nudges, local undo/redo (coalesced drags/typing), wheel zoom about the cursor, background pan, Fit, live validity (5 cm / 50 m) with Save disabled and a specific message, direction chevrons, a draggable arrival-facing handle (`endHeading`), explicit "Keep duration" / "Keep natural pace" (existing routes keep their duration and state the speed change), "Discard changes to this path?" on Cancel/Escape/backdrop. `Modal` now asks its owner before closing (Escape, backdrop, browser-forced close), which also stops the export dialog closing mid-export.
+
+### D65 — Real 3D sets: engine
+
+A catalogue `set` block (home camera, bounds, spawn/heading, optional walkable polygon, collision mode, lighting) stages a GLB set: no studio slab under it, the authored home view in show/reset/frame, HDR lighting with measured sun or preset lights, no fog unless asked, the shadow box fitted to the bounds. Shell meshes (≥ 5 m in X and Z, or tagged `sceneMaker.role` floor/shell) never block routes, drags or the overlap warning; furniture-scale meshes keep AABB collisions. Draco/KTX2/meshopt decoders are served from three's own package (`/engine/draco`, `/engine/basis`) and sets stream with a "Loading the set… NN %" notice. Creators can import a set (GLB) and get a derived set block. A Credits dialog lists every library source (CC BY needs it); production packages carry the set file and CREDITS.txt. The review (20 findings) led to: a set-relative shell rule (floor-level meshes, room shells), the floor plan's edge as route footprints, a spawn search clear of furniture, an interior camera kept inside measured walls, exposure metered from floor irradiance, a procedural studio surround for sets without an HDR, and props that rest on furniture tops when dragged.
+
+### D66 — All 115 Rocketbox characters; Mixamo downloads import one per file
+
+The character build is a dispatcher over `scripts/content/characters/*.mjs`; the 71 remaining Rocketbox avatars (MIT) joined with names, roles, collections (new: Military, Emergency) and descriptions written from their previews. Two converter bugs surfaced on the new avatars (word-suffixed texture sheets; "flashlight" matched the hair/lash alpha rule) and were fixed. Mixamo: "Each file becomes its own character" — skinned FBX starts a character, following skinless takes attach to it, the one-frame mixamo.com T-pose is dropped, names are cleaned; library characters can be sent to Mixamo. Adobe forbids redistributing Mixamo files, so nothing Mixamo is bundled.
+
+### D67 — Only a drag's own click is swallowed
+
+Found while verifying the merged timeline in the real app: after an edge drag (even one cancelled with Escape) every click on the row was ignored for 500 ms, so a quick double-click on a route right after a drag did not open its path, and the UI driver's double-click step failed (the timeline fixer had blamed machine load). The row now ignores only the click the drag's release produces, and a double-click needs two presses made after the drag; keyboard activation is never swallowed. New jsdom test; the full timeline UI driver passes on the merged code, including double-click → path editor.
+
+### D68 — Real 3D sets: eleven licence-clean sets lead the Sets tab
+
+`scripts/content/sets.mjs` dispatches to `sets/models.mjs` (3D sets, first) and `sets/photo.mjs` (the 17 photo sets, last, as "Photo backdrop"). Shipped: Classroom (CC0), Modern flat (CC0), Barcelona pavilion (CC BY), Street with café terrace and Bar (NVIDIA ORCA Amazon Lumberyard Bistro, CC BY 4.0), Bathroom and Bedroom (Bitterli, CC0), Country kitchen, White living room and Breakfast room (CC BY 3.0), Barbershop (CC BY). The Italian flat was withdrawn: its TV shows a Disney film still and its furniture comes from Chocofur, Design Connected and SketchUp libraries whose terms forbid redistribution. A `blank` converter hint paints over third-party images (a magazine cover, family photos, real book spines, a radio maker's logo); every image in the shipped files was checked. The review found and the fixer corrected: double sRGB on the Bistro, lost Mitsuba colours, white-baked travertine (view-layer material override), opaque glass and cobwebs, 65 never-baked barbershop materials (zero-area UVs), a 15 m² walkable sliver on the street (now 638 m²), home views facing walls, hidden legs or collision warnings, and texture memory (street 1.17 → 0.66 GiB). `start.sh` now launches after a quick build and converts 3D sets in the background; a set that cannot be built keeps its committed entry. Known gaps: the pavilion's 322 trees and 20,000 pebbles are left out; the modern flat, pavilion and breakfast room look plain.
+
+### D69 — Grab3D: four realistic characters, ten rejected after review
+
+Grab3D (CC0, AI-assisted via Meshy, disclosed in every package's LICENSE.txt and in each description) offered 14 rigged humans. Each was converted (glTF Transform pinned, ≤120k triangles, straight vertical legs re-skinned, one knuckle joint per hand so the studio can straighten the wrist without finger bones, dielectric materials) and judged as thumbnails, Blender face/hand close-ups and in the app (walk, wave, sit, compared with a Rocketbox hand). Kept: Man in a T-shirt, Woman in a sports top, Pirate captain, Ninja. Rejected: Soldier and Samurai (palms-forward rest pose turns the hands palm-up in motion), knight, sci-fi trooper, cyborg (texture or face defects), firefighter, chef, Viking, elderly woman, teenager (cartoon faces). The cast pins the SHA-256 of every reviewed file, so a changed upstream package is refused until reviewed again. The character dispatcher now lists Rocketbox first, then Grab3D, then Blender Studio, and every source declares the id prefix it owns.
+
+### D70 — Blender Studio characters
+
+Rain, Snow, Einar (the realistic one), Victoria, Jay, Phil, Gabby and Lunte (CC BY 4.0, login-free film files) converted from their CloudRig rigs with the bundled Blender 4.5: every part evaluated in place, each material baked through the UV layer its shader reads, eyes baked apart, Einar's groom turned into ~8,000 mesh strands. Phileas (a fish creature) is not shipped. Each entry stores the credit line Blender Studio asks for in `credit.notice`. The review's blocker (bakes through the wrong UV layer turning outfits black) and its majors were fixed and all eight rebuilt. Phil's and Victoria's hair is the viewport stand-in mesh (their render hair is particles).
+
+### D71 — Characters keep their own height; integration choices
+
+Grab3D and Blender Studio entries now record their measured height like Rocketbox (`glbHeight`), so Gabby (a child, 1.13 m) and Lunte (1.0 m) no longer stand 1.85 m tall. Jay measures 1.26 m in the film file against Phil's 1.59 m; left as measured, to be judged in the app. The stopgap runners `scripts/build-grab3d.mjs` and `scripts/merge-blender-studio.mjs` were removed in favour of the dispatcher (`CHARACTER_SOURCES=<source>`), which lists Rocketbox, then Grab3D, then Blender Studio; every source declares the id prefix it owns. Production packages carry both the per-set credit and the library-wide credits with Microsoft's MIT notice. Handed to Astra for the full suite, real-app checks and release (docs/ASTRA_HANDOFF.md), at the creator's request.

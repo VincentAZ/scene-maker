@@ -1,5 +1,7 @@
 # Claude session handoff — 2026-11-02
 
+> **Superseded (2026-11-05):** the current handoff is [ASTRA_HANDOFF.md](ASTRA_HANDOFF.md) — verify and ship 0.6.0. This file is history.
+
 Worktree `/home/vincent/Repos/scene-maker-natural-motion`, branch
 `fix/natural-motion-baseline`. Never work in `/home/vincent/Repos/scene-maker` or
 the dialogue worktree; never touch user services 4311/4337 or the protected Astra
@@ -13,31 +15,31 @@ The overall natural-animation goal is still OPEN; nothing here is user-accepted.
 
 ## What this session did (commits after 10d1d01)
 
-| commit | change |
-|---|---|
-| 1987b07 | Receiving-body hand clearance (replaces the rejected lateral candidate) |
-| 767de0f | Anatomical arm/hand/finger rest for every rig |
-| 763f58e | Torso mapped by topology; unit-independent bone-translation check |
-| 9c197c4 | Limb twist/share helpers matched by place on the limb |
-| 52204a9 | Sole-flat foot/toe rest |
-| 5362f66 | Fingers and toes matched by hand/foot layout |
-| 34e18e4 | Structural tie-break for equally placed limb helpers |
-| 7736423 | Single-neck sources bend both receiving neck segments |
-| cf994dc | Animation-only (mesh-less) armature imports recognised |
-| 1816a0e | Characters authored facing −Z (or sideways) turned to face +Z on import |
-| 756737a | Unresolved hand clearance disclosed in the motion notice |
+| commit  | change                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------ |
+| 1987b07 | Receiving-body hand clearance (replaces the rejected lateral candidate)                    |
+| 767de0f | Anatomical arm/hand/finger rest for every rig                                              |
+| 763f58e | Torso mapped by topology; unit-independent bone-translation check                          |
+| 9c197c4 | Limb twist/share helpers matched by place on the limb                                      |
+| 52204a9 | Sole-flat foot/toe rest                                                                    |
+| 5362f66 | Fingers and toes matched by hand/foot layout                                               |
+| 34e18e4 | Structural tie-break for equally placed limb helpers                                       |
+| 7736423 | Single-neck sources bend both receiving neck segments                                      |
+| cf994dc | Animation-only (mesh-less) armature imports recognised                                     |
+| 1816a0e | Characters authored facing −Z (or sideways) turned to face +Z on import                    |
+| 756737a | Unresolved hand clearance disclosed in the motion notice                                   |
 | a69f256 | Standard skeleton naming conventions (Unreal, Rigify, Daz, VRM, Blender, Biped) recognised |
-| 21b8bd0 | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures |
-| 5c1987d | VRM/VRoid characters import |
-| c039dca | Fingers paired across different finger counts |
-| 50270b6 | Eyes paired across naming conventions |
-| 6648df0 | VRM declared humanoid map used |
-| ef6a76a | CMU ASF skeletons recognised |
-| 1024ae7 | Characters lying along another axis stood up on import |
-| 96671b5 | Skeleton-only sources keep receivers on the ground |
-| 16e7ad2 | BVH imports go to Actions (verified through the real dialog) |
-| b030635 | Long takes disclosed; unusable captures refused |
-| 338feb1 | Full Rigify exports: DEF- deform bones win over same-named controls |
+| 21b8bd0 | BVH motion-capture import; SOMA naming; detached feet on skin-less armatures               |
+| 5c1987d | VRM/VRoid characters import                                                                |
+| c039dca | Fingers paired across different finger counts                                              |
+| 50270b6 | Eyes paired across naming conventions                                                      |
+| 6648df0 | VRM declared humanoid map used                                                             |
+| ef6a76a | CMU ASF skeletons recognised                                                               |
+| 1024ae7 | Characters lying along another axis stood up on import                                     |
+| 96671b5 | Skeleton-only sources keep receivers on the ground                                         |
+| 16e7ad2 | BVH imports go to Actions (verified through the real dialog)                               |
+| b030635 | Long takes disclosed; unusable captures refused                                            |
+| 338feb1 | Full Rigify exports: DEF- deform bones win over same-named controls                        |
 
 Every decision, rejected variant, harness pitfall and measurement is in
 `docs/CLAUDE_AUTONOMOUS_LOG.md` (D1–D34). Summaries also appended to
@@ -172,6 +174,7 @@ driven stills with joint markers), `claude-fbx-ui.mjs` (real dialog),
 ## Session 3 — recorded-only motion (UNCOMMITTED, on top of session 2)
 
 See CLAUDE_AUTONOMOUS_LOG.md D44–D52 and docs/MOTION_ASSETS.md "Recorded studio actions".
+
 - Runtime moved off tmpfs after a reboot wiped /tmp: private data `.data/private-runtime` (Blender path only, no API keys), API 4414, Vite 4684 (`test-results/restart-vite.sh`, kills by PID), headless Chrome 9451 (profile under .data/private-runtime). User service 4311 was down after the reboot and was not restarted.
 - CMU sources: `.data/natural-motion-investigation/cmu-library/<subject>/` (ASF/AMC/converted GLB); rebuild with `node scripts/build-cmu-library.mjs <dir>`.
 - Suite: 1,310 passed, 3 failing (known limits): Stand up previewed on its raw CMU skeleton warns (legs out of reach); quaternius-witch misses a cup grip by >2.5 cm with the recorded Pick up; rig.test "rotated bone axes and helper bones" exposes a pre-existing transfer dependence on bone axes (0.4–7 cm root, head 5–23 cm with a neck helper).
