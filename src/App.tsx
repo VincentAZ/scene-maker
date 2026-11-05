@@ -1504,8 +1504,12 @@ export default function App() {
       setTab(category);
       setFilter("My assets");
       setSearch("");
+      const rest =
+        placed.length === 2
+          ? `${placed[1].asset.name} is`
+          : `the other ${placed.length - 1} are`;
       toast(
-        `${placed.length} characters are ready: ${placed[0].asset.name} is in the scene, the others are in My assets.`,
+        `${placed.length} characters are ready: ${placed[0].asset.name} is in the scene, ${rest} in My assets.`,
       );
     }
   }
