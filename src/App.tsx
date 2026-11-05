@@ -1,12 +1,16 @@
 import { usePlayhead } from "./usePlayhead";
 import { routeActiveDuration } from "../shared/clipTiming";
 import { entityPose, importedTakeLabel } from "../shared/animation";
+import { loadImportedAsset } from "./importedAsset";
+import { disposeObject } from "./world";
+import { measureSeatSurface } from "./seatSurface";
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
 import { ChatExportMenu } from "./ChatExportMenu";
 import { exportAssistantChat, exportFilename } from "./code/transcriptExport";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
+  Armchair,
   Clapperboard,
   Sparkles,
   Plus,
@@ -263,6 +267,7 @@ export default function App() {
     [connectionsRevision, setConnectionsRevision] = useState(0),
     [castProgress, setCastProgress] = useState<CastProgressState | null>(null),
     [exporting, setExporting] = useState(false),
+    [measuringSeat, setMeasuringSeat] = useState(false),
     [projects, setProjects] = useState<
       { id: string; name: string; environment: string; updated: number }[]
     >([]),
@@ -837,6 +842,30 @@ export default function App() {
   );
   const update = (id: string, changes: Partial<Entity>, coalesce?: string) =>
     execute([{ type: "update", id, changes }], coalesce);
+  // An imported chair becomes a seat once its sitting surface is measured
+  // from its own model, the way the library's chairs were.
+  async function measureSeat(asset: Asset) {
+    setMeasuringSeat(true);
+    try {
+      const model = await loadImportedAsset(asset);
+      const seat = measureSeatSurface(model);
+      disposeObject(model);
+      if (!seat) {
+        report(
+          `No sitting surface was found on ${asset.name} between knee and table height.`,
+        );
+        return;
+      }
+      if (execute([{ type: "setSeat", assetId: asset.id, seat }]))
+        toast(
+          `${asset.name} is ready for sitting: its seat is ${Math.round(seat.position[1] * 100)} cm up.`,
+        );
+    } catch (error) {
+      report((error as Error).message);
+    } finally {
+      setMeasuringSeat(false);
+    }
+  }
   function add(asset: Asset, position?: [number, number, number]) {
     const before = sceneRef.current.entities.length;
     try {
@@ -2915,6 +2944,21 @@ export default function App() {
                       }
                     />
                   </label>
+                  {selectedAsset?.url &&
+                    selectedAsset.category === "props" &&
+                    !selectedAsset.seat &&
+                    scene.customAssets.some(
+                      (asset) => asset.id === selectedAsset.id,
+                    ) && (
+                      <button
+                        className="secondary full"
+                        disabled={measuringSeat}
+                        onClick={() => void measureSeat(selectedAsset)}
+                      >
+                        <Armchair size={14} />{" "}
+                        {measuringSeat ? "Measuring…" : "Measure the seat"}
+                      </button>
+                    )}
                   {isCharacter && (
                     <>
                       {selectedAsset?.url &&

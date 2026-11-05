@@ -252,6 +252,13 @@ export const shapeSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   bone: z.enum(boneNames).optional(),
 });
+/** Where a prop can be sat on: the centre of its sitting surface in model
+ * metres, and the surface's extent. */
+const seatSchema = z.object({
+  position: vec3,
+  width: z.number().min(0.2).max(10),
+  depth: z.number().min(0.2).max(5),
+});
 export const assetSchema = z
   .object({
     id: z.string().min(1),
@@ -308,13 +315,7 @@ export const assetSchema = z
       .optional(),
     design: characterDesignSchema.optional(),
     parts: z.array(shapeSchema).max(256).optional(),
-    seat: z
-      .object({
-        position: vec3,
-        width: z.number().min(0.2).max(10),
-        depth: z.number().min(0.2).max(5),
-      })
-      .optional(),
+    seat: seatSchema.optional(),
     grip: vec3.optional(),
     mouth: vec3.optional(),
     ladder: z
@@ -538,6 +539,12 @@ export const commandSchema = z.discriminatedUnion("type", [
       .partial(),
   }),
   z.object({ type: z.literal("createAsset"), asset: assetSchema }),
+  // A measured sitting surface for one of the creator's own props.
+  z.object({
+    type: z.literal("setSeat"),
+    assetId: z.string(),
+    seat: seatSchema,
+  }),
   z.object({ type: z.literal("createMotion"), motion: motionSchema }),
   z.object({ type: z.literal("updateMotion"), motion: motionSchema }),
   z.object({ type: z.literal("clear") }),
@@ -938,6 +945,12 @@ export function applyCommands(
         delete s.environmentAssetId;
       Object.assign(s, changes);
       if (changes.environmentAssetId) s.environment = "studio";
+    }
+    if (cmd.type === "setSeat") {
+      const asset = s.customAssets.find((a) => a.id === cmd.assetId);
+      if (asset?.category !== "props")
+        throw Error("Only your own props can be given a sitting surface.");
+      asset.seat = cmd.seat;
     }
     if (cmd.type === "createAsset") {
       if (allAssets(s).some((a) => a.id === cmd.asset.id))
