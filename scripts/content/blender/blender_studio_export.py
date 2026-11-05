@@ -150,7 +150,7 @@ def exportable(obj):
             return False
     # The Settlers draw eyes, lashes and mouths with filled curves; a curve
     # without a material is a guide or a rig helper.
-    elif obj.type != "CURVE" or not obj.data.splines or not any(obj.data.materials):
+    elif obj.type != "CURVE" or not obj.data.splines or not any(s.material for s in obj.material_slots):
         return False
     if not belongs_to_rig(obj):
         return False
@@ -300,6 +300,10 @@ for obj in meshes:
         # behind with the rig's other helpers.
         curve, name = obj, obj.name
         curve.name = name + "-curve"
+        # Slots may hold the materials on the object rather than the curve.
+        mesh.materials.clear()
+        for slot in curve.material_slots:
+            mesh.materials.append(slot.material)
         obj = bpy.data.objects.new(name, mesh)
         export_collection.objects.link(obj)
         for table in (controls, original_parent, surface_of):
