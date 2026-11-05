@@ -6,10 +6,10 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   applyCommands,
   assetSchema,
-  boneNames,
   starterScene,
   type Asset,
 } from "../shared/scene";
+import { bodyJointRoles } from "../shared/rigMapping";
 import { contentAssets, contentCredits } from "../shared/contentLibrary";
 import characters from "../shared/content/characters.json";
 import { cast, imageSize } from "../scripts/content/characters/grab3d.mjs";
@@ -231,8 +231,9 @@ describe.skipIf(!built)("built Grab3D characters", () => {
           sources,
         );
         expect(humanoidWarning(group, asset.name, false), asset.id).toBe("");
+        // All 15 body roles, hands and feet included.
         const bones = group.userData.bones as Record<string, T.Bone>;
-        for (const name of boneNames)
+        for (const name of bodyJointRoles)
           expect(bones[name], `${asset.id} ${name}`).toBeInstanceOf(T.Bone);
         let skinned = false;
         group.traverse((o) => (skinned ||= (o as T.SkinnedMesh).isSkinnedMesh));

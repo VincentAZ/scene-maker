@@ -1,9 +1,9 @@
 // Realistic characters from Grab3D (CC0, grab3d.com): AI-assisted humans by
 // Alexander Popov, rigged by Meshy with a Mixamo-named skeleton. The skeleton
 // has no face bones and, apart from the samurai's, no finger bones, so hands
-// stay in their relaxed rest pose. Each rigged GLB is
-// downloaded with its manifest and LICENSE.txt, and a model is only used once
-// its LICENSE.txt dedicates the package to the public domain. The mesh is
+// stay in their relaxed rest pose. Each rigged GLB is downloaded with its
+// manifest and LICENSE.txt, and a model is only used once its LICENSE.txt
+// dedicates the package to the public domain. The mesh is
 // then simplified to at most 120k triangles with glTF Transform (meshopt keeps
 // the skin weights), textures are capped at 2048 px, the bundled walk and run
 // clips are dropped (the studio has its own recordings), the rest pose is
