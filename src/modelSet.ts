@@ -39,6 +39,10 @@ export class ModelSet {
   }
 }
 
+/** How close the camera may come to an interior's walls and ceiling. */
+const WALL_GAP = 0.3,
+  CEILING_GAP = 0.25;
+
 /** Is there a floor under the cast: a mesh tagged "floor", or one whose top
  * is level with y = 0 and that spans the spawn point? A facade or a prop
  * used as a backdrop has none and keeps the studio's floor. */
@@ -124,10 +128,6 @@ export function clearHomeView(model: T.Object3D, set: SetBlock): SetBlock {
     },
   };
 }
-
-/** How close the camera may come to an interior's walls and ceiling. */
-const WALL_GAP = 0.3,
-  CEILING_GAP = 0.25;
 
 /**
  * The height of an interior's ceiling over the cast: the lowest part of the
