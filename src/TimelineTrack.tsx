@@ -81,7 +81,10 @@ function clipDragging(options: {
 }) {
   let gesture: Gesture | null = null,
     preview: Preview | null = null,
-    suppressClickUntil = 0;
+    // Presses since the last drag ended. The click a drag's own release
+    // produces must not select, nor pair with the next click into a
+    // double-click; any press after it is the creator's own, however soon.
+    pressesSinceDrag = 2;
   const show = (next: Preview | null) => {
     preview = next;
     options.onPreview(next);
@@ -104,13 +107,13 @@ function clipDragging(options: {
     const result = preview;
     show(null);
     if (!g.active) return;
-    // The click ending a drag must not reselect, nor its double-click open a path.
-    suppressClickUntil = performance.now() + 500;
+    pressesSinceDrag = 0;
     if (commit && result?.changed)
       options.props().onRetime(result.command, result.edgeTime);
   };
   const down = (e: PointerEvent<HTMLElement>, clip: Clip, edge: Edge) => {
     if (e.button !== 0 || gesture) return;
+    pressesSinceDrag++;
     const { entity, motions } = options.props();
     const index = entity.clips.findIndex((c) => c.id === clip.id);
     if (index < 0) return;
@@ -255,7 +258,10 @@ function clipDragging(options: {
     up,
     cancel,
     dispose: () => finish(false),
-    suppressClick: () => performance.now() < suppressClickUntil,
+    /** A press on a chip outside the handles. */
+    press: () => void pressesSinceDrag++,
+    suppressClick: () => pressesSinceDrag < 1,
+    suppressDoubleClick: () => pressesSinceDrag < 2,
   };
 }
 
@@ -343,10 +349,6 @@ export const TimelineTrack = memo(function TimelineTrack(
           const hints = c.routeWait
             ? ""
             : ` · Drag ${take ? "an" : "the right"} edge to change its length${path ? " · Double-click to edit the path" : ""}`;
-          const activate = () => {
-            if (gestures.suppressClick()) return;
-            props.onSelect(entity.id, c.id);
-          };
           return (
             <div
               key={c.id}
@@ -356,16 +358,19 @@ export const TimelineTrack = memo(function TimelineTrack(
               style={{
                 width: `${((live?.duration ?? c.duration) / total) * 100}%`,
               }}
-              onClick={activate}
+              onPointerDown={gestures.press}
+              onClick={() => {
+                if (!gestures.suppressClick()) props.onSelect(entity.id, c.id);
+              }}
               onDoubleClick={() => {
-                if (gestures.suppressClick()) return;
+                if (gestures.suppressDoubleClick()) return;
                 if (path) props.onEditPath(entity.id, c.id);
                 else props.onSelect(entity.id, c.id);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  activate();
+                  props.onSelect(entity.id, c.id);
                 }
               }}
               title={`${clipName(c, motions)} · ${Number(c.duration.toFixed(1))}s${!c.routeWait && c.playbackRate !== undefined ? ` · ${Number(c.playbackRate.toFixed(4))}×${c.legacyFit ? " (legacy fit)" : ""}` : ""}${hints}`}

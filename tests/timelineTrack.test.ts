@@ -249,6 +249,37 @@ describe("timeline track", () => {
     expect(entity.clips[0].duration).toBeCloseTo(2.4833, 3);
   });
 
+  it("swallows only the drag's own click: the creator's next press counts at once", async () => {
+    const { fns, entity } = await render(fixture());
+    const handle = chips()[2].querySelector<HTMLElement>(".clip-handle.end")!;
+    const route = chips()[2];
+    const dblclick = () =>
+      act(
+        async () =>
+          void route.dispatchEvent(
+            new MouseEvent("dblclick", { bubbles: true }),
+          ),
+      );
+    await pointer(handle, "pointerdown", { clientX: 300 });
+    await pointer(handle, "pointermove", { clientX: 360 });
+    await key(window, "Escape");
+    await pointer(handle, "pointerup", { clientX: 360 });
+    // The release's own click, and a double-click it would form with one more
+    // press, change nothing.
+    await act(async () => route.click());
+    await pointer(route, "pointerdown", { clientX: 320 });
+    await act(async () => route.click());
+    await dblclick();
+    expect(fns.onEditPath).not.toHaveBeenCalled();
+    expect(fns.onSelect).toHaveBeenCalledTimes(1);
+    expect(fns.onSelect).toHaveBeenLastCalledWith(entity.id, "route-clip");
+    // A real double-click right after the drag opens the path editor.
+    await pointer(route, "pointerdown", { clientX: 320 });
+    await act(async () => route.click());
+    await dblclick();
+    expect(fns.onEditPath).toHaveBeenCalledWith(entity.id, "route-clip");
+  });
+
   it("snaps with Shift and stretches a take with Alt", async () => {
     const scene = fixture();
     const { fns, props, entity } = await render(scene, {
