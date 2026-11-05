@@ -671,7 +671,8 @@
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/rain/v3/"
+      "source": "https://studio.blender.org/characters/rain/v3/",
+      "notice": "Rain Rig (CC) Blender Foundation | studio.blender.org"
     }
   },
   {
@@ -686,7 +687,8 @@
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/snow/v4/"
+      "source": "https://studio.blender.org/characters/snow/v4/",
+      "notice": "Snow Rig (CC) Blender Foundation | studio.blender.org"
     }
   },
   {
@@ -701,22 +703,24 @@
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/einar/v1/"
+      "source": "https://studio.blender.org/characters/einar/v1/",
+      "notice": "Einar Rig (CC-BY) Blender Foundation | studio.blender.org"
     }
   },
   {
-    "id": "blender-phil",
-    "name": "Phil",
+    "id": "blender-victoria",
+    "name": "Victoria",
     "category": "characters",
     "style": "Blender Studio",
-    "body": "masculine",
-    "url": "/content/characters/blender-phil.glb",
-    "thumbnail": "/content/characters/blender-phil.png",
-    "description": "A big, round-faced teenager with curly red hair, in a dark T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
+    "body": "feminine",
+    "url": "/content/characters/blender-victoria.glb",
+    "thumbnail": "/content/characters/blender-victoria.png",
+    "description": "A teenage girl with a huge mane of yellow and orange hair and bright eye make-up, in a pink dress, fishnet tights and teal boots, with bead necklaces, black bangles and big triangle earrings: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/phil/v1/"
+      "source": "https://studio.blender.org/characters/victoria/v1/",
+      "notice": "Victoria Rig (CC) Blender Foundation | studio.blender.org"
     }
   },
   {
@@ -731,37 +735,24 @@
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/jay/v1/"
+      "source": "https://studio.blender.org/characters/jay/v1/",
+      "notice": "Jay Rig (CC) Blender Foundation | studio.blender.org"
     }
   },
   {
-    "id": "blender-victoria",
-    "name": "Victoria",
-    "category": "characters",
-    "style": "Blender Studio",
-    "body": "feminine",
-    "url": "/content/characters/blender-victoria.glb",
-    "thumbnail": "/content/characters/blender-victoria.png",
-    "description": "A teenage girl with a huge mane of yellow and orange hair, in a pink dress, black tights and long black gloves, with bead necklaces and teal boots: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
-    "credit": {
-      "author": "Blender Studio",
-      "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/victoria/v1/"
-    }
-  },
-  {
-    "id": "blender-phileas",
-    "name": "Phileas",
+    "id": "blender-phil",
+    "name": "Phil",
     "category": "characters",
     "style": "Blender Studio",
     "body": "masculine",
-    "url": "/content/characters/blender-phileas.glb",
-    "thumbnail": "/content/characters/blender-phileas.png",
-    "description": "Sir Phileas Fish, an explorer with a purple fish's head, big round eyes and a fin on top, in an orange jumpsuit with a backpack and white boots, from Blender Studio's Settlers. Blender Studio's Phileas, version 3, adapted for the studio.",
+    "url": "/content/characters/blender-phil.glb",
+    "thumbnail": "/content/characters/blender-phil.png",
+    "description": "A big, round-faced, freckled teenager with curly red hair, in a navy Union Jack T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/phileas/v3/"
+      "source": "https://studio.blender.org/characters/phil/v1/",
+      "notice": "Phil Rig (CC) Blender Foundation | studio.blender.org"
     }
   },
   {
@@ -776,7 +767,8 @@
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/gabby/v3/"
+      "source": "https://studio.blender.org/characters/gabby/v3/",
+      "notice": "Gabby Rig (CC) Blender Foundation | studio.blender.org"
     }
   },
   {
@@ -791,7 +783,8 @@
     "credit": {
       "author": "Blender Studio",
       "license": "CC BY 4.0",
-      "source": "https://studio.blender.org/characters/lunte/v4/"
+      "source": "https://studio.blender.org/characters/lunte/v4/",
+      "notice": "Lunte Rig (CC) Blender Foundation | studio.blender.org"
     }
   }
 ]
