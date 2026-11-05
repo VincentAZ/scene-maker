@@ -148,8 +148,9 @@ export function extractSun(
   };
 }
 
-// three.js ACESFilmicToneMapping, including its 1/0.6 exposure scale.
-function aces(r: number, g: number, b: number, exposure: number) {
+/** three.js ACESFilmicToneMapping, including its 1/0.6 exposure scale:
+ * linear scene light in, linear display light (0–1) out. */
+export function aces(r: number, g: number, b: number, exposure: number) {
   const s = exposure / 0.6;
   r *= s;
   g *= s;

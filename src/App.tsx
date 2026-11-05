@@ -137,7 +137,11 @@ import {
   previewVoice,
 } from "./voiceCatalog";
 import { Viewport, type ViewportHandle } from "./Viewport";
-import { environmentAsset, photoSetAsset } from "./environmentModel";
+import {
+  environmentAsset,
+  modelSetAsset,
+  photoSetAsset,
+} from "./environmentModel";
 import { measureModelBounds } from "./importedAsset";
 import { defaultSetBlock } from "../shared/sets";
 import { Credits } from "./Credits";
@@ -2067,15 +2071,23 @@ export default function App() {
                   {recording === "recording" ? "REC" : "SAVING MP4…"}
                 </span>
               )}
-              {photoSetAsset(scene) ? (
-                // A photographed set brings its own light; presets would
-                // contradict the photo behind the cast.
+              {photoSetAsset(scene) || modelSetAsset(scene)?.hdri ? (
+                // A photographed set, or a 3D set with its own sky, brings
+                // its own light; presets would contradict it.
                 <div
                   className="stage-pill"
-                  title="This set is lit by its own photograph"
+                  title={
+                    photoSetAsset(scene)
+                      ? "This set is lit by its own photograph"
+                      : "This set brings its own daylight"
+                  }
                 >
                   <Sun size={14} />
-                  <span>Lit by the photo</span>
+                  <span>
+                    {photoSetAsset(scene)
+                      ? "Lit by the photo"
+                      : "Lit by the set"}
+                  </span>
                 </div>
               ) : (
                 <div className="stage-pill">

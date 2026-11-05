@@ -65,8 +65,9 @@ export type DownloadProgress = (received: number, total: number) => void;
 async function streamModel(
   url: string,
   progress?: DownloadProgress,
+  signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
   if (!response.ok)
     throw Error(`Could not download the set file (${response.status}).`);
   if (!response.body) return response.arrayBuffer();
@@ -93,13 +94,16 @@ async function streamModel(
 export async function loadImportedAsset(
   asset: Asset,
   progress?: DownloadProgress,
+  /** Stops a set's download, and its parsing, once nobody waits for it. */
+  signal?: AbortSignal,
 ): Promise<T.Group> {
   if (!asset.url)
     throw Error(`Reimport ${asset.name} to use its original motions.`);
   const set = asset.category === "environments";
   const bytes = set
-    ? await streamModel(asset.url, progress)
+    ? await streamModel(asset.url, progress, signal)
     : await downloadModel(asset.url);
+  signal?.throwIfAborted();
   // Parse cached bytes from a copy: geometry attributes keep views into the
   // parsed buffer.
   const gltf = await gltfLoader().parseAsync(

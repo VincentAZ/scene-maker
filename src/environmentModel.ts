@@ -53,7 +53,7 @@ export type EnvironmentViewer = {
   /** Told whenever the shown set changes: a photo, a 3D set, or none. */
   show: (view: PhotoSet | ModelSet | null) => void;
   /** Loads the HDR that lights a 3D set. */
-  light?: (url: string) => Promise<SetLight>;
+  light?: (url: string, signal?: AbortSignal) => Promise<SetLight>;
   /** A 3D set's download so far, or null once it is in. */
   progress?: (state: { received: number; total: number } | null) => void;
 };
@@ -70,13 +70,14 @@ export class EnvironmentModel {
   modelSet: ModelSet | null = null;
   /** The loaded 3D set's furniture within a standing body's height. */
   private furniture: T.Box3[] = [];
-  private pending: object | null = null;
+  private pending: AbortController | null = null;
 
   constructor(
     private content: T.Group,
     private load: (
       asset: Asset,
       progress?: DownloadProgress,
+      signal?: AbortSignal,
     ) => Promise<T.Group> = loadImportedAsset,
     /** Without a viewer (tests, exports) a photographic set is an empty,
      * ready environment and a 3D set is loaded without its light. */
@@ -130,7 +131,7 @@ export class EnvironmentModel {
       settled();
       return;
     }
-    const job = {};
+    const job = new AbortController();
     this.pending = job;
     const failed = (error: unknown) => {
       if (this.pending !== job) return;
@@ -165,25 +166,36 @@ export class EnvironmentModel {
     // The HDR that lights the set loads beside the model; the set settles as
     // soon as both are in, and a model without a light settles at once.
     const light =
-      asset.hdri && this.viewer?.light ? this.viewer.light(asset.hdri) : null;
+      asset.hdri && this.viewer?.light
+        ? this.viewer.light(asset.hdri, job.signal)
+        : null;
     light?.catch(() => {});
-    this.load(asset, (received, total) => {
-      if (this.pending === job) this.viewer?.progress?.({ received, total });
-    }).then(async (object) => {
+    this.load(
+      asset,
+      (received, total) => {
+        if (this.pending === job) this.viewer?.progress?.({ received, total });
+      },
+      job.signal,
+    ).then(async (object) => {
       let loaded: SetLight | null = null;
+      let unlit = false;
       if (light)
         try {
           loaded = await light;
-        } catch (error) {
-          disposeObject(object);
-          failed(error);
-          return;
+        } catch {
+          unlit = true;
         }
       if (this.pending !== job) {
         disposeObject(object);
         loaded?.map.dispose();
         return;
       }
+      // The set is still worth showing without its own light: the studio's
+      // preset lights it instead.
+      if (unlit)
+        onError(
+          `The light for ${asset.name} could not load, so the studio lights it for now.`,
+        );
       object.name = "environment_" + asset.id;
       object.traverse((node) => {
         if (node instanceof T.Mesh) {
@@ -209,6 +221,8 @@ export class EnvironmentModel {
   dispose() {
     const loading = this.pending;
     this.pending = null;
+    // Stop downloading and parsing a set nobody waits for any more.
+    loading?.abort();
     this.ready = false;
     this.key = "";
     if (loading) this.viewer?.progress?.(null);

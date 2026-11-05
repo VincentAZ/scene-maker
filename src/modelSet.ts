@@ -4,8 +4,13 @@ import type { Asset } from "../shared/scene";
 import { defaultSetBlock, shellBox, type SetBlock } from "../shared/sets";
 import { extractSun, type PhotoLight } from "./hdriBackdrop";
 
-/** A 3D set's image-based light: its HDR with the sun moved to a light. */
-export type SetLight = { map: T.Texture; sun: PhotoLight };
+/** A 3D set's image-based light: its HDR with the sun moved to a light, and
+ * how much light the rest of its sky throws on a level floor. */
+export type SetLight = {
+  map: T.Texture;
+  sun: PhotoLight;
+  skyIrradiance: number;
+};
 
 /** A loaded real 3D set: how it is staged and, when its catalogue entry
  * provides an HDR, the light that falls on it. */
@@ -51,21 +56,65 @@ export function setHome(set: SetBlock) {
   };
 }
 
+/** The light an equirectangular sky (linear RGBA) throws on a level floor:
+ * its luminance over the upper half, weighted by the cosine to the floor. */
+export function floorIrradiance(
+  data: ArrayLike<number>,
+  width: number,
+  height: number,
+) {
+  let total = 0;
+  for (let row = 0; row < height; row++) {
+    const elevation = (0.5 - (row + 0.5) / height) * Math.PI;
+    if (elevation <= 0) continue;
+    const weight =
+      Math.sin(elevation) *
+      Math.cos(elevation) *
+      ((2 * Math.PI) / width) *
+      (Math.PI / height);
+    for (let column = 0; column < width; column++) {
+      const i = (row * width + column) * 4;
+      total +=
+        (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) *
+        weight;
+    }
+  }
+  return total;
+}
+
 /** Loads the HDR that lights a 3D set. Like a photographic set, a compact sun
  * is moved out of the map into the studio's key light so it casts shadows. */
-export async function loadSetLight(url: string): Promise<SetLight> {
-  const hdr = await new HDRLoader().setDataType(T.FloatType).loadAsync(url);
-  const { width, height } = hdr.image as { width: number; height: number };
-  const data = hdr.image.data as Float32Array;
+export async function loadSetLight(
+  url: string,
+  signal?: AbortSignal,
+): Promise<SetLight> {
+  const response = await fetch(url, { signal });
+  if (!response.ok)
+    throw Error(`Could not download the set's light (${response.status}).`);
+  const parsed = new HDRLoader()
+    .setDataType(T.FloatType)
+    .parse(await response.arrayBuffer());
+  const { width, height } = parsed;
+  const data = parsed.data as Float32Array;
   const sun = extractSun(data, width, height);
+  const skyIrradiance = floorIrradiance(data, width, height);
   const half = new Uint16Array(data.length);
   for (let i = 0; i < data.length; i++)
     half[i] = T.DataUtils.toHalfFloat(data[i]);
-  hdr.image.data = half;
-  hdr.type = T.HalfFloatType;
-  hdr.mapping = T.EquirectangularReflectionMapping;
-  hdr.needsUpdate = true;
-  return { map: hdr, sun };
+  const map = new T.DataTexture(
+    half,
+    width,
+    height,
+    T.RGBAFormat,
+    T.HalfFloatType,
+    T.EquirectangularReflectionMapping,
+  );
+  map.colorSpace = T.LinearSRGBColorSpace;
+  map.minFilter = map.magFilter = T.LinearFilter;
+  map.generateMipmaps = false;
+  map.flipY = true;
+  map.needsUpdate = true;
+  return { map, sun, skyIrradiance };
 }
 
 /** A mesh's part in the set, from the glTF extras its author tagged on it or
@@ -100,35 +149,48 @@ export function markSetCollision(model: T.Object3D, set: SetBlock) {
   });
 }
 
+/** Beyond this half-size a set's shadow covers only the cast's surroundings,
+ * so a 2048-texel shadow map stays sharp around them. */
+const SHADOW_REACH = 30;
+
 /**
  * Fits the sun's shadow to the stage: the studio's ±9 m box around the origin
- * by default, or a box around a set's bounds, with the light far enough out
- * to see all of it from its direction.
+ * by default, or a box around a set's bounds — around its spawn point within
+ * SHADOW_REACH when the set is larger — with the light far enough out to see
+ * all of it from its direction.
  */
 export function fitSunShadow(
   sun: T.DirectionalLight,
   direction: T.Vector3,
   bounds: T.Box3 | null,
+  focus?: T.Vector3,
 ) {
-  const centre = bounds
-    ? bounds.getCenter(new T.Vector3())
-    : new T.Vector3(0, 0, 0);
-  const radius = bounds
-    ? Math.min(60, Math.max(9, bounds.getSize(new T.Vector3()).length() / 2))
-    : 9;
+  const half = bounds ? bounds.getSize(new T.Vector3()).length() / 2 : 9;
+  const radius = bounds ? Math.min(SHADOW_REACH, Math.max(9, half)) : 9;
+  const centre = !bounds
+    ? new T.Vector3(0, 0, 0)
+    : half > SHADOW_REACH && focus
+      ? bounds.clampPoint(focus, new T.Vector3())
+      : bounds.getCenter(new T.Vector3());
   const distance = bounds ? radius + 6 : 15;
   sun.position
     .copy(centre)
     .addScaledVector(direction.clone().normalize(), distance);
   sun.target.position.copy(centre);
   sun.target.updateMatrixWorld();
+  const near = 0.1,
+    far = bounds ? distance + radius + 1 : 30;
   Object.assign(sun.shadow.camera, {
     left: -radius,
     right: radius,
     top: radius,
     bottom: -radius,
-    near: 0.1,
-    far: bounds ? distance + radius + 1 : 30,
+    near,
+    far,
   });
   sun.shadow.camera.updateProjectionMatrix();
+  // three.js adds the bias in the shadow's depth range (0 at near, 1 at far):
+  // keep it 3 cm whatever the box, and offset half a texel along the normal.
+  sun.shadow.bias = -0.03 / (far - near);
+  sun.shadow.normalBias = radius / sun.shadow.mapSize.x;
 }

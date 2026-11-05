@@ -33,19 +33,24 @@ import {
 } from "../src/environmentModel";
 import {
   fitSunShadow,
+  floorIrradiance,
   markSetCollision,
   ModelSet,
   setBlockFor,
   setHome,
   setMeshRole,
 } from "../src/modelSet";
-import { applyStageLighting } from "../src/stageLighting";
+import {
+  applyStageLighting,
+  hdrExposure,
+  studioSurround,
+} from "../src/stageLighting";
 import { obstacleMesh, snapshotCollider } from "../src/collision";
 import {
   sceneCollisionWarning,
   sceneObstacles,
 } from "../src/assetManipulation";
-import { extractSun } from "../src/hdriBackdrop";
+import { aces, extractSun, texelDirection } from "../src/hdriBackdrop";
 import { disposeObject } from "../src/world";
 
 const staging: SetBlock = {
@@ -119,13 +124,50 @@ const lights = () => {
   return world;
 };
 const renderer = () => ({ toneMappingExposure: 1 }) as T.WebGLRenderer;
-const light = (sun?: T.Vector3) => {
-  const data = new Float32Array(64 * 32 * 4).fill(1);
-  if (sun) {
-    const i = (8 * 64 + 16) * 4;
-    data[i] = data[i + 1] = data[i + 2] = 5e4;
-  }
-  return { map: new T.Texture(), sun: extractSun(data, 64, 32) };
+/** An HDR light: an even sky of radiance `sky`, with a bright sun disc. */
+const light = (sun?: T.Vector3, radiance = 1, power = 5e4) => {
+  const data = new Float32Array(64 * 32 * 4).fill(radiance);
+  const direction = new T.Vector3();
+  if (sun)
+    for (let row = 0; row < 32; row++)
+      for (let column = 0; column < 64; column++)
+        if (
+          texelDirection(column, row, 64, 32, direction).angleTo(sun) < 0.06
+        ) {
+          const i = (row * 64 + column) * 4;
+          data[i] = data[i + 1] = data[i + 2] = power;
+        }
+  const measured = extractSun(data, 64, 32);
+  return {
+    map: new T.Texture(),
+    sun: measured,
+    skyIrradiance: floorIrradiance(data, 64, 32),
+  };
+};
+const sunOf = (world: T.Scene) =>
+  world.children.find(
+    (o) => o instanceof T.DirectionalLight,
+  ) as T.DirectionalLight;
+const fillOf = (world: T.Scene) =>
+  world.children.find(
+    (o) => o instanceof T.HemisphereLight,
+  ) as T.HemisphereLight;
+/** What a level floor of this albedo shows on screen (linear, 0–1) under a
+ * set's HDR light: its sky, its sun and any fill, through the tone mapping. */
+const floorShown = (
+  loaded: ReturnType<typeof light>,
+  world: T.Scene,
+  gpu: T.WebGLRenderer,
+  albedo: number,
+) => {
+  const sun = sunOf(world);
+  const toward = sun.position.clone().sub(sun.target.position).normalize();
+  const irradiance =
+    loaded.skyIrradiance +
+    sun.intensity * Math.max(0, toward.y) +
+    fillOf(world).intensity * 0.91;
+  const value = (albedo * irradiance) / Math.PI;
+  return aces(value, value, value, gpu.toneMappingExposure)[1];
 };
 
 describe("3D set catalogue schema", () => {
@@ -253,6 +295,64 @@ describe("a 3D set in the environment model", () => {
     expect(() => setSchema.parse(shown.set)).not.toThrow();
   });
 
+  it("still shows the set, lit by the studio, when its own light cannot load", async () => {
+    const model = room();
+    const show = vi.fn(),
+      error = vi.fn(),
+      settled = vi.fn();
+    const environment = new EnvironmentModel(
+      new T.Group(),
+      () => Promise.resolve(model),
+      {
+        load: () => Promise.reject(Error("not a photo")),
+        show,
+        light: () => Promise.reject(Error("offline")),
+      },
+    );
+    environment.update(withSet(), settled, error);
+    await new Promise((done) => setTimeout(done));
+    expect(environment.ready).toBe(true);
+    expect(settled).toHaveBeenCalledOnce();
+    expect(model.parent).toBe(environment.root);
+    const shown = show.mock.lastCall?.[0] as ModelSet;
+    expect(shown.light).toBeNull();
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("the studio lights it"),
+    );
+  });
+
+  it("stops downloading a set the creator has already left", async () => {
+    const signals: AbortSignal[] = [];
+    const environment = new EnvironmentModel(
+      new T.Group(),
+      (_asset, _progress, signal) => {
+        signals.push(signal!);
+        return new Promise(() => {});
+      },
+      {
+        load: () => Promise.reject(Error("not a photo")),
+        show: () => {},
+        light: (_url, signal) => {
+          signals.push(signal!);
+          return new Promise(() => {});
+        },
+      },
+    );
+    environment.update(
+      withSet(),
+      () => {},
+      () => {},
+    );
+    expect(signals).toHaveLength(2);
+    expect(signals.some((signal) => signal.aborted)).toBe(false);
+    environment.update(
+      starterScene(),
+      () => {},
+      () => {},
+    );
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
   it("puts the cast at the floor's centre when the origin is off the plan", () => {
     const block = defaultSetBlock({ min: [10, 0, 10], max: [20, 3, 18] });
     expect(block.spawn).toEqual([15, 0, 14]);
@@ -267,19 +367,17 @@ describe("lighting a 3D set", () => {
   it("lights the model with its HDR, shows it as the sky when asked, and fits the shadow to the set", () => {
     const world = lights(),
       gpu = renderer();
-    const loaded = light(new T.Vector3(1, 1, 0));
+    const loaded = light(new T.Vector3(1, 1, 0).normalize());
     const view = new ModelSet(set, staging, loaded);
     applyStageLighting(world, gpu, "daylight", view);
     expect(world.environment).toBe(loaded.map);
     expect(world.background).toBe(loaded.map);
     expect(world.fog).toBeNull();
-    expect(gpu.toneMappingExposure).toBe(1.1);
-    const sun = world.children.find(
-      (o) => o instanceof T.DirectionalLight,
-    ) as T.DirectionalLight;
-    const sky = world.children.find(
-      (o) => o instanceof T.HemisphereLight,
-    ) as T.HemisphereLight;
+    // The authored exposure, unless it would wash out a white floor.
+    expect(gpu.toneMappingExposure).toBeLessThanOrEqual(1.1);
+    expect(floorShown(loaded, world, gpu, 0.8)).toBeLessThanOrEqual(0.8001);
+    const sun = sunOf(world),
+      sky = fillOf(world);
     expect(sun.intensity).toBe(3);
     expect(sky.intensity).toBe(0);
     // The authored sun direction wins over the measured one.
@@ -301,7 +399,53 @@ describe("lighting a 3D set", () => {
     expect(sun.target.position.toArray()).toEqual([0, 3, 0]);
   });
 
-  it("falls back to the preset lights with the set's notes and no fog", () => {
+  it("meters a set's HDR so a strong sun never washes it out", () => {
+    const world = lights(),
+      gpu = renderer();
+    // A clear midday sky: the sun holds most of the light on the floor, as
+    // in the pavilion's HDR (a sun of about 20).
+    const high = new T.Vector3(0.3, 0.8, 0.2).normalize();
+    const noon = light(high, 0.6, 2000);
+    expect(noon.sun.sunIntensity).toBeGreaterThan(15);
+    // Authored for the studio's sunless default, as early catalogue entries were.
+    const bright = {
+      ...staging,
+      lighting: { exposure: 1, hemisphere: 1.2, sky: true },
+    };
+    applyStageLighting(world, gpu, "daylight", new ModelSet(set, bright, noon));
+    expect(gpu.toneMappingExposure).toBeLessThan(0.5);
+    expect(floorShown(noon, world, gpu, 0.8)).toBeLessThanOrEqual(0.8001);
+    // Unauthored: a 45 % grey floor shows at 60 % white, like the thumbnails.
+    const metered = { ...staging, lighting: { sky: true } };
+    const hazy = light(high, 0.6, 300);
+    applyStageLighting(
+      world,
+      gpu,
+      "daylight",
+      new ModelSet(set, metered, hazy),
+    );
+    const grey = floorShown(hazy, world, gpu, 0.45);
+    expect(1.055 * grey ** (1 / 2.4) - 0.055).toBeCloseTo(0.6, 2);
+    applyStageLighting(
+      world,
+      gpu,
+      "daylight",
+      new ModelSet(set, metered, noon),
+    );
+    expect(floorShown(noon, world, gpu, 0.8)).toBeLessThanOrEqual(0.8001);
+    // A dim overcast sky is brightened, within reason.
+    const dusk = light(undefined, 0.02);
+    applyStageLighting(
+      world,
+      gpu,
+      "daylight",
+      new ModelSet(set, metered, dusk),
+    );
+    expect(gpu.toneMappingExposure).toBe(3);
+    expect(hdrExposure(1e9)).toBeGreaterThan(0);
+  });
+
+  it("falls back to the preset sun with the studio surround and the set's notes, and no fog", () => {
     const world = lights(),
       gpu = renderer();
     const notes = {
@@ -309,16 +453,15 @@ describe("lighting a 3D set", () => {
       lighting: { hemisphere: 1.2, sunIntensity: 2 },
     };
     applyStageLighting(world, gpu, "moonlight", new ModelSet(set, notes, null));
-    const sun = world.children.find(
-      (o) => o instanceof T.DirectionalLight,
-    ) as T.DirectionalLight;
-    const sky = world.children.find(
-      (o) => o instanceof T.HemisphereLight,
-    ) as T.HemisphereLight;
-    expect(world.environment).toBeNull();
+    const sun = sunOf(world),
+      sky = fillOf(world);
+    // Metal and mirrors reflect the surround; it replaces the fill light,
+    // dimmed as the set's notes ask.
+    expect(world.environment).toBe(studioSurround());
+    expect(world.environmentIntensity).toBeCloseTo(0.5);
     expect(world.background).toBeInstanceOf(T.Color);
     expect(world.fog).toBeNull();
-    expect(sky.intensity).toBe(1.2);
+    expect(sky.intensity).toBe(0);
     expect(sun.intensity).toBe(2);
     expect(sun.color.getHexString()).toBe("a6c5ef");
     applyStageLighting(
@@ -329,19 +472,52 @@ describe("lighting a 3D set", () => {
     );
     expect(world.fog).toBeInstanceOf(T.Fog);
     expect(sun.intensity).toBe(4);
+    expect(world.environmentIntensity).toBe(1);
     // Back on the studio stage the shadow box is the fixed ±9 m again.
     applyStageLighting(world, gpu, "daylight", null);
     expect(sun.shadow.camera.right).toBe(9);
     expect(sun.shadow.camera.far).toBe(30);
     expect(sun.target.position.toArray()).toEqual([0, 0, 0]);
     expect(world.fog).toBeInstanceOf(T.Fog);
+    expect(world.environment).toBeNull();
+    expect(sky.intensity).toBe(2.4);
   });
 
-  it("keeps the default shadow geometry for the studio", () => {
+  it("surrounds a set without an HDR with the studio's fill, brighter where the softboxes are", () => {
+    const map = studioSurround();
+    const { width, height } = map.image;
+    const data = Array.from(map.image.data as Uint16Array, (value) =>
+      T.DataUtils.fromHalfFloat(value),
+    );
+    const sky = new T.Color("#fff4da");
+    const fill = 0.2126 * sky.r + 0.7152 * sky.g + 0.0722 * sky.b;
+    expect(floorIrradiance(data, width, height)).toBeCloseTo(2.4 * fill, 1);
+    const green = (row: number) =>
+      data.filter((_, i) => i % 4 === 1 && Math.floor(i / 4 / width) === row);
+    const upper = green(height / 4);
+    expect(Math.max(...upper)).toBeGreaterThan(1.5 * Math.min(...upper));
+    // The ground below is the fill's darker ground colour.
+    expect(Math.max(...green(height - 2))).toBeLessThan(Math.min(...upper));
+  });
+
+  it("keeps the default shadow geometry for the studio and a 3 cm bias in any box", () => {
     const sun = new T.DirectionalLight();
+    sun.shadow.mapSize.set(2048, 2048);
     fitSunShadow(sun, new T.Vector3(-3, 8, 4), null);
     expect(sun.shadow.camera.left).toBe(-9);
     expect(sun.position.length()).toBeCloseTo(15);
+    expect(sun.shadow.bias).toBeCloseTo(-0.001, 4);
+    // A 90 m exterior: the shadow covers 30 m around the spawn, not all of it.
+    const plaza = new T.Box3(
+      new T.Vector3(-45, -2, -45),
+      new T.Vector3(20, 5, 45),
+    );
+    fitSunShadow(sun, new T.Vector3(0, 1, 0), plaza, new T.Vector3(0, 0, 0));
+    expect(sun.shadow.camera.right).toBe(30);
+    expect(sun.target.position.toArray()).toEqual([0, 0, 0]);
+    const { near, far } = sun.shadow.camera;
+    expect(sun.shadow.bias * (far - near)).toBeCloseTo(-0.03);
+    expect(sun.shadow.normalBias).toBeCloseTo(30 / 2048);
   });
 });
 
