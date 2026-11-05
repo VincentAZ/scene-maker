@@ -931,8 +931,10 @@ def carrying_bone(obj):
 
 # Some parts reach their place only through the film's pose (helpers that
 # carry Einar's pockets, zip and arm hoses into position); at rest they
-# lie in a heap by the feet, far from the bone that carries them. Hair,
-# backpacks and arms stay within 30% of the figure's height of theirs.
+# lie in a heap by the feet, far from the upper-body bone that carries
+# them. Whatever truly sits that low (boots, knee pads) hangs from a leg.
+# A whole body or a pair of arms is mostly carried by many bones, so only
+# the low parts are judged.
 corners = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box]
 floor = min(c.z for c in corners)
 tall = max(c.z for c in corners) - floor
@@ -944,7 +946,7 @@ for obj in meshes:
     middle = obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
     bone = rig.data.bones[name]
     gap = segment_distance(middle, rig.matrix_world @ bone.head_local, rig.matrix_world @ bone.tail_local) / tall
-    if gap > 0.35 or (gap > 0.3 and middle.z - floor < 0.3 * tall):
+    if gap > 0.3 and middle.z - floor < tall / 3:
         out_of_place.append(obj)
 for obj in out_of_place:
     log("left out", obj.name, "(only the film's pose puts it in place)")

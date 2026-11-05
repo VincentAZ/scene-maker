@@ -95,6 +95,44 @@ function carriedBy(group: T.Object3D, roots: T.Object3D[]) {
   return points;
 }
 
+/** Parts whose middle lies more than `share` of the figure's height from
+ * the bone that carries most of their vertices. */
+function strayParts(group: T.Object3D, height: number, share: number) {
+  const stray: string[] = [];
+  group.traverse((o) => {
+    const mesh = o as T.SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    const index = mesh.geometry.attributes.skinIndex;
+    const weight = mesh.geometry.attributes.skinWeight;
+    const tally = new Map<number, number>();
+    const middle = new T.Vector3();
+    const point = new T.Vector3();
+    for (let i = 0; i < index.count; i++) {
+      let best = 0;
+      for (let c = 1; c < index.itemSize; c++)
+        if (weight.getComponent(i, c) > weight.getComponent(i, best)) best = c;
+      const joint = index.getComponent(i, best);
+      tally.set(joint, (tally.get(joint) ?? 0) + 1);
+      middle.add(
+        mesh.getVertexPosition(i, point).applyMatrix4(mesh.matrixWorld),
+      );
+    }
+    middle.divideScalar(index.count);
+    const [joint] = [...tally.entries()].sort((x, y) => y[1] - x[1])[0];
+    const bone = mesh.skeleton.bones[joint];
+    const head = bone.getWorldPosition(new T.Vector3());
+    const child = bone.children.find((c) => (c as T.Bone).isBone);
+    const tail = child ? child.getWorldPosition(new T.Vector3()) : head;
+    const nearest = new T.Line3(head, tail).closestPointToPoint(
+      middle,
+      true,
+      new T.Vector3(),
+    );
+    if (nearest.distanceTo(middle) > share * height) stray.push(mesh.name);
+  });
+  return stray;
+}
+
 describe("Blender Studio character catalogue", () => {
   it("lists the open-movie characters with their CC BY credit", () => {
     expect(entries.map((c) => c.id)).toEqual(
@@ -217,6 +255,9 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
         expect(height, asset.id).toBeGreaterThan(1.5);
         expect(height, asset.id).toBeLessThan(2.05);
         expect(Math.abs(rest.min.y), asset.id).toBeLessThan(0.05);
+        // Every part sits by the bone that carries it; one that only the
+        // film's pose brings into place would lie in a heap by the feet.
+        expect(strayParts(group, height, 0.35), asset.id).toEqual([]);
         // Each hand's skin is carried by the hand and its fingers: a finger
         // chain left hanging from the shoulder would stay behind when the
         // arm moves.
