@@ -8,8 +8,14 @@ import sets from "./content/sets.json";
  * catalogue is a JSON file in shared/content/, written by that build. */
 export type ContentEntry = Omit<Asset, "color" | "skin" | "body"> &
   Partial<Pick<Asset, "color" | "skin" | "body">> & {
-    /** Who made it, the licence, and where it came from. */
-    credit: { author: string; license: string; source: string };
+    /** Who made it, the licence, where it came from and, when the licensor
+     * asks for one, the exact credit line to include. */
+    credit: {
+      author: string;
+      license: string;
+      source: string;
+      notice?: string;
+    };
   };
 
 const entries = [...characters, ...props, ...sets] as ContentEntry[];

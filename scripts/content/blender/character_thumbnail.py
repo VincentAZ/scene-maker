@@ -2,17 +2,38 @@
 --python scripts/content/blender/character_thumbnail.py -- <character.glb> <card.png>
 
 Render a library card for a converted character: the figure framed from the
-front like the Rocketbox previews, on a transparent background, 384 x 384.
-Only the GLB is read; no script inside any downloaded file runs.
+front like the Rocketbox previews, on a transparent background, 384 x 384,
+standing at ease with the upper arms lowered from the T-pose (in pose mode:
+the GLB's rest pose is unchanged). Only the GLB is read; no script inside any
+downloaded file runs.
 """
+import math
 import sys
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 source, destination = sys.argv[sys.argv.index("--") + 1:]
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=source)
+
+# Each upper arm turns to hang 65 degrees below the horizontal, out to its
+# side (the character faces -Y, its left towards +X), whatever its rest
+# direction; the forearm and hand follow.
+DROP = math.radians(65)
+for armature in [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]:
+    space = armature.matrix_world.to_3x3()
+    for side, outward in (("L", 1), ("R", -1)):
+        upper = armature.pose.bones.get(f"DEF-upper_arm.{side}")
+        lower = armature.pose.bones.get(f"DEF-forearm.{side}")
+        if upper is None or lower is None:
+            continue
+        bpy.context.view_layer.update()
+        along = lower.head - upper.head
+        wanted = space.inverted() @ Vector((outward * math.cos(DROP), 0, -math.sin(DROP)))
+        turn = along.rotation_difference(wanted).to_matrix().to_4x4()
+        upper.matrix = Matrix.Translation(upper.head) @ turn @ Matrix.Translation(-upper.head) @ upper.matrix
+bpy.context.view_layer.update()
 
 # The glTF importer adds a hidden icosphere as a bone display widget; frame the
 # visible character only.

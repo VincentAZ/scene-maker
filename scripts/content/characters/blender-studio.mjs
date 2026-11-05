@@ -7,9 +7,10 @@
 // skeleton, rest pose, baked materials) and renders the card
 // (character_thumbnail.py). The GLB's materials are made dielectric and
 // self-contained the way the Rocketbox converter does it. Idempotent: a
-// character is converted again only when its GLB, card or converter stamp is
-// missing. The site's credit line follows from an entry: "<name> v<version>
-// (CC) Blender Foundation | studio.blender.org", the version being the last
+// character is converted again only when its GLB, card or a stamp is
+// missing. credit.notice is the line each character page asks users of the
+// rig to include; "<name> v<version> (CC) Blender Foundation |
+// studio.blender.org" also follows from an entry, the version being the last
 // part of credit.source.
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
@@ -21,16 +22,22 @@ import { fileURLToPath } from "node:url";
 
 const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
-// Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 17;
+// Bump to rebuild every GLB after changing the converter, or every card
+// after changing character_thumbnail.py.
+const CONVERTER_VERSION = 18;
+const CARD_VERSION = 2;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../blender",
 );
 
 // folder: content/.cache/blender-studio/<folder>. blend: inside the extracted
-// zip, or the downloaded file itself. body: feminine | masculine. options:
-// passed to the converter (skip: name patterns of parts to leave out).
+// zip, or the downloaded file itself. body: feminine | masculine. notice: the
+// credit the page asks for ("<Name> Rig (CC) Blender Foundation |
+// studio.blender.org" where it names none). options: passed to the converter
+// (skip: name patterns of parts to leave out). The library lists people
+// only, in this order: the three leads, the Sprite Fright cast, the
+// Settlers' Gabby and Lunte.
 export const cast = [
   {
     id: "blender-rain",
@@ -41,6 +48,7 @@ export const cast = [
     sha256: "80217f163f6392dc829233d63c2cfb5e1376775bc34101ad14f39631fea70d24",
     file: "rain-v3.zip",
     blend: "Rain v3.3/rain_v3.2.blend",
+    notice: "Rain Rig (CC) Blender Foundation | studio.blender.org",
     body: "feminine",
     description:
       "A young woman with an undercut and a swept-back ponytail, in a white tank top with a light-blue neckerchief, blue jeans and sneakers. Blender Studio's Rain, version 3, adapted for the studio.",
@@ -54,6 +62,7 @@ export const cast = [
     sha256: "98d58ef3a07083ede14140bc462cccb55d317062846aa0eb652d2e4a7ac422a6",
     file: "snow-v4.zip",
     blend: "Snow/snow_v4.2.blend",
+    notice: "Snow Rig (CC) Blender Foundation | studio.blender.org",
     body: "masculine",
     description:
       "A young man with his dark hair tied in a top knot, in a grey V-neck T-shirt, jeans and trainers. Blender Studio's Snow, version 4, adapted for the studio.",
@@ -67,44 +76,12 @@ export const cast = [
     sha256: "3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7",
     file: "einar-v1.zip",
     blend: "einar_release_v1.blend",
-    // The film's injury decals, and parts that only the film's pose lifts
-    // into place yet attach to a leg at rest (they would lie by his feet).
-    options: {
-      skip: [
-        "blood",
-        "tire_knee(_bolt\\d)?$",
-        "jacket_pocket1$",
-        "jacket_zipper_connection$",
-        "electrical_wires\\.001\\.mesh$",
-      ],
-    },
+    notice: "Einar Rig (CC-BY) Blender Foundation | studio.blender.org",
+    // The film's injury decals.
+    options: { skip: ["blood"] },
     body: "masculine",
     description:
       "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1, adapted for the studio.",
-  },
-  {
-    id: "blender-phil",
-    name: "Phil",
-    folder: "phil",
-    page: `${SITE}/characters/phil/v1/`,
-    download: `${FILES}/c1/c1a19179f6136a2f8c7b802d1201ea3b/c1a19179f6136a2f8c7b802d1201ea3b.blend`,
-    sha256: "b9671b4add7a7e52000c5dba3ddfa322fb0c0c85abf70ea3ad5fcf6499947e59",
-    file: "phil.blend",
-    body: "masculine",
-    description:
-      "A big, round-faced teenager with curly red hair, in a dark T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
-  },
-  {
-    id: "blender-jay",
-    name: "Jay",
-    folder: "jay",
-    page: `${SITE}/characters/jay/v1/`,
-    download: `${FILES}/5f/5fe2b56638e96ce325e47b916524ded5/5fe2b56638e96ce325e47b916524ded5.blend`,
-    sha256: "18383a3d25d68c6a91208e4240f2e4dfe67592739078f18b21cf257be91a8458",
-    file: "jay.blend",
-    body: "masculine",
-    description:
-      "A lanky teenager in a black bucket hat, red shutter shades, a white track jacket, a gold chain, red shorts and chunky trainers: the would-be eighties music star of the open movie Sprite Fright. Blender Studio's Jay, version 1, adapted for the studio.",
   },
   {
     id: "blender-victoria",
@@ -114,21 +91,36 @@ export const cast = [
     download: `${FILES}/f3/f399fb2523e10448b6d6e7b77d2eaa26/f399fb2523e10448b6d6e7b77d2eaa26.blend`,
     sha256: "852dc7bea686db2d59302679609bd0c438ef88936f3684dd193a74b3b292cd6b",
     file: "victoria.blend",
+    notice: "Victoria Rig (CC) Blender Foundation | studio.blender.org",
     body: "feminine",
     description:
       "A teenage girl with a huge mane of yellow and orange hair, in a pink dress, black tights and long black gloves, with bead necklaces and teal boots: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
   },
   {
-    id: "blender-phileas",
-    name: "Phileas",
-    folder: "phileas",
-    page: `${SITE}/characters/phileas/v3/`,
-    download: `${FILES}/30/30040f5df6a2ea573fb4fe408358be92/30040f5df6a2ea573fb4fe408358be92.blend`,
-    sha256: "9da377750f0db24147ba8a1cac3a459d96b80a71eb914f484360aecb539cdeba",
-    file: "phileas.blend",
+    id: "blender-jay",
+    name: "Jay",
+    folder: "jay",
+    page: `${SITE}/characters/jay/v1/`,
+    download: `${FILES}/5f/5fe2b56638e96ce325e47b916524ded5/5fe2b56638e96ce325e47b916524ded5.blend`,
+    sha256: "18383a3d25d68c6a91208e4240f2e4dfe67592739078f18b21cf257be91a8458",
+    file: "jay.blend",
+    notice: "Jay Rig (CC) Blender Foundation | studio.blender.org",
     body: "masculine",
     description:
-      "Sir Phileas Fish, an explorer with a purple fish's head, big round eyes and a fin on top, in an orange jumpsuit with a backpack and white boots, from Blender Studio's Settlers. Blender Studio's Phileas, version 3, adapted for the studio.",
+      "A lanky teenager in a black bucket hat, red shutter shades, a white track jacket, a gold chain, red shorts and chunky trainers: the would-be eighties music star of the open movie Sprite Fright. Blender Studio's Jay, version 1, adapted for the studio.",
+  },
+  {
+    id: "blender-phil",
+    name: "Phil",
+    folder: "phil",
+    page: `${SITE}/characters/phil/v1/`,
+    download: `${FILES}/c1/c1a19179f6136a2f8c7b802d1201ea3b/c1a19179f6136a2f8c7b802d1201ea3b.blend`,
+    sha256: "b9671b4add7a7e52000c5dba3ddfa322fb0c0c85abf70ea3ad5fcf6499947e59",
+    file: "phil.blend",
+    notice: "Phil Rig (CC) Blender Foundation | studio.blender.org",
+    body: "masculine",
+    description:
+      "A big, round-faced teenager with curly red hair, in a dark T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
   },
   {
     id: "blender-gabby",
@@ -138,6 +130,7 @@ export const cast = [
     download: `${FILES}/68/680933efa5276c8ebb20826df7726836/680933efa5276c8ebb20826df7726836.blend`,
     sha256: "80e0c2e8a7d97746bfa192104f07d36caecd32ff4bfc423f2a7ddbefacc065c4",
     file: "gabby.blend",
+    notice: "Gabby Rig (CC) Blender Foundation | studio.blender.org",
     body: "feminine",
     description:
       "A freckled girl whose teal hair curls up like a devil's horns, with goggles on her head, a white T-shirt, purple shorts and yellow boots: the only settler who is (probably) human, from Blender Studio's Settlers. Blender Studio's Gabby, version 3, adapted for the studio.",
@@ -150,6 +143,7 @@ export const cast = [
     download: `${FILES}/a4/a428e902193306ef2d4f161069c6f342/a428e902193306ef2d4f161069c6f342.blend`,
     sha256: "8c95c3a929dbceae20a0028d6e0066a3c855fe74ccb62829ff84072150f51360",
     file: "lunte.blend",
+    notice: "Lunte Rig (CC) Blender Foundation | studio.blender.org",
     body: "masculine",
     description:
       "A settler with a shock of orange hair and a boxy metal mask that somehow still shows his glowing eyes and grin, in a dark suit with a backpack, from Blender Studio's Settlers. Blender Studio's Lunte, version 4, adapted for the studio.",
@@ -221,13 +215,6 @@ function run(command, args, options = {}) {
   });
 }
 
-/** Unpack an archive into its own empty folder; nothing inside it runs. */
-async function extract(archive, dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.mkdirSync(dir, { recursive: true });
-  await run("unzip", ["-q", "-o", archive, "-d", dir]);
-}
-
 function blenderPath(root) {
   for (const candidate of [
     path.join(root, ".data/tools/blender/blender"),
@@ -255,6 +242,14 @@ function blender(root, script, args) {
     ],
     { cwd: root },
   );
+}
+
+/** Unpack an archive into its own empty folder with the bundled Blender's
+ * Python (no system unzip needed); nothing inside it runs. */
+async function extract(root, archive, dir) {
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  await blender(root, "extract_zip.py", [archive, dir]);
 }
 
 async function pool(items, limit, work) {
@@ -326,16 +321,16 @@ async function convert(character, { out, cache, root, log }) {
   const glb = path.join(out, "characters", id + ".glb");
   const thumb = path.join(out, "characters", id + ".png");
   const stamp = path.join(src, `converted-v${CONVERTER_VERSION}`);
+  const card = path.join(src, `card-v${CARD_VERSION}`);
   fs.mkdirSync(path.dirname(glb), { recursive: true });
-  if (fs.existsSync(glb) && fs.existsSync(stamp) && fs.existsSync(thumb))
-    return;
+  if ([glb, stamp, thumb, card].every((f) => fs.existsSync(f))) return;
   const archive = path.join(src, character.file);
   await download(character.download, archive, character.sha256, log);
   let blend = archive;
   if (archive.endsWith(".zip")) {
     const extracted = path.join(src, "extracted");
     blend = path.join(extracted, character.blend);
-    if (!fs.existsSync(blend)) await extract(archive, extracted);
+    if (!fs.existsSync(blend)) await extract(root, archive, extracted);
   }
   if (!fs.existsSync(glb) || !fs.existsSync(stamp)) {
     log(`converting ${character.name}`);
@@ -358,12 +353,13 @@ async function convert(character, { out, cache, root, log }) {
       log(`  ${character.name}: skinned ${skinned} unweighted parts`);
     correctGlb(part);
     fs.renameSync(part, glb);
-    fs.rmSync(thumb, { force: true });
+    fs.rmSync(card, { force: true });
     fs.writeFileSync(stamp, "");
   }
-  if (!fs.existsSync(thumb)) {
+  if (!fs.existsSync(thumb) || !fs.existsSync(card)) {
     await blender(root, "character_thumbnail.py", [glb, thumb + ".part.png"]);
     fs.renameSync(thumb + ".part.png", thumb);
+    fs.writeFileSync(card, "");
   }
 }
 
@@ -397,6 +393,7 @@ export async function build({ out, cache, root, log }) {
         author: "Blender Studio",
         license: "CC BY 4.0",
         source: c.page,
+        notice: c.notice,
       },
     }));
 }

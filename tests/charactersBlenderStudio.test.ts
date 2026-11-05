@@ -25,6 +25,23 @@ const built =
   entries.length > 0 && entries.every((c) => fs.existsSync(file(c.url)));
 const assets = contentAssets.filter((a) => a.id.startsWith("blender-"));
 
+interface GltfJson {
+  nodes: { name: string; mesh?: number; children?: number[] }[];
+  meshes: {
+    primitives: { attributes: Record<string, number>; material?: number }[];
+  }[];
+  materials: {
+    name: string;
+    pbrMetallicRoughness?: {
+      baseColorTexture?: { index: number };
+      baseColorFactor?: number[];
+    };
+  }[];
+  textures: { source: number }[];
+  accessors: { bufferView: number; byteOffset?: number; count: number }[];
+  bufferViews: { byteOffset?: number; byteStride?: number }[];
+}
+
 function readGlb(url: string) {
   const data = fs.readFileSync(file(url));
   expect(data.readUInt32LE(0)).toBe(0x46546c67); // "glTF"
@@ -95,6 +112,41 @@ function carriedBy(group: T.Object3D, roots: T.Object3D[]) {
   return points;
 }
 
+/** Skinned parts at or above `height` that one of `bones` carries alone. */
+function riddenBy(group: T.Object3D, bones: T.Object3D[], height: number) {
+  const ridden: string[] = [];
+  group.traverse((o) => {
+    const mesh = o as T.SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    const index = mesh.geometry.attributes.skinIndex;
+    const weight = mesh.geometry.attributes.skinWeight;
+    const middle = new T.Vector3();
+    const point = new T.Vector3();
+    const tally = new Map<T.Object3D, number>();
+    for (let i = 0; i < index.count; i++) {
+      let best = 0;
+      for (let c = 1; c < index.itemSize; c++)
+        if (weight.getComponent(i, c) > weight.getComponent(i, best)) best = c;
+      const bone = mesh.skeleton.bones[index.getComponent(i, best)];
+      tally.set(bone, (tally.get(bone) ?? 0) + 1);
+      middle.add(
+        mesh.getVertexPosition(i, point).applyMatrix4(mesh.matrixWorld),
+      );
+    }
+    middle.divideScalar(index.count);
+    if (middle.y < height) return;
+    for (const bone of bones)
+      if ((tally.get(bone) ?? 0) > 0.9 * index.count) ridden.push(mesh.name);
+  });
+  return ridden;
+}
+
+const overlap = (a: number[], b: number[]) =>
+  a[0] < b[2] - 1e-3 &&
+  b[0] < a[2] - 1e-3 &&
+  a[1] < b[3] - 1e-3 &&
+  b[1] < a[3] - 1e-3;
+
 /** Parts whose middle lies more than `share` of the figure's height from
  * the bone that carries most of their vertices. */
 function strayParts(group: T.Object3D, height: number, share: number) {
@@ -133,11 +185,53 @@ function strayParts(group: T.Object3D, height: number, share: number) {
   return stray;
 }
 
+/** Each primitive's base-colour image and the box its UVs fill, by mesh. */
+function baseColorBoxes(data: Buffer, json: GltfJson) {
+  const bin = 20 + data.readUInt32LE(12) + 8;
+  const boxes: { mesh: string; image: number; box: number[] }[] = [];
+  for (const node of json.nodes) {
+    if (node.mesh === undefined) continue;
+    for (const primitive of json.meshes[node.mesh].primitives) {
+      const material = json.materials[primitive.material ?? -1];
+      const texture = material?.pbrMetallicRoughness?.baseColorTexture;
+      const uvs = primitive.attributes.TEXCOORD_0;
+      if (!texture || uvs === undefined) continue;
+      const accessor = json.accessors[uvs];
+      const view = json.bufferViews[accessor.bufferView];
+      const start = bin + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+      const stride = view.byteStride ?? 8;
+      const box = [Infinity, Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < accessor.count; i++) {
+        const u = data.readFloatLE(start + i * stride);
+        const v = data.readFloatLE(start + i * stride + 4);
+        box[0] = Math.min(box[0], u);
+        box[1] = Math.min(box[1], v);
+        box[2] = Math.max(box[2], u);
+        box[3] = Math.max(box[3], v);
+      }
+      boxes.push({
+        mesh: node.name,
+        image: json.textures[texture.index].source,
+        box,
+      });
+    }
+  }
+  return boxes;
+}
+
 describe("Blender Studio character catalogue", () => {
-  it("lists the open-movie characters with their CC BY credit", () => {
-    expect(entries.map((c) => c.id)).toEqual(
-      expect.arrayContaining(["blender-rain", "blender-snow"]),
-    );
+  it("lists the open-movie people with their CC BY credit", () => {
+    // People only (no Settlers' fish), leads first, then Sprite Fright.
+    expect(entries.map((c) => c.id)).toEqual([
+      "blender-rain",
+      "blender-snow",
+      "blender-einar",
+      "blender-victoria",
+      "blender-jay",
+      "blender-phil",
+      "blender-gabby",
+      "blender-lunte",
+    ]);
     for (const asset of assets) {
       expect(assetSchema.parse(asset), asset.id).toEqual(asset);
       expect(asset.id).toMatch(/^blender-[a-z0-9-]+$/);
@@ -154,6 +248,10 @@ describe("Blender Studio character catalogue", () => {
       });
       expect(credit.source).toMatch(
         /^https:\/\/studio\.blender\.org\/characters\/[a-z-]+\/v\d+\/$/,
+      );
+      // The line each character page asks users of the rig to include.
+      expect(credit.notice).toBe(
+        `${asset.name} Rig (${asset.id === "blender-einar" ? "CC-BY" : "CC"}) Blender Foundation | studio.blender.org`,
       );
     }
     // The site's credit line follows from the name and the versioned page.
@@ -222,6 +320,20 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
         "DEF-foot.R",
       ])
         expect(names, asset.id).toContain(name);
+      // Every eye bakes on its own: film shaders place an iris by the eye's
+      // own coordinates, and one eye baked over the other leaves a smear.
+      const eyes = baseColorBoxes(data, json).filter(
+        (b) =>
+          /(^|[^a-z])eye(s|ball)?([^a-z]|$)/i.test(b.mesh) &&
+          !/brow|lash|lid|dot/i.test(b.mesh),
+      );
+      for (const a of eyes)
+        for (const b of eyes)
+          if (a.mesh < b.mesh && a.image === b.image)
+            expect(
+              overlap(a.box, b.box),
+              `${asset.id} ${a.mesh} ${b.mesh}`,
+            ).toBe(false);
       const png = fs.readFileSync(file(asset.thumbnail!));
       expect(png.subarray(1, 4).toString(), asset.id).toBe("PNG");
     }
@@ -238,6 +350,12 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
           withoutTextures(data),
           "",
         );
+        // As modelled, before the studio scales every character to one
+        // height: from a child (Gabby, about 1.1 m) to a grown man.
+        gltf.scene.updateMatrixWorld(true);
+        const modelled = new T.Box3().setFromObject(gltf.scene);
+        expect(modelled.max.y - modelled.min.y, asset.id).toBeGreaterThan(1);
+        expect(modelled.max.y - modelled.min.y, asset.id).toBeLessThan(2.1);
         const group = withRecordedSources(
           prepareImportedAsset(asset as Asset, gltf),
           sources,
@@ -252,8 +370,6 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
         group.updateMatrixWorld(true);
         const rest = new T.Box3().setFromObject(group);
         const height = rest.max.y - rest.min.y;
-        expect(height, asset.id).toBeGreaterThan(1.5);
-        expect(height, asset.id).toBeLessThan(2.05);
         expect(Math.abs(rest.min.y), asset.id).toBeLessThan(0.05);
         // The figure stands on its soles: anything hanging below them would
         // lift the ankles off the floor (chunky trainers keep them near 8%).
@@ -265,6 +381,17 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
         // Every part sits by the bone that carries it; one that only the
         // film's pose brings into place would lie in a heap by the feet.
         expect(strayParts(group, height, 0.35), asset.id).toEqual([]);
+        // A part hanging at the hips or above (a satchel, a backpack) moves
+        // with the body, not with one thigh.
+        const hips = bones.hips.getWorldPosition(new T.Vector3()).y;
+        expect(
+          riddenBy(
+            group,
+            [bones.leftLeg, bones.rightLeg],
+            hips - 0.05 * height,
+          ),
+          asset.id,
+        ).toEqual([]);
         // Each hand's skin is carried by the hand and its fingers: a finger
         // chain left hanging from the shoulder would stay behind when the
         // arm moves.

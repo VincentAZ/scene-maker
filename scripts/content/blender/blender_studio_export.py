@@ -25,9 +25,10 @@ import os
 import re
 import sys
 
+import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector, kdtree
+from mathutils import Matrix, Vector, kdtree
 from mathutils.bvhtree import BVHTree
 
 args = sys.argv[sys.argv.index("--") + 1:]
@@ -63,6 +64,15 @@ def select_only(objects):
     for o in view_layer.objects:
         o.select_set(o in objects)
     view_layer.objects.active = objects[0] if objects else None
+
+
+def tree_nodes(tree, seen=None):
+    seen = seen if seen is not None else set()
+    for node in tree.nodes:
+        yield node
+        if node.bl_idname in ("ShaderNodeGroup", "GeometryNodeGroup") and node.node_tree and node.node_tree not in seen:
+            seen.add(node.node_tree)
+            yield from tree_nodes(node.node_tree, seen)
 
 
 def gpu_bake():
@@ -203,10 +213,13 @@ def deform_target(obj):
 
 
 # How each unskinned part followed the rig in the film, read before the
-# modifiers go and the parts are re-parented to the armature.
+# modifiers go and the parts are re-parented to the armature: a prop with a
+# rig of its own (Einar's satchel) is skinned to that rig.
 controls = {obj: control_weights(obj) for obj in meshes}
 original_parent = {obj: obj.parent for obj in meshes}
 surface_of = {obj: deform_target(obj) for obj in meshes}
+prop_rig = {obj: next((m.object for m in obj.modifiers if m.type == "ARMATURE" and m.object not in (None, rig)), None)
+            for obj in meshes}
 centres = {}
 blank = bpy.data.materials.new("studio-blank")
 blank.use_nodes = True
@@ -258,33 +271,76 @@ if grooms:
         else:
             log("left out", obj.name, "(groom without a surface)")
 
-# Film-only parts live in hidden collections or are disabled in the viewport;
-# the depsgraph only evaluates what it can see, so everything kept moves into
-# one visible collection first.
+def sources(obj):
+    """What a part is built from: the object it hangs from, its modifiers'
+    hooks, guide curves, lattices and target surfaces, its constraints'
+    targets, a curve's bevel and taper shapes, and the objects its geometry
+    nodes read."""
+    found = [obj.parent]
+    for m in obj.modifiers:
+        found += [getattr(m, a, None) for a in ("object", "target", "auxiliary_target", "mirror_object", "offset_object")]
+        if m.type == "NODES":
+            found += [m[key] for key in m.keys() if isinstance(m[key], bpy.types.Object)]
+            if m.node_group:
+                found += [s.default_value for n in tree_nodes(m.node_group) for s in n.inputs if s.type == "OBJECT"]
+    for c in obj.constraints:
+        found.append(getattr(c, "target", None))
+        found += [t.target for t in getattr(c, "targets", [])]
+    if obj.type == "CURVE":
+        found += [obj.data.bevel_object, obj.data.taper_object]
+    return [o for o in found if isinstance(o, bpy.types.Object)]
+
+
+# Film-only parts live in hidden collections or are hidden in the viewport by
+# drivers, and so are the helpers that shape them: the surfaces Einar's
+# pockets are glued to, the guides his arm's hoses follow, the mask Lunte's
+# eyes are projected onto. The depsgraph only evaluates what it can see, and
+# a part whose helper is not evaluated keeps its raw modelling coordinates,
+# by the feet. Everything kept, and everything it is built from, joins one
+# visible collection, with the drivers that would hide it again gone.
 export_collection = bpy.data.collections.new("studio-export")
 scene.collection.children.link(export_collection)
+helpers = []
+pending = [rig, *meshes]
+while pending:
+    for source in sources(pending.pop()):
+        if source != rig and source not in meshes and source not in helpers:
+            helpers.append(source)
+            pending.append(source)
+for obj in meshes:
+    obj.animation_data_clear()
+for obj in helpers:
+    for driver in list(obj.animation_data.drivers if obj.animation_data else []):
+        if driver.data_path in ("hide_viewport", "hide_render"):
+            obj.animation_data.drivers.remove(driver)
 for obj in [rig, *meshes]:
     for collection in obj.users_collection:
         collection.objects.unlink(obj)
-    export_collection.objects.link(obj)
-    obj.hide_viewport = obj.hide_render = False
+    obj.hide_render = False
+for obj in [rig, *meshes, *helpers]:
+    if obj.name not in export_collection.objects:
+        export_collection.objects.link(obj)
+    obj.hide_viewport = False
     obj.hide_set(False)
 
 # Rest pose everywhere, no shape key mix: the evaluated meshes below are then
 # the neutral body with every modelling modifier baked in.
 scene.frame_set(scene.frame_start)
 for obj in meshes:
-    # Film files drive detail parts' viewport visibility (Einar's jacket
-    # pockets, his arm's hoses); the drivers would hide them again on every
-    # update, and a hidden part neither evaluates nor exports.
-    obj.animation_data_clear()
-    if obj.data.users > 1:
-        obj.data = obj.data.copy()
     if obj.data.shape_keys:
         for key in obj.data.shape_keys.key_blocks:
             key.value = 0.0
-        obj.show_only_shape_key = False
-    for m in obj.modifiers:
+    obj.show_only_shape_key = False
+# Each part is evaluated through a copy with subdivision at level 0 and no
+# smoothing, while the originals stay as authored: a part glued to another's
+# surface (a Surface Deform binds to its subdivided shape) or caged by a Mesh
+# Deform still finds the shape it was bound to.
+twins = {}
+for obj in meshes:
+    twin = twins[obj] = obj.copy()
+    twin.animation_data_clear()
+    export_collection.objects.link(twin)
+    for m in twin.modifiers:
         if m.type == "ARMATURE":
             m.show_viewport = False
         elif m.type in ("SUBSURF", "MULTIRES"):
@@ -292,19 +348,54 @@ for obj in meshes:
             m.show_viewport = m.type == "SUBSURF"
         elif m.type in ("CORRECTIVE_SMOOTH", "SMOOTH", "LAPLACIANSMOOTH", "PARTICLE_SYSTEM", "DISPLACE"):
             m.show_viewport = False
+# A part projected onto another (a mouth line or an eye white onto the head)
+# should sit on that surface as exported, at level 0, not sink behind it.
+flat_copies = {}
+
+
+def flat(target):
+    if target in twins:
+        return twins[target]
+    if target not in flat_copies:
+        copy = flat_copies[target] = target.copy()
+        copy.animation_data_clear()
+        export_collection.objects.link(copy)
+        for m in copy.modifiers:
+            if m.type in ("SUBSURF", "MULTIRES"):
+                m.levels = 0
+    return flat_copies[target]
+
+
+for twin in twins.values():
+    for m in twin.modifiers:
+        if m.type == "SHRINKWRAP" and m.target is not None and any(
+                s.type in ("SUBSURF", "MULTIRES") for s in m.target.modifiers):
+            m.target = flat(m.target)
 view_layer.update()
 depsgraph = bpy.context.evaluated_depsgraph_get()
+shapes = {}
+for obj, twin in twins.items():
+    evaluated = twin.evaluated_get(depsgraph)
+    shapes[obj] = (bpy.data.meshes.new_from_object(evaluated, preserve_all_data_layers=True, depsgraph=depsgraph),
+                   evaluated.matrix_world.copy())
+for copy in [*twins.values(), *flat_copies.values()]:
+    bpy.data.objects.remove(copy)
 kept = []
+fills = []
 for obj in meshes:
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = bpy.data.meshes.new_from_object(evaluated, preserve_all_data_layers=True, depsgraph=depsgraph)
+    mesh, world = shapes[obj]
     if not len(mesh.polygons):
         # A guide curve, or a part the film masks away in this outfit.
         log("left out", obj.name, "(no faces at rest)")
         bpy.data.meshes.remove(mesh)
         continue
     mesh.name = "EXPORT-" + obj.name
-    world = evaluated.matrix_world.copy()
+    if world.determinant() < 0:
+        # A mirrored part (Gabby's right eye) keeps its faces' winding in
+        # the GLB and would face inwards: the mirroring goes into the mesh.
+        mesh.transform(world)
+        mesh.flip_normals()
+        world = Matrix.Identity(4)
     if obj.type == "CURVE":
         # The curve's shape becomes a mesh object of its own, which keeps
         # the name and what moved the curve in the film; the curve is left
@@ -317,18 +408,30 @@ for obj in meshes:
             mesh.materials.append(slot.material)
         obj = bpy.data.objects.new(name, mesh)
         export_collection.objects.link(obj)
-        for table in (controls, original_parent, surface_of):
+        for table in (controls, original_parent, surface_of, prop_rig):
             table[obj] = table.pop(curve)
         # A filled curve faces the way it winds, so a mirrored eye or mouth
         # line can face into the head; it should face out of the surface it
-        # was projected onto.
+        # was projected onto. A flat fill on both sides (Lunte's eyes) has a
+        # back cap lying on its front one, which would flicker through it:
+        # only the outward cap stays.
         surface = surface_of.get(obj)
         if surface is not None:
             inside = surface.matrix_world @ (sum((Vector(c) for c in surface.bound_box), Vector()) / 8)
-            facing = world.to_3x3() @ sum((p.normal * p.area for p in mesh.polygons), Vector())
-            middle = world @ (sum((v.co for v in mesh.vertices), Vector()) / len(mesh.vertices))
-            if facing.dot(middle - inside) < 0:
-                mesh.flip_normals()
+            shape = bmesh.new()
+            shape.from_mesh(mesh)
+            facing = {f: (world.to_3x3() @ f.normal).dot(world @ f.calc_center_median() - inside) for f in shape.faces}
+            inward = [f for f, towards in facing.items() if towards < 0]
+            flat_fill = curve.data.dimensions == "2D" and not curve.data.extrude and not curve.data.bevel_depth
+            if flat_fill:
+                fills.append(obj)
+            two_caps = flat_fill and curve.data.fill_mode == "BOTH"
+            if two_caps and 0 < len(inward) < len(facing):
+                bmesh.ops.delete(shape, geom=inward, context="FACES")
+            elif sum(f.calc_area() * towards for f, towards in facing.items()) < 0:
+                bmesh.ops.reverse_faces(shape, faces=shape.faces[:])
+            shape.to_mesh(mesh)
+            shape.free()
     centres[obj] = world @ (sum((v.co for v in mesh.vertices), Vector()) / len(mesh.vertices))
     obj.modifiers.clear()
     obj.constraints.clear()
@@ -342,6 +445,31 @@ for obj in meshes:
     obj.modifiers.new("Armature", "ARMATURE").object = rig
     kept.append(obj)
 meshes = kept
+
+# A flat fill (an eye, a mouth) was projected onto the subdivided surface the
+# film renders, or onto a helper standing in for it; on the meshes as
+# exported it can sink in and flicker (Lunte's eyes on his mask). Each of its
+# points is lifted just clear of the modelled surfaces beneath it.
+LIFT = 0.0015
+solids = [o for o in meshes if o not in fills and not o.name.startswith("CUR-")]
+if fills and solids:
+    points, faces = [], []
+    for o in solids:
+        base = len(points)
+        points += [o.matrix_world @ v.co for v in o.data.vertices]
+        faces += [[base + i for i in p.vertices] for p in o.data.polygons]
+    beneath = BVHTree.FromPolygons(points, faces)
+    for o in fills:
+        to_local = o.matrix_world.inverted()
+        lifted = 0
+        for v in o.data.vertices:
+            point = o.matrix_world @ v.co
+            location, normal, _, _ = beneath.find_nearest(point, 0.03)
+            if location is not None and (point - location).dot(normal) < LIFT:
+                v.co = to_local @ (location + normal * LIFT)
+                lifted += 1
+        if lifted:
+            log("lifted", o.name, lifted, "of", len(o.data.vertices), "points clear of the surface")
 
 
 def pixels(image):
@@ -377,15 +505,6 @@ def hair_palette(material):
     if ramp is None:
         return np.array([[0.09, 0.05, 0.03, 1.0]] * 256, np.float32)
     return np.array([ramp.color_ramp.evaluate(t) for t in np.linspace(0.05, 0.95, 256)], np.float32)
-
-
-def tree_nodes(tree, seen=None):
-    seen = seen if seen is not None else set()
-    for node in tree.nodes:
-        yield node
-        if node.bl_idname == "ShaderNodeGroup" and node.node_tree and node.node_tree not in seen:
-            seen.add(node.node_tree)
-            yield from tree_nodes(node.node_tree, seen)
 
 
 def strip_mesh(name, strands, centre):
@@ -611,9 +730,16 @@ chains ={slot: chain_from(b) for slot, b in roles.items()}
 placed = set()
 
 
+# Each renamed bone's name in the file: hooks and constraints were read
+# before the renaming.
+file_name = {}
+
+
 def rename(bone, name):
     if name in ebones and ebones[name] != bone:
+        file_name[name + ".old"] = file_name.pop(name, name)
         ebones[name].name = name + ".old"
+    file_name[name] = file_name.pop(bone.name, bone.name)
     bone.name = name
     placed.add(bone)
 
@@ -661,6 +787,7 @@ if not necks and chest != hips:
     # the head there instead of being reported as lost.
     neck = ebones.new("neck")
     rename(neck, RIGIFY_TORSO["neck"])
+    del file_name[neck.name]  # not a bone of the file
     neck.use_deform = True
     neck.head = head.head.lerp(chest.head, 0.3)
     neck.tail = head.head
@@ -751,6 +878,7 @@ role_names = {slot: chains[slot][0].name if slot in chains else b.name for slot,
 placed_names = {b.name for b in placed}
 chain_names = {slot: [b.name for b in chain] for slot, chain in chains.items()}
 stem_names = {stem: b.name for stem, b in by_stem.items()}
+current_name = {original: name for name, original in file_name.items()}
 family_names = {key: [b.name for _, b in sorted(members, key=lambda pair: pair[0])] for key, members in families.items()}
 bpy.ops.object.mode_set(mode="OBJECT")
 log("roles", json.dumps(role_names, sort_keys=True))
@@ -758,30 +886,64 @@ log("roles", json.dumps(role_names, sort_keys=True))
 
 # Parts that were not skinned follow what moved them in the film: the deform
 # bones behind the controls they were hooked, parented or constrained to
-# (teeth, a prosthetic arm's plates); the skinned mesh a Surface Deform glued
+# (teeth, a prosthetic arm's plates, Lunte's backpack); the bones a prop's
+# own rig follows (Einar's satchel); the skinned mesh a Surface Deform glued
 # them to or the mesh they were parented to (pockets, buttons, bolts), whose
 # nearest weights they take; or, failing all that, the nearest body bone.
-def deform_for(control):
-    """The deform bone behind a control: the one its own name stands for,
-    the role its name mentions, else the first one its control chain
-    leads to by name or by deforming."""
-    stem = CONTROL_PREFIX.sub("", control)
-    if stem in stem_names:
-        return stem_names[stem]
-    slot = role_slot_for(control)
-    if slot in role_names:
-        return role_names[slot]
-    bone = rig.data.bones.get(control)
-    while bone is not None:
-        if bone.use_deform:
-            return bone.name
-        stem = CONTROL_PREFIX.sub("", bone.name)
+ATTACHING = ("ARMATURE", "CHILD_OF", "COPY_TRANSFORMS", "COPY_LOCATION", "COPY_ROTATION")
+
+
+def attached_to(owner, pose_bone, seen):
+    """What a bone's constraints attach it to: CloudRig hangs a prop's
+    control from the spine with an Armature constraint, and a prop rig's root
+    follows the character's hips."""
+    pairs = []
+    for c in pose_bone.constraints:
+        if c.mute or c.influence <= 0 or c.type not in ATTACHING:
+            continue
+        targets = ([(t.target, t.subtarget, t.weight) for t in c.targets] if c.type == "ARMATURE"
+                   else [(c.target, c.subtarget, 1.0)])
+        for target, sub, weight in targets:
+            if weight > 0 and sub and target in (rig, owner) and (target.name, sub) not in seen:
+                pairs += [(name, weight * w) for name, w in
+                          followed(target, sub, seen | {(owner.name, pose_bone.name)}, renamed=True)]
+    return pairs
+
+
+def followed(owner, control, seen=frozenset(), renamed=False):
+    """The deform bones, with weights, that a bone of the rig (or of a prop's
+    own rig hanging from it) moves with: for the rig, the deform bone itself,
+    the one its name stands for or the role it mentions; otherwise what its
+    constraints attach it to, else the same for the bone it hangs from.
+    Names read before the renaming are translated unless `renamed`."""
+    if owner == rig:
+        if not renamed:
+            control = current_name.get(control, control)
+        bone = rig.data.bones.get(control)
+        if bone is not None and bone.use_deform:
+            return [(control, 1.0)]
+        stem = CONTROL_PREFIX.sub("", control)
         if stem in stem_names:
-            return stem_names[stem]
-        if family_names.get(split_side(stem)):
-            return family_names[split_side(stem)][-1]
+            return [(stem_names[stem], 1.0)]
+        slot = role_slot_for(control)
+        if slot in role_names:
+            return [(role_names[slot], 1.0)]
+    bone = owner.pose.bones.get(control)
+    while bone is not None:
+        if owner == rig:
+            if bone.bone.use_deform:
+                return [(bone.name, 1.0)]
+            stem = CONTROL_PREFIX.sub("", bone.name)
+            if stem in stem_names:
+                return [(stem_names[stem], 1.0)]
+            if family_names.get(split_side(stem)):
+                return [(family_names[split_side(stem)][-1], 1.0)]
+        pairs = attached_to(owner, bone, seen)
+        if pairs:
+            total = sum(w for _, w in pairs)
+            return [(name, w / total) for name, w in pairs]
         bone = bone.parent
-    return None
+    return []
 
 
 def deform_groups(obj):
@@ -855,14 +1017,60 @@ def reaches(source, point, margin=0.05):
     return all(min(c[i] for c in corners) - margin <= point[i] <= max(c[i] for c in corners) + margin for i in range(3))
 
 
-def skin(obj, seen=()):
+def adopt(obj, owner):
+    """Weights to a prop's own rig become weights to the deform bones its
+    bones follow."""
+    groups = {g.index: g.name for g in obj.vertex_groups if g.name in owner.data.bones}
+    follows = {name: followed(owner, name, renamed=True) for name in set(groups.values())}
+    weights = {}
+    for v in obj.data.vertices:
+        for g in v.groups:
+            for name, w in follows.get(groups.get(g.group), ()):
+                carried = weights.setdefault(name, {})
+                carried[v.index] = carried.get(v.index, 0.0) + g.weight * w
+    if not weights:
+        return False
+    for name in set(groups.values()):
+        obj.vertex_groups.remove(obj.vertex_groups[name])
+    for name, carried in weights.items():
+        group = obj.vertex_groups.get(name) or obj.vertex_groups.new(name=name)
+        for index, weight in carried.items():
+            group.add([index], weight, "REPLACE")
+    return True
+
+
+LIMBS = ("shoulder", "upper_arm", "forearm", "hand", "thigh", "shin", "foot", "toe")
+
+
+def nearest_bone(centre):
+    """The body bone nearest a point; a limb only when the point lies on it
+    (Einar's arm hangs by his satchel at rest)."""
+    near = {slot: segment_distance(centre, rig.matrix_world @ rig.data.bones[name].head_local,
+                                   rig.matrix_world @ rig.data.bones[name].tail_local)
+            for slot, name in role_names.items() if not slot.startswith("eye") and slot != "neck"}
+    torso = {slot: gap for slot, gap in near.items() if slot.partition(".")[0] not in LIMBS}
+    slot = min(near, key=near.get)
+    if slot not in torso and near[slot] > 0.04 * tall and torso:
+        slot = min(torso, key=torso.get)
+    return role_names[slot]
+
+
+def skin(obj, seen=(), fallback=False):
+    """Skin a part from what moved it in the film; returns False when
+    nothing does, None when only proximity could (the second pass, once
+    every other part carries its weights, then places it)."""
     if has_weights(obj):
         return True
     if obj in seen or obj.type != "MESH" or not len(obj.data.vertices):
         return False
     seen = (*seen, obj)
-    pairs = [(deform_for(c), w) for c, w in (controls[obj] if obj in controls else control_weights(obj))]
-    pairs = [(name, w) for name, w in pairs if name]
+    owner = prop_rig[obj] if obj in prop_rig else next(
+        (m.object for m in obj.modifiers if m.type == "ARMATURE" and m.object not in (None, rig)), None)
+    if owner is not None and owner.type == "ARMATURE" and adopt(obj, owner):
+        log("skinned", obj.name, "through", owner.name)
+        return True
+    pairs = [(name, w * share) for c, w in (controls[obj] if obj in controls else control_weights(obj))
+             for name, share in followed(rig, c)]
     if pairs:
         bind(obj, pairs)
         log("skinned", obj.name, "to", ", ".join(sorted({n for n, _ in pairs})))
@@ -871,7 +1079,7 @@ def skin(obj, seen=()):
     for source in (surface_of.get(obj, deform_target(obj)), original_parent.get(obj, obj.parent)):
         if source is None or source == obj or not reaches(source, centre):
             continue
-        if skin(source, seen):
+        if skin(source, seen, fallback):
             transfer_weights(obj, source)
             # A helper can pass on nothing a deform bone carries.
             if has_weights(obj):
@@ -880,10 +1088,8 @@ def skin(obj, seen=()):
     if centre.length < 0.05:
         # Nothing places it: a leftover at the scene origin, between the feet.
         return False
-    if centre.z - floor < 0.15 * tall:
-        # Down by the feet with nothing of its own to move it: only the
-        # film's pose lifts it into place (Einar's zip, pockets, knee tyre).
-        return False
+    if not fallback:
+        return None
     # A part resting on clothing or skin (a satchel's button) moves with it.
     host = touching_surface(obj, centre)
     if host is not None:
@@ -891,9 +1097,7 @@ def skin(obj, seen=()):
         if has_weights(obj):
             log("skinned", obj.name, "like", host.name, "(touching)")
             return True
-    nearest = min((rig.data.bones[n] for slot, n in role_names.items() if not slot.startswith("eye") and slot != "neck"),
-                  key=lambda b: segment_distance(centre, rig.matrix_world @ b.head_local,
-                                                 rig.matrix_world @ b.tail_local)).name
+    nearest = nearest_bone(centre)
     bind(obj, [(nearest, 1.0)])
     log("skinned", obj.name, "to", nearest, "(nearest)")
     return True
@@ -902,7 +1106,10 @@ def skin(obj, seen=()):
 corners = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box]
 floor = min(c.z for c in corners)
 tall = max(c.z for c in corners) - floor
-unplaced = [obj for obj in meshes if not skin(obj)]
+placed_by = {obj: skin(obj) for obj in meshes}
+for obj in [o for o, how in placed_by.items() if how is None]:
+    placed_by[obj] = skin(obj, fallback=True)
+unplaced = [obj for obj, how in placed_by.items() if not how]
 for obj in unplaced:
     log("left out", obj.name, "(nothing places it but the film's pose)")
     meshes.remove(obj)
@@ -1107,6 +1314,32 @@ def adds_light(node, seen=None):
     return False
 
 
+# Shaders the colour pass misses, which still hide what lies behind them.
+OPAQUE = {"ShaderNodeEmission", "ShaderNodeBsdfGlossy", "ShaderNodeBsdfAnisotropic", "ShaderNodeBsdfToon",
+          "ShaderNodeBsdfHair", "ShaderNodeBsdfHairPrincipled", "ShaderNodeBsdfSheen", "ShaderNodeBsdfTranslucent",
+          "ShaderNodeSubsurfaceScattering", "ShaderNodeBsdfMetallic", "ShaderNodeEeveeSpecular"}
+
+
+def opaque_view(materials):
+    """Every surface of the baked materials white and diffuse, emission
+    included: a colour pass then reads how opaque each texel is. Materials
+    the exporter reads as they are stay untouched."""
+    trees = [m.node_tree for m in materials]
+    trees += [g for g in bpy.data.node_groups if g.bl_idname == "ShaderNodeTree"]
+    for tree in trees:
+        for node in list(tree.nodes):
+            if node.bl_idname in ("ShaderNodeBsdfPrincipled", "ShaderNodeBsdfDiffuse"):
+                socket = node.inputs["Base Color" if node.bl_idname == "ShaderNodeBsdfPrincipled" else "Color"]
+                for link in list(socket.links):
+                    tree.links.remove(link)
+                socket.default_value = (1.0, 1.0, 1.0, 1.0)
+            elif node.bl_idname in OPAQUE:
+                white = tree.nodes.new("ShaderNodeBsdfDiffuse")
+                white.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+                for link in list(node.outputs[0].links):
+                    tree.links.new(white.outputs[0], link.to_socket)
+
+
 def albedo_view():
     """Cycles' colour pass leaves out what a film shader draws as metal,
     skin scattering, transmission or a coat, so those surfaces would bake
@@ -1173,29 +1406,88 @@ for obj in list(meshes):
 
 
 # --- UV layer choice and UDIM tiles -------------------------------------
-def uv_quality(obj, layer):
-    """(overlap ratio, coverage) of a UV layer on a coarse grid: a bake needs
-    the layer whose islands do not overlap."""
-    n = 128
-    counts = np.zeros(n * n, dtype=np.int32)
+TEXELS = 256
+
+
+def layer_uvs(obj, name):
     uv = np.empty(len(obj.data.loops) * 2, dtype=np.float32)
-    layer.data.foreach_get("uv", uv)
-    uv = uv.reshape(-1, 2)
-    for poly in obj.data.polygons:
-        pts = uv[poly.loop_start:poly.loop_start + poly.loop_total]
-        pts = pts - np.floor(pts.mean(axis=0))
-        lo = np.clip(np.floor(pts.min(axis=0) * n), 0, n - 1).astype(int)
-        hi = np.clip(np.ceil(pts.max(axis=0) * n), 1, n).astype(int)
-        cells = np.unique(np.arange(lo[1], hi[1])[:, None] * n + np.arange(lo[0], hi[0])[None, :])
-        counts[cells] += 1
-    covered = np.count_nonzero(counts)
-    return (np.count_nonzero(counts > 1) / max(1, covered), covered)
+    obj.data.uv_layers[name].data.foreach_get("uv", uv)
+    return uv.reshape(-1, 2)
 
 
-def choose_uv(obj):
-    usable = [l for l in obj.data.uv_layers if uv_area(obj, l) >= 1e-8] or list(obj.data.uv_layers)
-    scored = {l.name: uv_quality(obj, l) for l in usable}
-    return min(usable, key=lambda l: (round(scored[l.name][0], 2), -scored[l.name][1]))
+def triangles(obj):
+    """Each triangle's loops (n, 3) and the polygon it belongs to."""
+    obj.data.calc_loop_triangles()
+    loops = np.empty(len(obj.data.loop_triangles) * 3, np.int32)
+    obj.data.loop_triangles.foreach_get("loops", loops)
+    polygons = np.empty(len(obj.data.loop_triangles), np.int32)
+    obj.data.loop_triangles.foreach_get("polygon_index", polygons)
+    return loops.reshape(-1, 3), polygons
+
+
+def covered_texels(corners):
+    """The texel centres (TEXELS per UV unit, keyed on an unbounded grid)
+    strictly inside each UV triangle (n, 3, 2), and the triangle of each."""
+    p = corners.astype(np.float64) * TEXELS - 0.5
+    lo = np.ceil(p.min(axis=1)).astype(np.int64)
+    hi = np.floor(p.max(axis=1)).astype(np.int64)
+    width = np.maximum(hi[:, 0] - lo[:, 0] + 1, 0)
+    count = width * np.maximum(hi[:, 1] - lo[:, 1] + 1, 0)
+    area = ((p[:, 1, 0] - p[:, 0, 0]) * (p[:, 2, 1] - p[:, 0, 1])
+            - (p[:, 1, 1] - p[:, 0, 1]) * (p[:, 2, 0] - p[:, 0, 0]))
+    keys, owners = [], []
+
+    def scan(chosen, k):
+        for part in np.array_split(chosen, max(1, len(chosen) * k // 4_000_000)):
+            step = np.arange(k)[None, :]
+            w = width[part][:, None]
+            x = lo[part, 0][:, None] + step % np.maximum(w, 1)
+            y = lo[part, 1][:, None] + step // np.maximum(w, 1)
+            sign = np.sign(area[part])[:, None]
+            inside = step < count[part][:, None]
+            for i in range(3):
+                a, b = p[part, i], p[part, (i + 1) % 3]
+                edge = (b[:, 0, None] - a[:, 0, None]) * (y - a[:, 1, None]) - (b[:, 1, None] - a[:, 1, None]) * (x - a[:, 0, None])
+                inside &= edge * sign > 0
+            rows, cols = np.nonzero(inside)
+            keys.append((y[rows, cols] + (1 << 24)) * (1 << 26) + x[rows, cols] + (1 << 24))
+            owners.append(part[rows])
+
+    small = 0
+    for k in (4, 16, 64, 256, 1024):
+        chosen = np.nonzero((count > small) & (count <= k) & (area != 0))[0]
+        if len(chosen):
+            scan(chosen, k)
+        small = k
+    for t in np.nonzero((count > small) & (area != 0))[0]:
+        scan(np.array([t]), int(count[t]))
+    if not keys:
+        return np.empty(0, np.int64), np.empty(0, np.int64)
+    return np.concatenate(keys), np.concatenate(owners)
+
+
+def folded_uvs(obj, name):
+    """A layer's UVs with each face moved into 0-1 by its tile, the way the
+    bake lays out a material that is not UDIM."""
+    uv = layer_uvs(obj, name)
+    starts = np.empty(len(obj.data.polygons), np.int32)
+    obj.data.polygons.foreach_get("loop_start", starts)
+    totals = np.empty(len(obj.data.polygons), np.int32)
+    obj.data.polygons.foreach_get("loop_total", totals)
+    tiles = np.floor(np.add.reduceat(uv, starts, axis=0) / totals[:, None])
+    return uv - np.repeat(tiles, totals, axis=0)
+
+
+def uv_overlap(obj, name, loops, udim):
+    """The share of the texels a layer's faces cover that more than one face
+    covers (a bake writes one over the other there), and how many it covers,
+    as the bake lays the faces out: a layer spread over many tiles (Phil's
+    shirt's Alignment) folds onto itself."""
+    keys, _ = covered_texels((layer_uvs(obj, name) if udim else folded_uvs(obj, name))[loops])
+    if not len(keys):
+        return 1.0, 0
+    _, counts = np.unique(keys, return_counts=True)
+    return float(np.count_nonzero(counts > 1)) / len(counts), len(counts)
 
 
 def uv_area(obj, layer):
@@ -1209,16 +1501,62 @@ def uv_area(obj, layer):
     return area
 
 
+def choose_uv(obj, loops, usable, default, udim=False):
+    """The layer one material's faces bake into: the one textures are read
+    through by default when its islands barely overlap, unless another
+    clean layer gives those faces far more texels (an iris drawn through a
+    layer of its own takes a sliver of the eyeball's); failing a clean one,
+    the layer that overlaps least. Secondary layers such as Alignment or
+    HairMap often fold islands together."""
+    scores = {name: uv_overlap(obj, name, loops, udim) for name in usable}
+    clean = [name for name in usable if scores[name][0] <= 0.02]
+    if clean:
+        best = max(clean, key=lambda name: scores[name][1])
+        return default if default in clean and 4 * scores[default][1] >= scores[best][1] else best
+    return min(usable, key=lambda name: (round(scores[name][0], 2), name != default, -scores[name][1]))
+
+
+def uv_reads(material):
+    """UV layers a shader reads by name."""
+    names = set()
+    for node in tree_nodes(material.node_tree):
+        if node.bl_idname in ("ShaderNodeUVMap", "ShaderNodeNormalMap", "ShaderNodeTangent") and node.uv_map:
+            names.add(node.uv_map)
+        elif node.bl_idname == "ShaderNodeAttribute" and node.attribute_type == "GEOMETRY":
+            names.add(node.attribute_name)
+    return names
+
+
+# Shading that differs between two parts at the same UVs.
+PER_PART = {"ShaderNodeObjectInfo", "ShaderNodeAttribute", "ShaderNodeVertexColor", "ShaderNodeNewGeometry",
+            "ShaderNodeLayerWeight", "ShaderNodeFresnel", "ShaderNodeAmbientOcclusion", "ShaderNodeBevel",
+            "ShaderNodeWireframe", "ShaderNodeTangent", "ShaderNodeHairInfo", "ShaderNodePointInfo"}
+
+
+def shaded_apart(material, bake_layer, default_layer):
+    """Whether a material can look different on two parts whose bake UVs
+    coincide: it reads another UV layer, the part's geometry or its object
+    (an eye's iris is placed by the eye's own coordinates)."""
+    if bake_layer != default_layer:
+        return True
+    for node in tree_nodes(material.node_tree):
+        if node.bl_idname in PER_PART:
+            return True
+        if node.bl_idname == "ShaderNodeTexCoord" and any(o.links for o in node.outputs if o.name != "UV"):
+            return True
+        if node.bl_idname in ("ShaderNodeUVMap", "ShaderNodeNormalMap") and node.uv_map not in ("", bake_layer):
+            return True
+    return False
+
+
 # A curve turned mesh, or a card, can carry UVs collapsed onto a line, which
 # no bake can fill: such a part bakes into a fresh unwrap, while its shader
 # keeps reading textures through the flat layer.
-reads = {}
 for obj in meshes:
     flat = [l.name for l in obj.data.uv_layers if uv_area(obj, l) < 1e-8]
     if obj.data.uv_layers and len(flat) < len(obj.data.uv_layers):
         continue
     if flat:
-        reads[obj] = next((l.name for l in obj.data.uv_layers if l.active_render), flat[0])
         obj.data.uv_layers.active = obj.data.uv_layers.new(name="unwrapped")
     select_only([obj])
     bpy.ops.object.mode_set(mode="EDIT")
@@ -1239,20 +1577,24 @@ def bake_size(area):
 
 class Target:
     """One baked material: a copy of the source with its own bake image node,
-    and the baked image of every pass."""
+    the baked image of every pass, and the texels its parts cover (those
+    whose shading is their own, and those any part may share)."""
 
-    def __init__(self, material, tile, size):
+    def __init__(self, material, tile, size, number):
         self.material, self.tile, self.size = material, tile, size
         self.copy = material.copy()
-        self.copy.name = f"{material.name}@{tile[0]}{tile[1]}"
+        self.copy.name = f"{material.name}@{tile[0]}{tile[1]}" + (f"-{number}" if number else "")
         self.node = self.copy.node_tree.nodes.new("ShaderNodeTexImage")
         self.images = {}
         self.result = None
+        self.own = self.shared = np.empty(0, np.int64)
 
-    def bake_into(self, name, non_color):
+    def bake_into(self, name, non_color, size=None):
         # Roughness and normal detail reads fine at half the colour's size.
-        size = self.size if not non_color else max(256, self.size // 2)
+        size = size or (self.size if not non_color else max(256, self.size // 2))
         image = bpy.data.images.new(f"bake-{self.copy.name}-{name}", size, size, alpha=True)
+        # Untouched texels keep zero alpha (a flat normal where it is one).
+        image.generated_color = (0.5, 0.5, 1.0, 0.0) if name == "normal" else (0.0, 0.0, 0.0, 0.0)
         if non_color:
             image.colorspace_settings.name = "Non-Color"
         self.images[name] = image
@@ -1260,32 +1602,52 @@ class Target:
         self.copy.node_tree.nodes.active = self.node
 
 
+def clash(texels, others):
+    return len(texels) and np.count_nonzero(np.isin(texels, others)) > 0.01 * len(texels)
+
+
 targets = {}
 bake_objects = []
+bake_layer = {}
 for obj in meshes:
     if all(is_simple(s.material) for s in obj.material_slots):
         continue
     bake_objects.append(obj)
-    layer = choose_uv(obj)
-    layer_name = layer.name
-    read_name = reads.get(obj, layer_name)
+    loops, polygon_of = triangles(obj)
+    usable = [l.name for l in obj.data.uv_layers if uv_area(obj, l) >= 1e-8] or [l.name for l in obj.data.uv_layers]
+    default_name = next((l.name for l in obj.data.uv_layers if l.active_render), usable[0])
     size = bake_size(mesh_area(obj))
-    uv = np.empty(len(obj.data.loops) * 2, dtype=np.float32)
-    layer.data.foreach_get("uv", uv)
-    uv = uv.reshape(-1, 2)
-    # Every face moves into 0-1 on a new layer; the bake reads the source
-    # textures through the original one. Faces on other tiles of a UDIM
-    # material get a material of their own, while a repeating texture reads
-    # the same on every tile, so its faces share one bake (a fringe with UVs
-    # spread over hundreds of tiles would otherwise bake hundreds of images).
-    originals = [s.material for s in obj.material_slots]
-    udim = [any(n.bl_idname == "ShaderNodeTexImage" and n.image and n.image.source == "TILED"
-                for n in tree_nodes(m.node_tree)) for m in originals]
-    wrapped = uv.copy()
-    combos = []
     index = np.empty(len(obj.data.polygons), dtype=np.int32)
     obj.data.polygons.foreach_get("material_index", index)
     index = np.minimum(index, len(obj.material_slots) - 1)
+    originals = [s.material for s in obj.material_slots]
+    # The shaders keep reading every layer they name and, by default, the
+    # one set for rendering. A mesh holds at most eight layers: when all
+    # eight are read (Victoria's skin), the bake writes through one of them
+    # for the whole part; otherwise each material's faces take the UVs of
+    # their own best layer (each material bakes into images of its own) on
+    # a new layer.
+    wanted = {default_name}.union(*(uv_reads(m) for m in originals))
+    room = sum(l.name in wanted for l in obj.data.uv_layers) < 8
+    udim = [any(n.bl_idname == "ShaderNodeTexImage" and n.image and n.image.source == "TILED"
+                for n in tree_nodes(m.node_tree)) for m in originals]
+    if room:
+        layer_of = {int(slot): choose_uv(obj, loops[index[polygon_of] == slot], usable, default_name, udim[slot])
+                    for slot in np.unique(index)}
+    else:
+        whole = choose_uv(obj, loops, usable, default_name, all(udim))
+        layer_of = {int(slot): whole for slot in np.unique(index)}
+    uv = np.empty((len(obj.data.loops), 2), np.float32)
+    loop_slot = np.repeat(index, [p.loop_total for p in obj.data.polygons])
+    for slot, name in layer_of.items():
+        uv[loop_slot == slot] = layer_uvs(obj, name)[loop_slot == slot]
+    # Every face moves into 0-1 on a new layer; the bake reads the source
+    # textures through the original ones. Faces on other tiles of a UDIM
+    # material get a material of their own, while a repeating texture reads
+    # the same on every tile, so its faces share one bake (a fringe with UVs
+    # spread over hundreds of tiles would otherwise bake hundreds of images).
+    wrapped = uv.copy()
+    combos = []
     new_index = index.copy()
     for poly in obj.data.polygons:
         span = slice(poly.loop_start, poly.loop_start + poly.loop_total)
@@ -1296,21 +1658,46 @@ for obj in meshes:
         if combo not in combos:
             combos.append(combo)
         new_index[poly.index] = combos.index(combo)
+    keys, owner = covered_texels(wrapped[loops])
+    combo_of_key = new_index[polygon_of[owner]]
+    # Parts sharing a material share its bake unless their islands overlap
+    # where the shading differs between them: each eye's iris is placed by
+    # the eye's own coordinates, so two eyes unwrapped alike (and any two
+    # eyes, which film shaders tend to place one by one) bake apart.
     for i, (slot, tile) in enumerate(combos):
-        key = (originals[slot].name, tile)
-        if key not in targets:
-            targets[key] = Target(originals[slot], tile, size)
-        targets[key].size = max(targets[key].size, size)
-        if i < len(obj.material_slots):
-            obj.material_slots[i].material = targets[key].copy
+        material = originals[slot]
+        texels = np.unique(keys[combo_of_key == i])
+        apart = shaded_apart(material, layer_of[slot], default_name) or bool(EYE.search(obj.name))
+        group = targets.setdefault((material.name, tile), [])
+        target = next((t for t in group
+                       if not clash(texels, np.concatenate([t.own, t.shared]) if apart else t.own)), None)
+        if target is None:
+            target = Target(material, tile, size, len(group))
+            group.append(target)
+        if apart:
+            target.own = np.union1d(target.own, texels)
         else:
-            obj.data.materials.append(targets[key].copy)
+            target.shared = np.union1d(target.shared, texels)
+        target.size = max(target.size, size)
+        if i < len(obj.material_slots):
+            obj.material_slots[i].material = target.copy
+        else:
+            obj.data.materials.append(target.copy)
     obj.data.polygons.foreach_set("material_index", new_index)
-    # Layer references go stale as layers come and go: work by name.
-    for name in [l.name for l in obj.data.uv_layers if l.name not in (layer_name, read_name)]:
-        obj.data.uv_layers.remove(obj.data.uv_layers[name])
-    obj.data.uv_layers.new(name="baked").data.foreach_set("uv", wrapped.ravel())
-    obj.data.uv_layers[read_name].active_render = True
+    if room:
+        while len(obj.data.uv_layers) >= 8:
+            spare = next(l.name for l in obj.data.uv_layers if l.name not in wanted)
+            obj.data.uv_layers.remove(obj.data.uv_layers[spare])
+        obj.data.uv_layers.new(name="baked").data.foreach_set("uv", wrapped.ravel())
+        bake_layer[obj] = "baked"
+    elif np.array_equal(wrapped, uv):
+        bake_layer[obj] = whole
+    else:
+        raise SystemExit(f"ERROR {obj.name}: every UV layer is read and its faces leave 0-1")
+    obj.data.uv_layers[default_name].active_render = True
+    log("baking", obj.name, "reading", default_name, "into",
+        ", ".join(f"{obj.material_slots[i].material.name} through {layer_of[slot]}" for i, (slot, _) in enumerate(combos)))
+targets = {(*key, i): t for key, group in targets.items() for i, t in enumerate(group)}
 
 if targets:
     albedo_view()
@@ -1323,22 +1710,76 @@ if targets:
     bake.margin_type = "EXTEND"
     bake.use_selected_to_active = False
     bake.target = "IMAGE_TEXTURES"
-    bake.use_clear = True
+    # Images start cleared; parts baking through different layers bake in
+    # turn into the images they share.
+    bake.use_clear = False
     bake.use_pass_direct = bake.use_pass_indirect = False
     bake.use_pass_color = True
     bake.normal_space = "TANGENT"
-    select_only(bake_objects)
+    by_layer = {}
+    for obj in bake_objects:
+        by_layer.setdefault(bake_layer[obj], []).append(obj)
     for name, kind, non_color in [("color", "DIFFUSE", False), ("emit", "EMIT", False),
                                   ("rough", "ROUGHNESS", True), ("normal", "NORMAL", True)]:
         for target in targets.values():
             target.bake_into(name, non_color)
-        bpy.ops.object.bake(type=kind, pass_filter={"COLOR"} if kind == "DIFFUSE" else set(), uv_layer="baked")
+        for layer, objects in by_layer.items():
+            select_only(objects)
+            bpy.ops.object.bake(type=kind, pass_filter={"COLOR"} if kind == "DIFFUSE" else set(), uv_layer=layer)
         log("baked", name)
+    # A cut-out's colour pass is its colour times how opaque it is (a dark
+    # rim where Victoria's hem fades out). One more pass with every surface
+    # white reads the opacity itself, which divides the colour back out and
+    # becomes the alpha the studio tests against.
+    cut_outs = {t.copy for t in targets.values() if translucent(t.material)}
+    if cut_outs:
+        opaque_view([t.copy for t in targets.values()])
+        for target in targets.values():
+            target.bake_into("opacity", True, target.size if target.copy in cut_outs else 8)
+        for layer, objects in by_layer.items():
+            chosen = [o for o in objects if any(s.material in cut_outs for s in o.material_slots)]
+            if chosen:
+                select_only(chosen)
+                bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, uv_layer=layer)
+        log("baked opacity")
     for obj in bake_objects:
-        for name in [l.name for l in obj.data.uv_layers if l.name != "baked"]:
+        for name in [l.name for l in obj.data.uv_layers if l.name != bake_layer[obj]]:
             obj.data.uv_layers.remove(obj.data.uv_layers[name])
-        obj.data.uv_layers["baked"].active = True
-        obj.data.uv_layers["baked"].active_render = True
+        layer = obj.data.uv_layers[bake_layer[obj]]
+        layer.name = "baked"
+        layer.active = layer.active_render = True
+
+
+def srgb_to_linear(c):
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def baked_texels(image_pixels):
+    """The texels a bake wrote (it clears the rest to zero alpha)."""
+    mask = image_pixels[:, :, 3] > 0.5
+    return image_pixels[mask] if mask.any() else image_pixels.reshape(-1, 4)
+
+
+def spread(values, mask):
+    """Fill the texels no face covers with the colour of the nearest baked
+    ones (averaged down to one texel, then filled back up), so filtering and
+    mipmaps never blend an island's edge with black."""
+    if not mask.any():
+        return values
+    levels = []
+    total, weight = values * mask[..., None], mask.astype(np.float32)
+    while min(total.shape[:2]) > 1:
+        levels.append((total, weight))
+        h, w = total.shape[0] // 2, total.shape[1] // 2
+        total = total[:2 * h, :2 * w].reshape(h, 2, w, 2, -1).sum(axis=(1, 3))
+        weight = weight[:2 * h, :2 * w].reshape(h, 2, w, 2).sum(axis=(1, 3))
+    filled = total / np.maximum(weight, 1e-8)[..., None]
+    for total, weight in reversed(levels):
+        coarse = np.repeat(np.repeat(filled, 2, axis=0), 2, axis=1)
+        coarse = np.pad(coarse, ((0, total.shape[0] - coarse.shape[0]), (0, total.shape[1] - coarse.shape[1]), (0, 0)),
+                        mode="edge")
+        filled = np.where((weight > 0)[..., None], total / np.maximum(weight, 1e-8)[..., None], coarse)
+    return filled
 
 
 def rebuilt(target):
@@ -1357,21 +1798,35 @@ def rebuilt(target):
     emit = pixels(target.images["emit"])
     rgb = np.clip(color[:, :, :3] + emit[:, :, :3], 0, 1)
     cut_out = translucent(target.material)
-    rgba = np.dstack([rgb, np.minimum(color[:, :, 3], 1) if cut_out else np.ones(rgb.shape[:2], np.float32)])
-    tex = nodes.new("ShaderNodeTexImage")
-    tex.image = save(stem + "-color", rgba, False, alpha=cut_out)
-    links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
     if cut_out:
-        links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+        opacity = pixels(target.images["opacity"])[:, :, 0]
+        opacity = np.where(color[:, :, 3] > 0.5, opacity, 0.0)
+        rgb = np.where(opacity[..., None] > 0.02, np.clip(rgb / np.maximum(opacity, 0.02)[..., None], 0, 1), rgb)
+        color = np.dstack([color[:, :, :3], opacity])
+    used = np.clip(baked_texels(np.dstack([rgb, color[:, :, 3]]))[:, :3], 0, 1)
+    if not cut_out and np.ptp(used, axis=0).max() < 3 / 255:
+        # One colour all over is a factor, not an image.
+        bsdf.inputs["Base Color"].default_value = (*srgb_to_linear(used.mean(axis=0)), 1.0)
+    else:
+        rgb = spread(rgb, color[:, :, 3] > 0.5)
+        rgba = np.dstack([rgb, np.minimum(color[:, :, 3], 1) if cut_out else np.ones(rgb.shape[:2], np.float32)])
+        tex = nodes.new("ShaderNodeTexImage")
+        tex.image = save(stem + "-color", rgba, False, alpha=cut_out)
+        links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        if cut_out:
+            links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
     # Skin, cloth and hair never read as polished in a rasteriser; eyeballs
     # keep a wet gloss since their refractive cornea shell is left out.
-    rough = pixels(target.images["rough"])[:, :, 0]
+    rough_pixels = pixels(target.images["rough"])
+    rough = rough_pixels[:, :, 0]
     rough = np.minimum(rough, 0.25) if EYE.search(target.material.name) else np.maximum(rough, 0.35)
-    if rough.std() < 0.02:
-        bsdf.inputs["Roughness"].default_value = float(rough.mean())
+    used = baked_texels(np.dstack([rough, rough, rough, rough_pixels[:, :, 3]]))[:, 0]
+    if used.std() < 0.02:
+        bsdf.inputs["Roughness"].default_value = float(used.mean())
     else:
         # glTF packs roughness in G and metallic in B of one image; wiring
         # both from it lets the exporter embed the JPEG unchanged.
+        rough = spread(rough[..., None], rough_pixels[:, :, 3] > 0.5)[..., 0]
         packed = np.dstack([np.ones_like(rough), rough, np.zeros_like(rough), np.ones_like(rough)])
         rtex = nodes.new("ShaderNodeTexImage")
         rtex.image = save(stem + "-rough", packed, True)
@@ -1381,7 +1836,9 @@ def rebuilt(target):
         links.new(separate.outputs["Blue"], bsdf.inputs["Metallic"])
     if has_normal_detail(target.material):
         normal = pixels(target.images["normal"])
-        if np.abs(normal[:, :, :3] - [0.5, 0.5, 1.0]).max() > 0.08:
+        bent = np.abs(baked_texels(normal)[:, :3] - [0.5, 0.5, 1.0]).max(axis=1) > 0.08
+        # Relief over a few stray texels is not worth an image.
+        if np.count_nonzero(bent) > 0.005 * len(bent):
             ntex = nodes.new("ShaderNodeTexImage")
             ntex.image = save(stem + "-normal", normal, True)
             nmap = nodes.new("ShaderNodeNormalMap")
