@@ -240,11 +240,9 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
           );
           // The soles stay on the floor within a few centimetres while
           // acting. (Ankle heights would flag chunky trainers.)
-          const sole = Math.min(
-            ...carriedBy(group, [bones.leftFoot, bones.rightFoot]).map(
-              (p) => p.y,
-            ),
-          );
+          let sole = Infinity;
+          for (const p of carriedBy(group, [bones.leftFoot, bones.rightFoot]))
+            sole = Math.min(sole, p.y);
           expect(sole, `${asset.id} ${time}`).toBeLessThan(0.06);
           expect(sole, `${asset.id} ${time}`).toBeGreaterThan(-0.05);
         }

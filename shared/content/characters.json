@@ -690,6 +690,21 @@
     }
   },
   {
+    "id": "blender-einar",
+    "name": "Einar",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "url": "/content/characters/blender-einar.glb",
+    "thumbnail": "/content/characters/blender-einar.png",
+    "description": "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/einar/v1/"
+    }
+  },
+  {
     "id": "blender-phil",
     "name": "Phil",
     "category": "characters",
@@ -762,6 +777,21 @@
       "author": "Blender Studio",
       "license": "CC BY 4.0",
       "source": "https://studio.blender.org/characters/gabby/v3/"
+    }
+  },
+  {
+    "id": "blender-lunte",
+    "name": "Lunte",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "url": "/content/characters/blender-lunte.glb",
+    "thumbnail": "/content/characters/blender-lunte.png",
+    "description": "A settler in a boxy metal mask that somehow still shows his face, ready to explore, from Blender Studio's Settlers. Blender Studio's Lunte, version 4.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/lunte/v4/"
     }
   }
 ]
