@@ -8,6 +8,7 @@ import {
   hasFloor,
   markSetCollision,
   measureCeiling,
+  measureWalls,
   ModelSet,
   setBlockFor,
   type SetLight,
@@ -236,7 +237,7 @@ export class EnvironmentModel {
         asset.style === "Outdoor" ? null : measureCeiling(object, set);
       const room =
         asset.style === "Indoor" || ceiling !== null
-          ? cameraRoom(set, ceiling)
+          ? cameraRoom(set, ceiling, measureWalls(object, set))
           : null;
       this.modelSet = new ModelSet(asset, set, loaded, room);
       this.viewer?.progress?.(null);

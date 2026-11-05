@@ -148,16 +148,67 @@ export function measureCeiling(model: T.Object3D, set: SetBlock) {
   return null;
 }
 
-/** The space an interior's camera stays in: the set's bounds less a gap
- * from the walls, and below its ceiling when it has one. */
-export function cameraRoom(set: SetBlock, ceiling: number | null) {
+/** An interior's walls around the home view's target, as the nearest wall
+ * along −X, +X, −Z and +Z (null where none is found). */
+export type Walls = [
+  number | null,
+  number | null,
+  number | null,
+  number | null,
+];
+
+/**
+ * Where an interior's walls stand: looking out level from the home view's
+ * target at a standing eye height, along each floor axis, the nearest part
+ * of the set's shell or anything as tall as a wall (walls kept as their own
+ * meshes, a wardrobe against one). The bounds alone are not enough: walls
+ * are thick, and trim or a roof can reach beyond them.
+ */
+export function measureWalls(model: T.Object3D, set: SetBlock): Walls {
+  model.updateWorldMatrix(true, true);
+  const [x, y, z] = set.camera.target;
+  const origin = new T.Vector3(x, Math.max(y, 1.7), z);
+  const ray = new T.Raycaster();
+  ray.far = 200;
+  const tall = (mesh: T.Object3D) => {
+    if (mesh.userData.passable) return true;
+    const box = new T.Box3().setFromObject(mesh);
+    return box.max.y - box.min.y >= 1.8;
+  };
+  return (
+    [
+      [-1, 0, "x"],
+      [1, 0, "x"],
+      [0, -1, "z"],
+      [0, 1, "z"],
+    ] as const
+  ).map(([dx, dz, axis]) => {
+    ray.set(origin, new T.Vector3(dx, 0, dz));
+    const hit = ray
+      .intersectObject(model, true)
+      .find((hit) => tall(hit.object));
+    return hit ? hit.point[axis] : null;
+  }) as Walls;
+}
+
+/** The space an interior's camera stays in: inside its walls (or its
+ * bounds, where no wall was found) less a gap, and below its ceiling. */
+export function cameraRoom(
+  set: SetBlock,
+  ceiling: number | null,
+  walls: Walls = [null, null, null, null],
+) {
   const { min, max } = set.bounds;
   const room = new T.Box3(
-    new T.Vector3(min[0] + WALL_GAP, min[1], min[2] + WALL_GAP),
     new T.Vector3(
-      max[0] - WALL_GAP,
+      Math.max(min[0], walls[0] ?? -Infinity) + WALL_GAP,
+      min[1],
+      Math.max(min[2], walls[2] ?? -Infinity) + WALL_GAP,
+    ),
+    new T.Vector3(
+      Math.min(max[0], walls[1] ?? Infinity) - WALL_GAP,
       (ceiling ?? max[1]) - CEILING_GAP,
-      max[2] - WALL_GAP,
+      Math.min(max[2], walls[3] ?? Infinity) - WALL_GAP,
     ),
   );
   return room.isEmpty() ? null : room;

@@ -43,6 +43,7 @@ import {
   floorIrradiance,
   markSetCollision,
   measureCeiling,
+  measureWalls,
   reachInRoom,
   ModelSet,
   setBlockFor,
@@ -415,11 +416,27 @@ describe("the camera in a 3D interior", () => {
     markSetCollision(model, staging);
     const ceiling = measureCeiling(model, staging);
     expect(ceiling).toBeCloseTo(2.95);
-    const space = cameraRoom(staging, ceiling)!;
-    expect(space.min.toArray()).toEqual([-4.7, -0.1, -3.7]);
+    // The back wall stands inside the bounds: the camera stays in front of
+    // it; the other sides have no wall and keep to the bounds.
+    const walls = measureWalls(model, staging);
+    expect(walls[0]).toBeNull();
+    expect(walls[2]).toBeCloseTo(-3.8);
+    const space = cameraRoom(staging, ceiling, walls)!;
+    expect(space.min.x).toBeCloseTo(-4.7);
+    expect(space.min.z).toBeCloseTo(-3.5);
     expect(space.max.x).toBeCloseTo(4.7);
     expect(space.max.y).toBeCloseTo(2.7);
     expect(space.max.z).toBeCloseTo(5.7);
+    // A wall 0.4 m thick inside the bounds' edge, as the bounds alone would miss.
+    const thick = room();
+    thick.add(box("thick wall", [10, 3, 0.4], [0, 1.5, 4.8]));
+    markSetCollision(thick, staging);
+    const behind = cameraRoom(
+      staging,
+      measureCeiling(thick, staging),
+      measureWalls(thick, staging),
+    )!;
+    expect(behind.max.z).toBeCloseTo(4.6 - 0.3);
     const target = new T.Vector3(0, 1, 0);
     expect(reachInRoom(space, target, new T.Vector3(0, 0, 1))).toBeCloseTo(5.7);
     expect(reachInRoom(space, target, new T.Vector3(0, 1, 0))).toBeCloseTo(1.7);
