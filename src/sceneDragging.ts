@@ -16,6 +16,7 @@ import {
 } from "./collision";
 import {
   emptyCollider,
+  besideSupport,
   sceneObstacles,
   TransformCollisionGuard,
 } from "./assetManipulation";
@@ -54,6 +55,8 @@ type Gesture = {
   obstacles?: CollisionObstacle[];
   guard?: TransformCollisionGuard;
   blocked?: string;
+  /** Where a new prop rests on the set's own furniture, when it does. */
+  support?: T.Vector3;
 };
 
 /** Direct manipulation stays outside React's render loop; a release is one scene edit. */
@@ -283,6 +286,7 @@ export function sceneDragging(options: {
     e.preventDefault();
     g.valid = inside(e);
     g.blocked = "";
+    g.support = undefined;
     const pointer = ray(e);
     let p = pointer.ray.intersectPlane(g.plane, new T.Vector3());
     if (g.asset?.category === "props" && g.valid) {
@@ -315,8 +319,10 @@ export function sceneDragging(options: {
         .sort((a, b) => a.distance - b.distance)[0];
       if (nearest) {
         p = nearest.point.clone();
-        if (nearest === furniture && options.restingHeight)
-          p.y = options.restingHeight(p.x, p.z, p.y);
+        if (nearest === furniture) {
+          if (options.restingHeight) p.y = options.restingHeight(p.x, p.z, p.y);
+          g.support = p.clone();
+        }
       }
     }
     if (!p) g.valid = false;
@@ -427,11 +433,12 @@ export function sceneDragging(options: {
           g.position.copy(g.item.position);
         }
       } else if (g.asset && g.valid) {
+        const obstacles = g.obstacles ?? [];
         g.blocked =
           collisionBetween(
             emptyCollider(),
             snapshotCollider(g.item),
-            g.obstacles ?? [],
+            g.support ? besideSupport(obstacles, g.support) : obstacles,
             false,
           ) || "";
         if (g.blocked) g.valid = false;

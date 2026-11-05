@@ -57,6 +57,7 @@ import {
 } from "../src/stageLighting";
 import { obstacleMesh, snapshotCollider } from "../src/collision";
 import {
+  besideSupport,
   sceneCollisionWarning,
   sceneObstacles,
 } from "../src/assetManipulation";
@@ -746,6 +747,43 @@ describe("shell and furniture in a 3D set", () => {
     expect(
       sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
     ).toContain("the backdrop");
+    // A book resting on the bed's mattress sits inside the bed's box, which
+    // takes in the headboard: it rests there, it does not collide.
+    const bed = box("bed", [1.6, 1.1, 2.1], [-2, 0.55, 1]);
+    model.add(bed);
+    markSetCollision(model, staging);
+    const book = new T.Group();
+    book.add(new T.Mesh(new T.BoxGeometry(0.2, 0.05, 0.28)));
+    book.children[0].position.y = 0.025;
+    book.position.set(-2, 0.5, 1.4);
+    objects.set("book", book);
+    scene.entities.push({
+      ...scene.entities[0],
+      id: "book",
+      name: "Book",
+      position: [-2, 0.5, 1.4],
+    });
+    actor.position.set(3, 0, 2);
+    expect(
+      sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
+    ).toBe("");
+    // Standing in the bed is still a collision.
+    actor.position.set(-2, 0, 0.5);
+    expect(
+      sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
+    ).toContain("the backdrop");
+    const support = new T.Vector3(-2, 0.5, 1.4);
+    const [, clear] = besideSupport(
+      sceneObstacles(scene, objects, "book", model).slice(-2),
+      support,
+    );
+    expect(clear.collider.boxes.some((b) => b.containsPoint(support))).toBe(
+      false,
+    );
+    model.remove(bed);
+    objects.delete("book");
+    scene.entities.pop();
+    actor.position.set(0, 0, 0);
     markSetCollision(model, { ...staging, collision: "none" });
     expect(names(model)).toEqual([]);
     expect(
