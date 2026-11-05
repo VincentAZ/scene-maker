@@ -1105,7 +1105,7 @@ export function PathEditor({
           <div className="row">
             <button
               className="icon-button"
-              aria-label="Undo"
+              aria-label="Undo path edit"
               title="Undo (Ctrl+Z)"
               disabled={!history.past.length}
               onClick={undo}
@@ -1114,7 +1114,7 @@ export function PathEditor({
             </button>
             <button
               className="icon-button"
-              aria-label="Redo"
+              aria-label="Redo path edit"
               title="Redo (Ctrl+Shift+Z)"
               disabled={!history.future.length}
               onClick={redo}

@@ -16,9 +16,11 @@ export function Modal({
   onDismissError?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null),
-    leaving = useRef(false);
+    leaving = useRef(false),
+    pressedBackdrop = useRef(false);
   useEffect(() => {
     const dialog = ref.current;
+    leaving.current = false;
     dialog?.showModal();
     return () => {
       leaving.current = true;
@@ -37,16 +39,24 @@ export function Modal({
       }}
       onClose={() => {
         // Browsers may still force a modal shut (a second Escape in a row).
-        // Tell the owner; if it keeps the dialog, show it again.
-        if (leaving.current) return;
+        // Tell the owner; if it keeps the dialog, show it again. StrictMode's
+        // rehearsal unmount also closes and reopens it before this event
+        // arrives, so only a dialog that is really shut counts.
+        const dialog = ref.current;
+        if (leaving.current || !dialog || dialog.open) return;
         onClose();
         setTimeout(() => {
-          const dialog = ref.current;
-          if (dialog && !leaving.current && !dialog.open) dialog.showModal();
+          if (ref.current && !leaving.current && !ref.current.open)
+            ref.current.showModal();
         });
       }}
+      onPointerDown={(e) => {
+        pressedBackdrop.current = e.target === ref.current;
+      }}
       onClick={(e) => {
-        if (e.target === ref.current) onClose();
+        // Only a press on the backdrop counts: a drag that starts inside and
+        // ends outside must not close the dialog.
+        if (e.target === ref.current && pressedBackdrop.current) onClose();
       }}
     >
       <header>

@@ -820,7 +820,7 @@ describe("PathEditor map editing", () => {
     expect(inputValue("Point 1 across")).toBeCloseTo(4.02, 6);
     expect(inputValue("Point 1 along")).toBeCloseTo(-0.1, 6);
     // One undo step covers the run of nudges.
-    await click("Undo");
+    await click("Undo path edit");
     expect(inputValue("Point 1 across")).toBe(4);
     expect(inputValue("Point 1 along")).toBe(0);
   });
@@ -829,11 +829,11 @@ describe("PathEditor map editing", () => {
     await render();
     const undo = () =>
       [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.getAttribute("aria-label") === "Undo",
+        (button) => button.getAttribute("aria-label") === "Undo path edit",
       )!;
     const redo = () =>
       [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.getAttribute("aria-label") === "Redo",
+        (button) => button.getAttribute("aria-label") === "Redo path edit",
       )!;
     expect(undo().disabled).toBe(true);
     expect(redo().disabled).toBe(true);
@@ -841,23 +841,23 @@ describe("PathEditor map editing", () => {
     await changeSelect("Point 5 action", "wave");
     expect(mapPositions()).toHaveLength(6);
     expect(undo().disabled).toBe(false);
-    await click("Undo");
+    await click("Undo path edit");
     expect(
       query<HTMLSelectElement>('select[aria-label="Point 5 action"]').value,
     ).toBe("");
-    await click("Undo");
+    await click("Undo path edit");
     expect(mapPositions()).toHaveLength(5);
     expect(undo().disabled).toBe(true);
     expect(redo().disabled).toBe(false);
-    await click("Redo");
-    await click("Redo");
+    await click("Redo path edit");
+    await click("Redo path edit");
     expect(mapPositions()).toHaveLength(6);
     expect(
       query<HTMLSelectElement>('select[aria-label="Point 5 action"]').value,
     ).toBe("wave");
     await click("Start over");
     expect(mapPositions()).toHaveLength(1);
-    await click("Undo");
+    await click("Undo path edit");
     expect(mapPositions()).toHaveLength(6);
   });
 
@@ -955,11 +955,11 @@ describe("PathEditor map editing", () => {
       Math.PI / 2,
       6,
     );
-    await click("Undo");
+    await click("Undo path edit");
     expect(container.textContent).not.toContain(
       "Use path direction on arrival",
     );
-    await click("Redo");
+    await click("Redo path edit");
     await click("Use path direction on arrival");
     await click("Save path");
     expect(onSave.mock.lastCall![0].path.endHeading).toBeUndefined();
@@ -1054,8 +1054,45 @@ describe("PathEditor map editing", () => {
     onClose.mockClear();
     await render({ onClose });
     await click("Add point");
-    await click("Undo");
+    await click("Undo path edit");
     await click("Cancel");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+it("closes on a backdrop click but not on a drag that starts inside and ends over the backdrop", async () => {
+  const onClose = vi.fn();
+  await render({ onClose });
+  const dialog = query("dialog"),
+    svg = mockMapRect();
+  await pointer(svg, "pointerdown", 300, 200);
+  await pointer(svg, "pointermove", 340, 220);
+  await pointer(svg, "pointerup", 340, 220);
+  await pointer(dialog, "click", -20, 220);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+  await pointer(dialog, "pointerdown", -20, 220);
+  await pointer(dialog, "click", -20, 220);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the editor in step when the browser forces the dialog shut", async () => {
+  const onClose = vi.fn();
+  await render({ onClose });
+  const dialog = query<HTMLDialogElement>("dialog");
+  const reopen = vi.mocked(HTMLDialogElement.prototype.showModal);
+  reopen.mockClear();
+  // A changed route: the question appears and the dialog is shown again.
+  await click("Add point");
+  await act(async () => {
+    dialog.dispatchEvent(new Event("close"));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
+  expect(onClose).not.toHaveBeenCalled();
+  expect(query('[role="alertdialog"]').textContent).toContain(
+    "Discard changes to this path?",
+  );
+  expect(reopen).toHaveBeenCalledTimes(1);
+  await click("Discard");
+  expect(onClose).toHaveBeenCalledTimes(1);
 });
