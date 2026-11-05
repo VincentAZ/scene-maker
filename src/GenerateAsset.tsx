@@ -42,6 +42,11 @@ export type ImportedModel = {
   name: string;
   animations: { name: string; duration: number }[];
 };
+/** "one": the chosen files make one character. "each": every file downloaded
+ * With Skin becomes its own character, followed by its animations. */
+type ImportMode = "one" | "each";
+type ImportResult = ImportedModel | { characters: ImportedModel[] };
+const imported = (r: ImportResult) => ("characters" in r ? r.characters : [r]);
 
 const ACTIVE = new Set(["queued", "generating", "texturing", "preparing"]);
 
@@ -55,7 +60,10 @@ export function GenerateAsset({
   /** The selected character, if any, so it can be sent to Mixamo for rigging. */
   selected?: { name: string; url?: string };
   onPlace: (asset: Asset) => void;
-  onImported: (model: ImportedModel, category: "characters" | "props") => void;
+  onImported: (
+    models: ImportedModel[],
+    category: "characters" | "props",
+  ) => void;
   report: (message: string) => void;
 }) {
   const [tab, setTab] = useState<"generate" | "mixamo">("generate");
@@ -77,6 +85,7 @@ export function GenerateAsset({
   const [watching, setWatching] = useState<string | null>(null);
   const [files, setFiles] = useState<DownloadFile[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
+  const [mode, setMode] = useState<ImportMode>("one");
   const [importing, setImporting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -178,11 +187,11 @@ export function GenerateAsset({
   async function importPicked() {
     setImporting(true);
     try {
-      const r = await api<ImportedModel>("/api/mixamo/import", {
+      const r = await api<ImportResult>("/api/mixamo/import", {
         method: "POST",
-        body: JSON.stringify({ files: picked }),
+        body: JSON.stringify({ files: picked, mode }),
       });
-      onImported(r, "characters");
+      onImported(imported(r), "characters");
     } catch (e) {
       report((e as Error).message);
     } finally {
@@ -193,12 +202,13 @@ export function GenerateAsset({
     setImporting(true);
     try {
       const data = new FormData();
+      data.append("mode", mode);
       for (const f of Array.from(list)) data.append("files", f);
-      const r = await api<ImportedModel>("/api/mixamo/upload", {
+      const r = await api<ImportResult>("/api/mixamo/upload", {
         method: "POST",
         body: data,
       });
-      onImported(r, "characters");
+      onImported(imported(r), "characters");
     } catch (e) {
       report((e as Error).message);
     } finally {
@@ -463,11 +473,30 @@ export function GenerateAsset({
             </li>
             <li>
               <strong>Bring the downloads back.</strong>
+              <label>
+                How to import them
+                <select
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as ImportMode)}
+                >
+                  <option value="one">Import as one character</option>
+                  <option value="each">
+                    Each file becomes its own character
+                  </option>
+                </select>
+              </label>
+              <small className="muted">
+                {mode === "one"
+                  ? "The character file and every animation are combined into one rigged character."
+                  : "Every file downloaded With Skin becomes a character of its own; the animations downloaded Without Skin after it belong to it. Up to 40 files at once."}
+              </small>
               {watching ? (
                 <>
                   <small className="muted">
-                    Watching <code>{watching}</code>. Tick the character
-                    (downloaded With Skin) first, then its animations.
+                    Watching <code>{watching}</code>.{" "}
+                    {mode === "one"
+                      ? "Tick the character (downloaded With Skin) first, then its animations."
+                      : "Tick each character (downloaded With Skin) before its animations."}
                   </small>
                   {files.length === 0 && (
                     <p className="small muted">
@@ -516,7 +545,10 @@ export function GenerateAsset({
                         <Upload size={14} />
                       )}{" "}
                       Import {picked.length || ""} file
-                      {picked.length === 1 ? "" : "s"} as one character
+                      {picked.length === 1 ? "" : "s"}
+                      {mode === "one"
+                        ? " as one character"
+                        : " as separate characters"}
                     </button>
                     <button
                       disabled={importing}
@@ -550,11 +582,10 @@ export function GenerateAsset({
             </li>
           </ol>
           <p className="small muted">
-            The character file and every animation are combined into one rigged
-            GLB. Mixamo joint names are recognized and its animations appear in
-            the Actions library. Preview studio actions before production:
-            sitting, foot contact and prop handling still need validation on
-            real generated characters.
+            Mixamo joint names are recognized and its animations appear in the
+            Actions library. Preview studio actions before production: sitting,
+            foot contact and prop handling still need validation on real
+            generated characters.
           </p>
         </>
       )}

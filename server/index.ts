@@ -47,7 +47,7 @@ import {
 } from "../shared/scene";
 import { generateCharacter } from "./characters";
 import { createGenerationService } from "./generation";
-import { createMixamoService } from "./mixamo";
+import { createMixamoService, importModes } from "./mixamo";
 import { conversationHistorySchema } from "../shared/studio";
 const run = promisify(execFile);
 const configFile = path.join(dataDir, "connections.json");
@@ -685,7 +685,12 @@ app.get("/api/mixamo/downloads", (_req, res) => {
   res.json({ directory: mixamo.downloadsDirectory(), files: mixamo.poll() });
 });
 app.post("/api/mixamo/import", async (req, res) => {
-  res.json(await mixamo.importBundle(req.body));
+  const mode = z.enum(importModes).default("one").parse(req.body?.mode);
+  res.json(
+    mode === "each"
+      ? await mixamo.importBatch(req.body)
+      : await mixamo.importBundle(req.body),
+  );
 });
 app.post(
   "/api/mixamo/upload",
@@ -696,6 +701,7 @@ app.post(
   async (req, res) => {
     const files = (req.files as Express.Multer.File[] | undefined) || [];
     if (!files.length) throw Error("Choose the Mixamo FBX files to import.");
+    const mode = z.enum(importModes).default("one").parse(req.body?.mode);
     const named: string[] = [];
     try {
       for (const f of files) {
@@ -710,11 +716,11 @@ app.post(
         fs.renameSync(f.path, target);
         named.push(target);
       }
+      const names = files.map((f) => f.originalname);
       res.json(
-        await mixamo.importFiles(
-          named,
-          files.map((f) => f.originalname),
-        ),
+        mode === "each"
+          ? await mixamo.importEach(named, names)
+          : await mixamo.importFiles(named, names),
       );
     } finally {
       for (const f of files) fs.rmSync(f.path, { force: true });
