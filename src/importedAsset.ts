@@ -273,12 +273,13 @@ function uprightCorrection(group: T.Group) {
   return new T.Quaternion().setFromUnitVectors(axis, new T.Vector3(0, 1, 0));
 }
 
-/** Uniform size (characters 1.85 tall) and grounding, applied on a node
- * outside the animation hierarchy so authored transforms keep their units. */
+/** Grounding and, given a `height` (characters), a uniform size that makes
+ * the subject that many metres tall, applied on a node outside the animation
+ * hierarchy so authored transforms keep their units. */
 function normalize(
   normalization: T.Object3D,
   subject: T.Object3D,
-  character: boolean,
+  height: number | undefined,
 ) {
   normalization.scale.setScalar(1);
   normalization.position.set(0, 0, 0);
@@ -292,8 +293,8 @@ function normalize(
         bounds.expandByPoint(n.getWorldPosition(new T.Vector3()));
     });
   }
-  const height = bounds.max.y - bounds.min.y;
-  const factor = character ? 1.85 / (height || 1) : 1;
+  const measured = bounds.max.y - bounds.min.y;
+  const factor = height ? height / (measured || 1) : 1;
   normalization.scale.setScalar(factor);
   normalization.position.y = -bounds.min.y * factor;
   normalization.updateMatrixWorld(true);
@@ -345,6 +346,9 @@ export function prepareImportedAsset(
     if (object instanceof T.SkinnedMesh) object.frustumCulled = false;
   });
   let content: T.Object3D = imported;
+  // A character stands at its recorded height, or 1.85 m; props keep their size.
+  const height =
+    asset.category === "characters" ? (asset.height ?? 1.85) : undefined;
   // Keep node UUIDs: original animation tracks may bind to unnamed nodes.
   // Rooms must keep their authored transforms: grounding by bounds can lift
   // a whole interior when its foundation extends below the floor.
@@ -353,7 +357,7 @@ export function prepareImportedAsset(
     // (and tracks targeting them) must retain their original units and values.
     const normalization = new T.Group();
     normalization.add(imported);
-    normalize(normalization, imported, asset.category === "characters");
+    normalize(normalization, imported, height);
     content = normalization;
   }
   group.add(content);
@@ -376,7 +380,7 @@ export function prepareImportedAsset(
       content.remove(imported);
       orient.add(imported);
       content.add(orient);
-      normalize(content, orient, true);
+      normalize(content, orient, height);
       configure();
     }
     // glTF assets face +Z, and placement, routes and in-place stride

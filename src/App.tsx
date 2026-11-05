@@ -1681,47 +1681,67 @@ export default function App() {
       setBusy(false);
     }
   }
-  function placeImportedModel(
-    model: ImportedModel,
+  /** Every Mixamo result becomes a character with its takes as actions, in
+   * one step so a batch is undone as one. Only the first is placed: a batch
+   * of dozens would pile up in the scene, so the rest wait in My assets. */
+  function placeImportedModels(
+    models: ImportedModel[],
     category: "characters" | "props",
   ) {
-    const asset: Asset = {
-      id: uid(),
-      name: model.name.slice(0, 100),
-      category,
-      style: "Mixamo",
-      url: model.url,
-      color: "#a8b89b",
-      skin: "#b98a69",
-      body: "masculine",
-      description: "Rigged and animated with Mixamo.",
-    };
+    const placed = models.map((model) => {
+      const asset: Asset = {
+        id: uid(),
+        name: model.name.slice(0, 100),
+        category,
+        style: "Mixamo",
+        url: model.url,
+        color: "#a8b89b",
+        skin: "#b98a69",
+        body: "masculine",
+        description: "Rigged and animated with Mixamo.",
+      };
+      return { model, asset };
+    });
     execute([
-      { type: "createAsset", asset },
-      ...model.animations
-        .map((a, index, all) => ({
-          ...a,
-          label: importedTakeLabel(a.name, asset.name, index, all.length),
-        }))
-        .filter((a) => a.duration <= 60)
-        .map((a) => ({
-          type: "createMotion" as const,
-          motion: {
-            id: uid(),
-            name: a.label.slice(0, 100),
-            kind: "imported" as const,
-            duration: a.duration,
-            distance: 0,
-            poses: [],
-            sourceAssetId: asset.id,
-            animationName: a.name,
-          },
-        })),
-      { type: "add", assetId: asset.id },
+      ...placed.flatMap(({ model, asset }) => [
+        { type: "createAsset" as const, asset },
+        ...model.animations
+          .map((a, index, all) => ({
+            ...a,
+            label: importedTakeLabel(a.name, asset.name, index, all.length),
+          }))
+          .filter((a) => a.duration <= 60)
+          .map((a) => ({
+            type: "createMotion" as const,
+            motion: {
+              id: uid(),
+              name: a.label.slice(0, 100),
+              kind: "imported" as const,
+              duration: a.duration,
+              distance: 0,
+              poses: [],
+              sourceAssetId: asset.id,
+              animationName: a.name,
+            },
+          })),
+      ]),
+      { type: "add", assetId: placed[0].asset.id },
     ]);
     setSelected(sceneRef.current.entities.at(-1)!.id);
     setModal(null);
-    toast(`${asset.name} is ready`);
+    if (placed.length === 1) toast(`${placed[0].asset.name} is ready`);
+    else {
+      setTab(category);
+      setFilter("My assets");
+      setSearch("");
+      const rest =
+        placed.length === 2
+          ? `${placed[1].asset.name} is`
+          : `the other ${placed.length - 1} are`;
+      toast(
+        `${placed.length} characters are ready: ${placed[0].asset.name} is in the scene, ${rest} in My assets.`,
+      );
+    }
   }
   function placeGeneratedAsset(asset: Asset) {
     const exists = sceneRef.current.customAssets.some((a) => a.id === asset.id);
@@ -4020,7 +4040,7 @@ export default function App() {
                 : undefined;
             })()}
             onPlace={placeGeneratedAsset}
-            onImported={placeImportedModel}
+            onImported={placeImportedModels}
             report={report}
           />
         </Modal>

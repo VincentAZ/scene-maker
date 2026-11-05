@@ -12,6 +12,12 @@ import {
 } from "../shared/scene";
 import { contentAssets, contentCredits } from "../shared/contentLibrary";
 import characters from "../shared/content/characters.json";
+import { mergeCatalogue } from "../scripts/content/characters.mjs";
+import {
+  cast,
+  idOf,
+  idPrefix,
+} from "../scripts/content/characters/rocketbox.mjs";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning } from "../src/rig";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
@@ -60,30 +66,97 @@ function withoutTextures(data: Buffer) {
 }
 
 describe("realistic character catalogue", () => {
-  it("lists Rocketbox humans with credits, bodies and collections", () => {
-    expect(characters.length).toBeGreaterThanOrEqual(30);
+  it("lists realistic humans with credits, bodies and collections", () => {
+    expect(characters.length).toBeGreaterThanOrEqual(115);
     expect(new Set(characters.map((c) => c.id)).size).toBe(characters.length);
     for (const asset of assets) {
       expect(assetSchema.parse(asset), asset.id).toEqual(asset);
-      expect(asset.id).toMatch(/^rocketbox-[a-z0-9-]+$/);
+      expect(asset.id).toMatch(/^[a-z0-9]+-[a-z0-9-]+$/);
       expect(asset.url).toBe(`/content/characters/${asset.id}.glb`);
       expect(asset.thumbnail).toBe(`/content/characters/${asset.id}.png`);
       expect(["feminine", "masculine"]).toContain(asset.body);
       expect(asset.description.length).toBeGreaterThan(10);
-      expect(contentCredits.get(asset.id)).toMatchObject({
-        author: "Microsoft",
-        license: "MIT",
-      });
+      expect(contentCredits.get(asset.id)?.license, asset.id).toMatch(
+        /^(MIT|CC0|CC BY( 4\.0)?|CC BY-SA( 4\.0)?)/,
+      );
     }
     const styles = new Set(assets.map((a) => a.style));
     for (const style of [
       "Everyday",
       "Business",
       "Medical",
+      "Service",
       "Uniformed",
+      "Emergency",
+      "Military",
+      "Sports",
       "Children",
     ])
       expect(styles).toContain(style);
+  });
+
+  it("ships the whole Rocketbox cast under MIT with ids that cannot collide", () => {
+    const rocketbox = characters.filter((c) => c.id.startsWith("rocketbox-"));
+    expect(cast).toHaveLength(115);
+    expect(new Set(cast.map((a) => a.folder)).size).toBe(115);
+    expect(rocketbox.map((c) => c.id)).toEqual(cast.map(idOf));
+    for (const [i, entry] of rocketbox.entries()) {
+      expect(entry.credit).toEqual({
+        author: "Microsoft",
+        license: "MIT",
+        source: expect.stringContaining(`/Assets/Avatars/${cast[i].folder}`),
+      });
+      expect(entry.style).toBe(cast[i].style);
+      // Each person keeps the height their file was made at, hats included:
+      // children about 1.4 m, adults 1.7 to 1.9 m.
+      if (entry.style === "Children") {
+        expect(entry.height, entry.id).toBeGreaterThan(1.3);
+        expect(entry.height, entry.id).toBeLessThan(1.55);
+      } else {
+        expect(entry.height, entry.id).toBeGreaterThan(1.65);
+        expect(entry.height, entry.id).toBeLessThan(1.95);
+      }
+    }
+    // Upstream files Female_Party_01/02 under both Adults and Professions:
+    // the Adults pair keep the plain ids the library shipped with, a twin
+    // elsewhere carries its folder.
+    expect(idOf({ folder: "Adults/Female_Party_02" })).toBe(
+      "rocketbox-female-party-02",
+    );
+    expect(idOf({ folder: "Professions/Female_Party_02" })).toBe(
+      "rocketbox-professions-female-party-02",
+    );
+    expect(idOf({ folder: "Professions/Police_Male_01" })).toBe(
+      "rocketbox-police-male-01",
+    );
+  });
+
+  it("rebuilds one source without touching the others or keeping what it dropped", () => {
+    expect(cast.every((a) => idOf(a).startsWith(idPrefix))).toBe(true);
+    const entry = (id: string, name = id) => ({ id, name });
+    const current = [
+      entry("rocketbox-a"),
+      entry("rocketbox-removed"),
+      entry("grab3d-soldier"),
+      entry("rocketbox-b"),
+    ];
+    const built = [
+      entry("rocketbox-a", "A renamed"),
+      entry("rocketbox-b"),
+      entry("rocketbox-new"),
+    ];
+    // Rebuilt entries stay in place, new ones follow, the removed one goes,
+    // and another source's entry is kept.
+    expect(mergeCatalogue({ current, built, owned: [idPrefix] })).toEqual([
+      entry("rocketbox-a", "A renamed"),
+      entry("grab3d-soldier"),
+      entry("rocketbox-b"),
+      entry("rocketbox-new"),
+    ]);
+    // A source that declares no prefix cannot tell what it dropped.
+    expect(
+      mergeCatalogue({ current, built, owned: [] }).map((e) => e.id),
+    ).toContain("rocketbox-removed");
   });
 });
 
@@ -147,10 +220,12 @@ describe.skipIf(!built)("built realistic characters", () => {
         group.updateMatrixWorld(true);
         const rest = new T.Box3().setFromObject(group);
         const height = rest.max.y - rest.min.y;
-        if (asset.style === "Children")
-          expect(height, asset.id).toBeGreaterThan(1.1);
-        else expect(height, asset.id).toBeGreaterThan(1.5);
-        expect(height, asset.id).toBeLessThan(2.05);
+        // Shown at the recorded height (1.85 m without one), so a child is
+        // not stretched to an adult's size.
+        expect(height, asset.id).toBeCloseTo(asset.height ?? 1.85, 2);
+        const child = asset.style === "Children";
+        expect(height, asset.id).toBeGreaterThan(child ? 1.1 : 1.5);
+        expect(height, asset.id).toBeLessThan(child ? 1.6 : 2.05);
         expect(Math.abs(rest.min.y), asset.id).toBeLessThan(0.05);
 
         const scene = applyCommands(starterScene(), [

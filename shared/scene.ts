@@ -301,6 +301,9 @@ export const assetSchema = z
     // An animation-only import (BVH, skinless FBX/GLB): a skeleton holding
     // recorded takes for Actions, not a placeable character.
     motionOnly: z.boolean().optional(),
+    /** A character's standing height in metres. Without it a character is
+     * shown 1.85 m tall; the realistic library records each person's own. */
+    height: z.number().min(0.3).max(4).optional(),
     thumbnail: z
       .string()
       .regex(/^\/(uploads|content)\/[a-zA-Z0-9_./-]+\.(png|jpg|webp)$/)

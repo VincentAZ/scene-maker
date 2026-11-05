@@ -185,6 +185,25 @@ describe("imported environment lifecycle", () => {
     }
   });
 
+  it("shows a character at its recorded height and leaves a prop's alone", () => {
+    for (const category of ["characters", "props"] as const) {
+      const scene = new T.Group();
+      scene.add(
+        new T.Mesh(new T.BoxGeometry(1, 4, 1), new T.MeshStandardMaterial()),
+      );
+      const prepared = prepareImportedAsset(
+        { ...asset, category, height: 1.43 },
+        { scene, animations: [] },
+      );
+      const bounds = new T.Box3().setFromObject(prepared);
+      expect(bounds.min.y).toBeCloseTo(0);
+      expect(bounds.getSize(new T.Vector3()).y).toBeCloseTo(
+        category === "characters" ? 1.43 : 4,
+      );
+      disposeObject(prepared);
+    }
+  });
+
   it("preserves provider root transforms and animated units during normalization", () => {
     const scene = new T.Group();
     scene.name = "ProviderRoot";
