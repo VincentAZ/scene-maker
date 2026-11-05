@@ -70,9 +70,32 @@ type Waypoint = {
   point: Point;
   action?: Omit<PointAction, "pointIndex">;
 };
-/** What the map's own undo history covers: the points and the arrival facing. */
-type Sketch = { waypoints: Waypoint[]; endHeading?: number };
-type History = Sketch & {
+/**
+ * What the map's own undo history covers: everything a save writes that the
+ * editor itself changes, so a plan or a drag can be taken back whole.
+ */
+type Sketch = {
+  waypoints: Waypoint[];
+  endHeading?: number;
+  smooth: boolean;
+  backward: boolean;
+  name: string;
+  keepDuration: boolean;
+  seconds: number;
+};
+const sketchKeys = [
+  "waypoints",
+  "endHeading",
+  "smooth",
+  "backward",
+  "name",
+  "keepDuration",
+  "seconds",
+] as const;
+const sameSketch = (a: Sketch, b: Sketch) =>
+  sketchKeys.every((key) => a[key] === b[key]);
+type History = {
+  sketch: Sketch;
   past: Sketch[];
   future: Sketch[];
   // A drag or a run of keystrokes stays one undo step until it is sealed.
@@ -82,27 +105,23 @@ type HistoryAction =
   | { type: "edit"; next: (sketch: Sketch) => Sketch; coalesce?: string }
   | { type: "undo" }
   | { type: "redo" }
-  | { type: "seal" };
+  // Ends the open run, or only the named one: a nudge timer or a field losing
+  // focus must not split a drag that started meanwhile.
+  | { type: "seal"; coalesce?: string }
+  // Abandons the step still being coalesced, as when a drag is cancelled.
+  | { type: "revert"; coalesce: string };
 function editHistory(state: History, action: HistoryAction): History {
-  const current: Sketch = {
-    waypoints: state.waypoints,
-    endHeading: state.endHeading,
-  };
+  const { sketch } = state;
   switch (action.type) {
     case "edit": {
-      const next = action.next(current);
-      if (
-        next.waypoints === current.waypoints &&
-        next.endHeading === current.endHeading
-      )
-        return state;
+      const next = action.next(sketch);
+      if (sameSketch(next, sketch)) return state;
       const kept =
         action.coalesce && action.coalesce === state.coalesce
           ? state.past
-          : [...state.past, current].slice(-200);
+          : [...state.past, sketch].slice(-200);
       return {
-        waypoints: next.waypoints,
-        endHeading: next.endHeading,
+        sketch: next,
         past: kept,
         future: [],
         coalesce: action.coalesce ?? null,
@@ -112,10 +131,9 @@ function editHistory(state: History, action: HistoryAction): History {
       const previous = state.past.at(-1);
       if (!previous) return state;
       return {
-        waypoints: previous.waypoints,
-        endHeading: previous.endHeading,
+        sketch: previous,
         past: state.past.slice(0, -1),
-        future: [current, ...state.future],
+        future: [sketch, ...state.future],
         coalesce: null,
       };
     }
@@ -123,15 +141,27 @@ function editHistory(state: History, action: HistoryAction): History {
       const [next, ...future] = state.future;
       if (!next) return state;
       return {
-        waypoints: next.waypoints,
-        endHeading: next.endHeading,
-        past: [...state.past, current],
+        sketch: next,
+        past: [...state.past, sketch],
         future,
         coalesce: null,
       };
     }
     case "seal":
-      return state.coalesce === null ? state : { ...state, coalesce: null };
+      return state.coalesce === null ||
+        (action.coalesce !== undefined && action.coalesce !== state.coalesce)
+        ? state
+        : { ...state, coalesce: null };
+    case "revert": {
+      const previous = state.past.at(-1);
+      if (state.coalesce !== action.coalesce || !previous) return state;
+      return {
+        sketch: previous,
+        past: state.past.slice(0, -1),
+        future: [],
+        coalesce: null,
+      };
+    }
   }
 }
 type Gesture =
@@ -143,6 +173,7 @@ const MAP_WIDTH = 600,
   MAP_HEIGHT = 400;
 const minimumGap = 0.05;
 const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
+const hundredths = (seconds: number) => Math.round(seconds * 100) / 100;
 
 export function PathEditor({
   scene,
@@ -156,20 +187,43 @@ export function PathEditor({
   onSave,
   onClose,
 }: Props) {
-  const [history, dispatch] = useReducer(editHistory, undefined, () => ({
-    waypoints: (
-      motion?.path?.points.map((p) => pathToWorld(p, frame)) || [
-        [...frame.position] as Point,
-      ]
-    ).map((point) => ({ id: uid(), point })),
-    endHeading: motion?.path?.endHeading,
-    past: [],
-    future: [],
-    coalesce: null,
-  }));
-  const { waypoints, endHeading } = history;
+  const [history, dispatch] = useReducer(
+    editHistory,
+    undefined,
+    (): History => ({
+      sketch: {
+        waypoints: (
+          motion?.path?.points.map((p) => pathToWorld(p, frame)) || [
+            [...frame.position] as Point,
+          ]
+        ).map((point) => ({ id: uid(), point })),
+        endHeading: motion?.path?.endHeading,
+        smooth: motion?.path?.smooth ?? true,
+        backward: motion?.path?.backward ?? false,
+        name: motion?.name || `${actor.name}'s route`,
+        // Reshaping an existing route keeps its duration (and so its place in
+        // the sequence); a new route follows the measured gait.
+        keepDuration: !!motion,
+        seconds: motion?.duration || 6,
+      },
+      past: [],
+      future: [],
+      coalesce: null,
+    }),
+  );
+  const {
+    waypoints,
+    endHeading,
+    smooth,
+    backward,
+    name,
+    keepDuration,
+    seconds,
+  } = history.sketch;
   const edit = (next: (sketch: Sketch) => Sketch, coalesce?: string) =>
     dispatch({ type: "edit", next, coalesce });
+  const change = (patch: Partial<Sketch>, coalesce?: string) =>
+    edit((sketch) => ({ ...sketch, ...patch }), coalesce);
   const editWaypoints = (
     next: (waypoints: Waypoint[]) => Waypoint[],
     coalesce?: string,
@@ -179,9 +233,17 @@ export function PathEditor({
       coalesce,
     );
   const setEndHeading = (endHeading: number | undefined, coalesce?: string) =>
-    edit((sketch) => ({ waypoints: sketch.waypoints, endHeading }), coalesce);
-  const undo = () => dispatch({ type: "undo" });
-  const redo = () => dispatch({ type: "redo" });
+    change({ endHeading }, coalesce);
+  const seal = (coalesce?: string) => dispatch({ type: "seal", coalesce });
+  // A plan's notice describes the plan, so stepping through history drops it.
+  const undo = () => {
+    dispatch({ type: "undo" });
+    setPlanNotice("");
+  };
+  const redo = () => {
+    dispatch({ type: "redo" });
+    setPlanNotice("");
+  };
   const points = useMemo(
     () => waypoints.map((waypoint) => waypoint.point),
     [waypoints],
@@ -207,35 +269,34 @@ export function PathEditor({
     () => routeLocomotions(scene, actor, motion),
     [scene, actor, motion],
   );
-  const [name, setName] = useState(motion?.name || `${actor.name}'s route`),
-    [locomotionId, setLocomotionId] = useState(
-      () =>
-        (motion && matchingRouteLocomotion(locomotions, motion))?.id ||
-        defaultRouteLocomotion(scene, actor).id,
-    );
+  const [locomotionId, setLocomotionId] = useState(
+    () =>
+      (motion && matchingRouteLocomotion(locomotions, motion))?.id ||
+      defaultRouteLocomotion(scene, actor).id,
+  );
   const locomotion =
     locomotions.find((candidate) => candidate.id === locomotionId) ||
     defaultRouteLocomotion(scene, actor);
   const kind = routeMovement(locomotion);
   const gait = useRouteGait(scene, actor, locomotion, locomotionCycle);
   const measuredCycle = gait.cycle;
-  const [smooth, setSmooth] = useState(motion?.path?.smooth ?? true),
-    [seconds, setSeconds] = useState(motion?.duration || 6),
-    // Reshaping an existing route keeps its duration (and so its place in the
-    // sequence); a new route follows the measured gait.
-    [keepDuration, setKeepDuration] = useState(!!motion);
   const [error, setError] = useState(""),
     [id] = useState(motion?.id || uid);
   const [destination, setDestination] = useState("");
-  const [backward, setBackward] = useState(motion?.path?.backward ?? false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [panning, setPanning] = useState(false);
   const [ghost, setGhost] = useState<[number, number] | null>(null);
+  const [typedDuration, setTypedDuration] = useState<{
+    text: string;
+    value: number;
+  } | null>(null);
   const svg = useRef<SVGSVGElement>(null),
+    keepButton = useRef<HTMLButtonElement>(null),
     gesture = useRef<Gesture | null>(null),
     suppressClick = useRef(false),
-    spaceHeld = useRef(false);
+    spaceHeld = useRef(false),
+    sealTimer = useRef<number | undefined>(undefined);
   const selectedIndex = waypoints.findIndex(
     (waypoint) => waypoint.id === selectedId,
   );
@@ -309,7 +370,11 @@ export function PathEditor({
   const [originU, originV] = map([0, frame.position[1], 0]);
   const gridLabel =
     gridStep >= 1 ? `${gridStep} m` : `${Math.round(gridStep * 100)} cm`;
-  const labelBoxes: { x: number; y: number; width: number }[] = [];
+  const [startU, startV] = map(points[0]);
+  // Nearby names keep clear of each other and of the start label.
+  const labelBoxes = [
+    { x: startU, y: startV - 24, width: (8 + actor.name.length) * 6.5 },
+  ];
   const labelOffsets = new Map(
     nearby.map((entity) => {
       const [x, y] = map(entity.position),
@@ -411,6 +476,15 @@ export function PathEditor({
         ? naturalDuration
         : Math.max(0.5, Math.min(60, Math.round(naturalDuration * 10) / 10));
   const duration = speechDuration ?? (keepDuration ? seconds : pace);
+  // Measured paces, and durations kept from them, are long fractions: the
+  // field shows hundredths while the save keeps the exact value. What the
+  // creator types stays as typed.
+  const shownDuration =
+    duration === undefined
+      ? ""
+      : typedDuration?.value === duration
+        ? typedDuration.text
+        : hundredths(duration);
   const mapped = useMemo(
     () =>
       compiled?.samples.map((s) => map(pathToWorld(s.point, frame))) ?? null,
@@ -550,7 +624,23 @@ export function PathEditor({
       if (current.moved) suppressClick.current = true;
       setPanning(false);
     }
-    dispatch({ type: "seal" });
+    seal();
+  };
+  // Escape, or losing the window, abandons the gesture and puts things back.
+  const cancelGesture = () => {
+    const current = gesture.current;
+    if (!current) return;
+    gesture.current = null;
+    // The release that follows is not a click on the map.
+    suppressClick.current = true;
+    if (current.kind === "pan") {
+      setBounds(current.origin);
+      setPanning(false);
+    } else
+      dispatch({
+        type: "revert",
+        coalesce: current.kind === "point" ? `drag:${current.id}` : "heading",
+      });
   };
   const grab = (event: PointerEvent<SVGElement>, next: Gesture) => {
     event.stopPropagation();
@@ -583,6 +673,51 @@ export function PathEditor({
     return () => element.removeEventListener("wheel", onWheel);
   }, []);
   useEffect(() => {
+    // Short windows open with the map cut off, and its shortcuts want focus.
+    svg.current?.scrollIntoView({ block: "nearest" });
+    svg.current?.focus({ preventScroll: true });
+    return () => window.clearTimeout(sealTimer.current);
+  }, []);
+  // Everything a save would write, so closing can tell real changes from a look.
+  const fingerprint = JSON.stringify({
+    points: waypoints.map((waypoint) => [waypoint.point, waypoint.action]),
+    endHeading,
+    smooth,
+    backward,
+    name,
+    locomotionId,
+    keepDuration,
+    seconds,
+  });
+  const original = useRef(fingerprint);
+  const dirty = fingerprint !== original.current;
+  const asking = confirming && dirty;
+  useEffect(() => {
+    // Undoing back to the saved route answers the question by itself.
+    if (!dirty) setConfirming(false);
+  }, [dirty]);
+  useEffect(() => {
+    if (asking) keepButton.current?.focus({ preventScroll: true });
+  }, [asking]);
+  const keepEditing = () => {
+    setConfirming(false);
+    svg.current?.focus({ preventScroll: true });
+  };
+  const requestClose = () => {
+    // Escape midway through a drag only cancels the drag.
+    if (gesture.current) {
+      cancelGesture();
+      return;
+    }
+    // Asked again while the question is showing: keep editing.
+    if (asking) {
+      keepEditing();
+      return;
+    }
+    if (!dirty) onClose();
+    else setConfirming(true);
+  };
+  useEffect(() => {
     // The app ignores keys while a dialog is open, so these are the only
     // shortcuts active here. Typing in a field keeps the field's own keys.
     const onKeyDown = (event: KeyboardEvent) => {
@@ -590,7 +725,8 @@ export function PathEditor({
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLTextAreaElement ||
         event.target instanceof HTMLSelectElement;
-      if (typing) return;
+      // A drag in progress owns the route until it ends or Escape cancels it.
+      if (typing || gesture.current) return;
       const key = event.key.toLowerCase();
       if ((event.metaKey || event.ctrlKey) && (key === "z" || key === "y")) {
         event.preventDefault();
@@ -601,13 +737,17 @@ export function PathEditor({
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === " ") {
         spaceHeld.current = true;
+        // Space still presses a focused button.
         const interactive =
           event.target instanceof HTMLElement &&
           event.target.closest("button, a, summary, [role=button]");
         if (!interactive) event.preventDefault();
         return;
       }
-      if (selected === null) return;
+      // Buttons have no use for Delete or the arrows, and a clicked toolbar
+      // button keeps focus, so the selected point still answers them. While
+      // the discard question shows, the route behind it stays as it is.
+      if (asking || selected === null) return;
       const id = waypoints[selected].id;
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
@@ -629,34 +769,28 @@ export function PathEditor({
         [point[0] + nudge[0], point[1], point[2] + nudge[1]],
         `nudge:${id}`,
       );
+      // A run of nudges is one undo step; a pause starts the next.
+      window.clearTimeout(sealTimer.current);
+      sealTimer.current = window.setTimeout(() => seal(`nudge:${id}`), 800);
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === " ") spaceHeld.current = false;
     };
+    // Losing the window mid-drag, or with Space held, must not leave either
+    // stuck.
+    const onBlur = () => {
+      spaceHeld.current = false;
+      cancelGesture();
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
   });
-  // Everything a save would write, so closing can tell real changes from a look.
-  const fingerprint = JSON.stringify({
-    points: waypoints.map((waypoint) => [waypoint.point, waypoint.action]),
-    endHeading,
-    smooth,
-    backward,
-    name,
-    locomotionId,
-    keepDuration,
-    seconds,
-  });
-  const original = useRef(fingerprint);
-  const dirty = fingerprint !== original.current;
-  const requestClose = () => {
-    if (!dirty) onClose();
-    else setConfirming(true);
-  };
   const submit = () => {
     try {
       if (gait.status !== "ready") {
@@ -771,9 +905,15 @@ export function PathEditor({
                   const removed = waypoints.filter(
                     (waypoint) => unused.has(waypoint.id) && waypoint.action,
                   ).length;
-                  edit(() => ({
+                  // One history step, so undo takes the whole plan back.
+                  edit((sketch) => ({
+                    ...sketch,
                     waypoints: replanned,
                     endHeading: planned.path!.endHeading,
+                    smooth: planned.path!.smooth,
+                    backward: planned.path!.backward ?? false,
+                    name: planned.name,
+                    keepDuration: false,
                   }));
                   setPlanNotice(
                     removed
@@ -781,10 +921,6 @@ export function PathEditor({
                       : "",
                   );
                   setBounds(fitMap(route));
-                  setSmooth(planned.path!.smooth);
-                  setBackward(planned.path!.backward ?? false);
-                  setName(planned.name);
-                  setKeepDuration(false);
                   setError("");
                 } catch (error) {
                   setError(
@@ -992,8 +1128,11 @@ export function PathEditor({
                   grab(event, { kind: "heading" });
                 }}
               >
-                <circle className="path-heading-grip" r="9" />
-                <path d="M -3 -4 L 3 0 L -3 4" />
+                <circle className="path-heading-hit" r="13" />
+                <path
+                  className="path-heading-tip"
+                  d="M -9 -8 L 10 0 L -9 8 L -4 0 Z"
+                />
               </g>
             </g>
           )}
@@ -1092,9 +1231,13 @@ export function PathEditor({
             <button
               className="text-button"
               onClick={() => {
-                editWaypoints(() => [
-                  { id: uid(), point: [...frame.position] },
-                ]);
+                // A fresh route: the old arrival facing goes with the points.
+                edit((sketch) => ({
+                  ...sketch,
+                  waypoints: [{ id: uid(), point: [...frame.position] }],
+                  endHeading: undefined,
+                }));
+                setSelectedId(null);
                 setPlanNotice("");
               }}
               disabled={points.length < 2}
@@ -1149,7 +1292,8 @@ export function PathEditor({
             <input
               value={name}
               maxLength={100}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => change({ name: event.target.value }, "name")}
+              onBlur={() => seal("name")}
             />
           </label>
           <label>
@@ -1194,11 +1338,16 @@ export function PathEditor({
               placeholder={
                 gait.status === "loading" ? "Measuring…" : "Unavailable"
               }
-              value={duration ?? ""}
+              value={shownDuration}
               onChange={(event) => {
-                setKeepDuration(true);
-                setSeconds(Number(event.target.value));
+                const text = event.target.value;
+                setTypedDuration({ text, value: Number(text) });
+                change(
+                  { keepDuration: true, seconds: Number(text) },
+                  "seconds",
+                );
               }}
+              onBlur={() => seal("seconds")}
             />
           </label>
         </div>
@@ -1208,10 +1357,14 @@ export function PathEditor({
               <button
                 className={keepDuration ? "active" : ""}
                 aria-pressed={keepDuration}
-                onClick={() => {
-                  if (duration !== undefined) setSeconds(duration);
-                  setKeepDuration(true);
-                }}
+                onClick={() =>
+                  // The duration kept is the one on screen.
+                  change(
+                    keepDuration || duration === undefined
+                      ? { keepDuration: true }
+                      : { keepDuration: true, seconds: hundredths(duration) },
+                  )
+                }
               >
                 Keep duration
               </button>
@@ -1219,7 +1372,7 @@ export function PathEditor({
                 className={keepDuration ? "" : "active"}
                 aria-pressed={!keepDuration}
                 disabled={gait.status !== "ready"}
-                onClick={() => setKeepDuration(false)}
+                onClick={() => change({ keepDuration: false })}
               >
                 Keep natural pace
               </button>
@@ -1300,7 +1453,7 @@ export function PathEditor({
             <input
               type="checkbox"
               checked={smooth}
-              onChange={(event) => setSmooth(event.target.checked)}
+              onChange={(event) => change({ smooth: event.target.checked })}
             />{" "}
             Smooth turns
           </label>
@@ -1427,6 +1580,7 @@ export function PathEditor({
                         `input:${waypoints[i + 1].id}:${axis}`,
                       );
                     }}
+                    onBlur={() => seal(`input:${waypoints[i + 1].id}:${axis}`)}
                   />
                 </label>
               ))}
@@ -1448,7 +1602,7 @@ export function PathEditor({
           objects before playback.
         </p>
         <div className="path-footer">
-          {confirming ? (
+          {asking ? (
             <div
               className="path-confirm"
               role="alertdialog"
@@ -1457,8 +1611,8 @@ export function PathEditor({
               <span>Discard changes to this path?</span>
               <button
                 className="secondary"
-                autoFocus
-                onClick={() => setConfirming(false)}
+                ref={keepButton}
+                onClick={keepEditing}
               >
                 Keep editing
               </button>

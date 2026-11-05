@@ -17,13 +17,44 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDialogElement>(null),
     leaving = useRef(false),
-    pressedBackdrop = useRef(false);
+    pressedBackdrop = useRef(false),
+    // Escape is answered from its keydown; a cancel or close the browser
+    // raises for the same press must not ask the owner twice.
+    escapePending = useRef(false),
+    scrollTop = useRef(0),
+    focused = useRef<HTMLElement | SVGElement | null>(null),
+    close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const dialog = ref.current;
     leaving.current = false;
     dialog?.showModal();
+    // Browsers force a modal shut on a repeated Escape unless the keydown is
+    // handled, so Escape is taken here and routed through the owner.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !dialog) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target !== document.body &&
+        !dialog.contains(target)
+      )
+        return;
+      event.preventDefault();
+      // Holding Escape asks once, not over and over.
+      if (event.repeat) return;
+      escapePending.current = true;
+      close.current();
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Escape") escapePending.current = false;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
     return () => {
       leaving.current = true;
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
       dialog?.close();
     };
   }, []);
@@ -35,20 +66,36 @@ export function Modal({
         // Escape asks the owner, which may want to confirm first; the dialog
         // itself stays open until the owner unmounts it.
         e.preventDefault();
-        onClose();
+        if (escapePending.current) escapePending.current = false;
+        else onClose();
       }}
       onClose={() => {
         // Browsers may still force a modal shut (a second Escape in a row).
-        // Tell the owner; if it keeps the dialog, show it again. StrictMode's
-        // rehearsal unmount also closes and reopens it before this event
-        // arrives, so only a dialog that is really shut counts.
+        // Tell the owner unless its keydown already did; if the owner keeps
+        // the dialog, show it again where it was. StrictMode's rehearsal
+        // unmount also closes and reopens it before this event arrives, so
+        // only a dialog that is really shut counts.
         const dialog = ref.current;
         if (leaving.current || !dialog || dialog.open) return;
-        onClose();
+        if (escapePending.current) escapePending.current = false;
+        else onClose();
         setTimeout(() => {
-          if (ref.current && !leaving.current && !ref.current.open)
-            ref.current.showModal();
+          const dialog = ref.current;
+          if (!dialog || leaving.current || dialog.open) return;
+          // Showing a dialog again resets its scroll and focus; put them back.
+          dialog.showModal();
+          dialog.scrollTop = scrollTop.current;
+          if (focused.current?.isConnected)
+            focused.current.focus({ preventScroll: true });
         });
+      }}
+      onScroll={(e) => {
+        scrollTop.current = e.currentTarget.scrollTop;
+      }}
+      onFocus={(e) => {
+        const target = e.target as EventTarget;
+        if (target instanceof HTMLElement || target instanceof SVGElement)
+          focused.current = target;
       }}
       onPointerDown={(e) => {
         pressedBackdrop.current = e.target === ref.current;

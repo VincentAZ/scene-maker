@@ -56,6 +56,11 @@ beforeEach(() => {
     value: vi.fn(),
     configurable: true,
   });
+  // jsdom lays nothing out: the map's scroll into view is a no-op here.
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    value: vi.fn(),
+    configurable: true,
+  });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -269,6 +274,12 @@ describe("PathEditor waypoint actions", () => {
       [2, "wave"],
       [3, "idle"],
     ]);
+    // Undoing the plan brings the actions back and drops its notice.
+    await click("Undo path edit");
+    expect(container.textContent).not.toContain("1 point action was removed");
+    expect(
+      query<HTMLSelectElement>('select[aria-label="Point 1 action"]').value,
+    ).toBe("wave");
   });
 
   it("keeps route-only saves unchanged and clears actions on start over", async () => {
@@ -497,10 +508,11 @@ describe("PathEditor production gait measurement", () => {
       true,
     );
     await act(async () => pending.resolve(source));
-    // 1.5 source metres * target/source ratio 2 over the selected 134/120-second stride.
+    // 1.5 source metres * target/source ratio 2 over the selected 134/120-second
+    // stride: the field shows it to the hundredth, the save keeps it exact.
     expect(
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
-    ).toBe(String(134 / 60));
+    ).toBe("2.23");
     expect(container.textContent).toContain("Measured natural pace: 2.69 m/s");
     expect(locomotionProfile).toHaveBeenCalledWith(
       source,
@@ -510,6 +522,13 @@ describe("PathEditor production gait measurement", () => {
     expect(loadImportedAsset).toHaveBeenCalledTimes(1);
     await click("Add to sequence");
     expect(onSave.mock.lastCall?.[0].duration).toBeCloseTo(134 / 60, 10);
+    // Keeping the duration keeps the number the creator saw.
+    await click("Keep duration");
+    expect(
+      query<HTMLInputElement>('input[aria-label="Route duration"]').value,
+    ).toBe("2.23");
+    await click("Add to sequence");
+    expect(onSave.mock.lastCall?.[0].duration).toBe(2.23);
   });
 
   it("retains a manually chosen duration when asynchronous measurement finishes", async () => {
@@ -655,17 +674,26 @@ async function pointer(
     ),
   );
 }
-async function key(init: KeyboardEventInit, target: Element | Window = window) {
-  await act(async () =>
-    target.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        ...init,
-      }),
-    ),
-  );
+async function keyEvent(
+  type: "keydown" | "keyup",
+  init: KeyboardEventInit,
+  target: Element | Window = window,
+) {
+  const event = new KeyboardEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  await act(async () => target.dispatchEvent(event));
+  return event;
 }
+const key = (init: KeyboardEventInit, target: Element | Window = window) =>
+  keyEvent("keydown", init, target);
+const asking = () => container.querySelector('[role="alertdialog"]') !== null;
+const undoButton = () =>
+  [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.getAttribute("aria-label") === "Undo path edit",
+  )!;
 const inputValue = (label: string) =>
   Number(query<HTMLInputElement>(`input[aria-label="${label}"]`).value);
 const corner = (): Motion => ({
@@ -1057,6 +1085,319 @@ describe("PathEditor map editing", () => {
     await click("Undo path edit");
     await click("Cancel");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes Escape from its keydown, keeps editing on a second Escape or X, and hands focus back to the map", async () => {
+    const onClose = vi.fn();
+    await render({ onClose });
+    const svg = mockMapRect();
+    expect(document.activeElement).toBe(svg);
+    await click("Add point");
+    const escape = await key({ key: "Escape" });
+    // The browser's own close request is pre-empted, so it cannot force the
+    // dialog shut on a repeat.
+    expect(escape.defaultPrevented).toBe(true);
+    expect(asking()).toBe(true);
+    expect(document.activeElement?.textContent).toBe("Keep editing");
+    // Holding the key does not flip the question away again.
+    const held = await key({ key: "Escape", repeat: true });
+    expect(held.defaultPrevented).toBe(true);
+    expect(asking()).toBe(true);
+    // A cancel event raised for the same press is not a second request.
+    const cancel = new Event("cancel", { cancelable: true });
+    await act(async () => query("dialog").dispatchEvent(cancel));
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(asking()).toBe(true);
+    await keyEvent("keyup", { key: "Escape" });
+    await key({ key: "Escape" });
+    expect(asking()).toBe(false);
+    expect(document.activeElement).toBe(svg);
+    await click("Close dialog");
+    expect(asking()).toBe(true);
+    await click("Close dialog");
+    expect(asking()).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+    // The question is not needed for an untouched route.
+    await click("Undo path edit");
+    await key({ key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a drag in progress on Escape instead of asking to close", async () => {
+    const onClose = vi.fn();
+    await render({ motion: corner(), onClose });
+    const svg = mockMapRect();
+    const [, first] = mapPositions();
+    await pointer(query("svg.path-map .path-point"), "pointerdown", ...first);
+    await pointer(svg, "pointermove", first[0] + 60, first[1] + 30);
+    expect(inputValue("Point 1 across")).not.toBe(4);
+    await key({ key: "Escape" });
+    expect(inputValue("Point 1 across")).toBe(4);
+    expect(inputValue("Point 1 along")).toBe(0);
+    expect(asking()).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+    // The pointer is still down: moving no longer drags, and the release is
+    // not a click that would add a point.
+    await pointer(svg, "pointermove", first[0] + 90, first[1] + 90);
+    await pointer(svg, "pointerup", first[0] + 90, first[1] + 90);
+    await pointer(svg, "click", first[0] + 90, first[1] + 90);
+    expect(mapPositions()).toHaveLength(3);
+    expect(inputValue("Point 1 across")).toBe(4);
+    // Nothing of the cancelled drag is left to undo.
+    expect(undoButton().disabled).toBe(true);
+    // The arrival handle and a pan are abandoned the same way.
+    const [, , last] = mapPositions();
+    await pointer(
+      query('svg.path-map [aria-label="Facing on arrival"]'),
+      "pointerdown",
+      last[0],
+      last[1] + 46,
+    );
+    await pointer(svg, "pointermove", last[0] + 80, last[1]);
+    expect(container.textContent).toContain("Use path direction on arrival");
+    await key({ key: "Escape" });
+    expect(container.textContent).not.toContain(
+      "Use path direction on arrival",
+    );
+    await pointer(svg, "pointerup", last[0] + 80, last[1]);
+    const [start] = mapPositions();
+    await pointer(svg, "pointerdown", 300, 200);
+    await pointer(svg, "pointermove", 340, 220);
+    expect(mapPositions()[0][0]).toBeCloseTo(start[0] + 40, 6);
+    await key({ key: "Escape" });
+    expect(mapPositions()[0]).toEqual(start);
+    await pointer(svg, "pointerup", 340, 220);
+    expect(mapPositions()[1]).toEqual(first);
+    expect(undoButton().disabled).toBe(true);
+    await key({ key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps point shortcuts while a map button has focus but not while the discard question shows", async () => {
+    await render();
+    // A clicked button keeps focus, so Add point then the arrows still nudge
+    // the new point.
+    const add = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Add point"),
+    )!;
+    await act(async () => {
+      add.focus();
+      add.click();
+    });
+    expect(container.textContent).toContain("Point 5 is selected");
+    await key({ key: "ArrowRight" }, add);
+    expect(inputValue("Point 5 across")).toBeCloseTo(1.01, 6);
+    // A changed route asks before closing; the question keeps the keys.
+    await click("Cancel");
+    expect(asking()).toBe(true);
+    await key({ key: "Delete" });
+    await key({ key: "ArrowRight" });
+    expect(mapPositions()).toHaveLength(6);
+    expect(inputValue("Point 5 across")).toBeCloseTo(1.01, 6);
+    await click("Keep editing");
+    await key({ key: "Delete" }, add);
+    expect(mapPositions()).toHaveLength(5);
+  });
+
+  it("keeps a drag that starts during a run of nudges as one step and holds keys until it ends", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const [, first, second] = mapPositions();
+    const points = container.querySelectorAll("svg.path-map .path-point");
+    await pointer(points[0], "pointerdown", ...first);
+    await pointer(svg, "pointerup", ...first);
+    await key({ key: "ArrowRight" });
+    // The pause that ends the nudge run falls inside this drag of point 2.
+    await pointer(points[1], "pointerdown", ...second);
+    await pointer(svg, "pointermove", second[0] + 30, second[1]);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 900)));
+    await pointer(svg, "pointermove", second[0] + 60, second[1]);
+    // Nothing is removed, nudged or undone under the pointer.
+    await key({ key: "Delete" });
+    await key({ key: "ArrowRight" });
+    await key({ key: "z", ctrlKey: true });
+    await pointer(svg, "pointerup", second[0] + 60, second[1]);
+    expect(mapPositions()).toHaveLength(3);
+    expect(mapPositions()[2][0]).toBeCloseTo(second[0] + 60, 6);
+    await click("Undo path edit");
+    expect(mapPositions()[2]).toEqual(second);
+    expect(inputValue("Point 1 across")).toBeCloseTo(4.01, 6);
+    await click("Undo path edit");
+    expect(inputValue("Point 1 across")).toBe(4);
+  });
+
+  it("forgets a held Space and abandons a drag when the window loses focus", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const [start, first] = mapPositions();
+    await key({ key: " " });
+    // The Space keyup went to another window: the point drags, the map stays.
+    await act(async () => window.dispatchEvent(new Event("blur")));
+    await pointer(query("svg.path-map .path-point"), "pointerdown", ...first);
+    await pointer(svg, "pointermove", first[0] + 60, first[1]);
+    await pointer(svg, "pointerup", first[0] + 60, first[1]);
+    expect(mapPositions()[0]).toEqual(start);
+    const moved = mapPositions()[1];
+    expect(moved[0]).toBeCloseTo(first[0] + 60, 6);
+    await pointer(query("svg.path-map .path-point"), "pointerdown", ...moved);
+    await pointer(svg, "pointermove", moved[0] + 50, moved[1] + 50);
+    await act(async () => window.dispatchEvent(new Event("blur")));
+    expect(mapPositions()[1]).toEqual(moved);
+  });
+
+  it("shows long durations to the hundredth, saves an untouched one exactly and keeps typed text", async () => {
+    const exact = 7.887670281609524;
+    await render({ motion: { ...route(), duration: exact } });
+    const field = () =>
+      query<HTMLInputElement>('input[aria-label="Route duration"]');
+    expect(field().value).toBe("7.89");
+    // Already keeping the duration: pressing it again changes nothing.
+    await click("Keep duration");
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].duration).toBe(exact);
+    await changeInput("Route duration", "7.125");
+    expect(field().value).toBe("7.125");
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].duration).toBe(7.125);
+    await changeInput("Route duration", "");
+    expect(field().value).toBe("");
+    expect(query<HTMLButtonElement>(".path-footer .primary").disabled).toBe(
+      true,
+    );
+    await click("Undo path edit");
+    expect(field().value).toBe("7.89");
+  });
+
+  it("drops the discard question when undo makes the route clean again", async () => {
+    const onClose = vi.fn();
+    await render({ onClose });
+    await click("Add point");
+    await click("Cancel");
+    expect(asking()).toBe(true);
+    await click("Undo path edit");
+    expect(asking()).toBe(false);
+    // Changing the route again does not bring the question back by itself.
+    await click("Add point");
+    expect(asking()).toBe(false);
+    await click("Undo path edit");
+    await click("Cancel");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("seals a run of nudges after a pause and typed coordinates when the field is left", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const [, first] = mapPositions();
+    await pointer(query("svg.path-map .path-point"), "pointerdown", ...first);
+    await pointer(svg, "pointerup", ...first);
+    await key({ key: "ArrowRight" });
+    await key({ key: "ArrowRight" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 900)));
+    await key({ key: "ArrowRight" });
+    expect(inputValue("Point 1 across")).toBeCloseTo(4.03, 6);
+    await click("Undo path edit");
+    expect(inputValue("Point 1 across")).toBeCloseTo(4.02, 6);
+    await click("Undo path edit");
+    expect(inputValue("Point 1 across")).toBe(4);
+    const across = query<HTMLInputElement>(
+      'input[aria-label="Point 1 across"]',
+    );
+    await changeInput("Point 1 across", "5");
+    await changeInput("Point 1 across", "6");
+    await act(async () => {
+      across.focus();
+      across.blur();
+    });
+    await changeInput("Point 1 across", "7");
+    await click("Undo path edit");
+    expect(inputValue("Point 1 across")).toBe(6);
+    await click("Undo path edit");
+    expect(inputValue("Point 1 across")).toBe(4);
+  });
+
+  it("starts over without the old arrival facing and takes a plan back whole", async () => {
+    const onPlan = vi.fn(() => ({
+      ...route(),
+      name: "Planned route",
+      path: {
+        smooth: false,
+        points: [
+          [0, 0, 0],
+          [1, 0, 1],
+          [2, 0, 2],
+        ] as [number, number, number][],
+        endHeading: 2,
+      },
+    }));
+    await render({
+      motion: { ...route(), path: { ...route().path!, endHeading: 1 } },
+      onPlan,
+    });
+    const nameField = () => query<HTMLInputElement>(".path-options input");
+    const smoothBox = () => query<HTMLInputElement>(".path-smooth input");
+    const pressed = () =>
+      query<HTMLButtonElement>(
+        '[aria-label="Route timing"] button[aria-pressed="true"]',
+      ).textContent;
+    expect(container.textContent).toContain("Use path direction on arrival");
+    await click("Start over");
+    await click("Add point");
+    expect(container.textContent).not.toContain(
+      "Use path direction on arrival",
+    );
+    expect(
+      query('svg.path-map [aria-label="Facing on arrival"]')
+        .closest(".path-heading")!
+        .classList.contains("natural"),
+    ).toBe(true);
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].path.endHeading).toBeUndefined();
+    await click("Undo path edit");
+    await click("Undo path edit");
+    expect(mapPositions()).toHaveLength(5);
+    expect(container.textContent).toContain("Use path direction on arrival");
+    // A plan changes the name, smoothing and timing along with the points.
+    const destination = query<HTMLSelectElement>(
+      'select[aria-label="Route destination"]',
+    );
+    await changeSelect("Route destination", destination.options[1].value);
+    await click("Plan a clear route");
+    expect(mapPositions()).toHaveLength(3);
+    expect(nameField().value).toBe("Planned route");
+    expect(smoothBox().checked).toBe(false);
+    expect(pressed()).toBe("Keep natural pace");
+    await click("Undo path edit");
+    expect(mapPositions()).toHaveLength(5);
+    expect(nameField().value).toBe("My route");
+    expect(smoothBox().checked).toBe(true);
+    expect(pressed()).toBe("Keep duration");
+    expect(inputValue("Route duration")).toBe(12);
+    await click("Save path");
+    expect(onSave.mock.lastCall![0]).toMatchObject({
+      name: "My route",
+      duration: 12,
+      path: { smooth: true, endHeading: 1 },
+    });
+    await click("Redo path edit");
+    expect(nameField().value).toBe("Planned route");
+    expect(pressed()).toBe("Keep natural pace");
+    // Typing a name is one step until the field is left.
+    await changeInput("Route duration", "9");
+    await act(async () => {
+      const field = nameField();
+      field.focus();
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(field, "Walk over");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.blur();
+    });
+    await click("Undo path edit");
+    expect(nameField().value).toBe("Planned route");
+    expect(inputValue("Route duration")).toBe(9);
+    await click("Undo path edit");
+    expect(pressed()).toBe("Keep natural pace");
   });
 });
 
