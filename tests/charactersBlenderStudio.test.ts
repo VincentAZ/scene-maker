@@ -358,11 +358,12 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
           "",
         );
         // As modelled, before the studio scales every character to one
-        // height: from a child (Gabby, about 1.1 m) to a grown man.
+        // height: from Lunte (a settler about 1 m tall) to a grown man. A
+        // unit slip or a part lying far off would leave this range.
         gltf.scene.updateMatrixWorld(true);
         const modelled = new T.Box3().setFromObject(gltf.scene);
-        expect(modelled.max.y - modelled.min.y, asset.id).toBeGreaterThan(1);
-        expect(modelled.max.y - modelled.min.y, asset.id).toBeLessThan(2.1);
+        expect(modelled.max.y - modelled.min.y, asset.id).toBeGreaterThan(0.8);
+        expect(modelled.max.y - modelled.min.y, asset.id).toBeLessThan(2.2);
         const group = withRecordedSources(
           prepareImportedAsset(asset as Asset, gltf),
           sources,
@@ -385,8 +386,8 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
             foot.getWorldPosition(new T.Vector3()).y / height,
             asset.id,
           ).toBeLessThan(0.1);
-        // Every part sits by the bone that carries it; one that only the
-        // film's pose brings into place would lie in a heap by the feet.
+        // Every part sits by the bone that carries it; one not shaped in
+        // place would lie in a heap by the feet.
         expect(strayParts(group, height, 0.35), asset.id).toEqual([]);
         // A part hanging at the hips or above (a satchel, a backpack) moves
         // with the body, not with one thigh.

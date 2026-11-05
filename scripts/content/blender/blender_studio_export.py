@@ -103,6 +103,23 @@ rigs = [o for o in bpy.data.objects if o.type == "ARMATURE"]
 if not rigs:
     raise SystemExit("ERROR no armature in the file")
 rig = max(rigs, key=lambda r: (len(armature_users(r)), sum(b.use_deform for b in r.data.bones)))
+
+
+def bone_drivers(armature):
+    """Bones a driver turns or moves after other bones of the same rig, with
+    those bones: Einar's robot shoulder joints copy the upper arm's rotation
+    that way, while hanging from the collarbone."""
+    found = {}
+    for driver in armature.animation_data.drivers if armature.animation_data else []:
+        driven = re.match(r'pose\.bones\["(.+?)"\]\.(location|rotation_\w+|scale)$', driver.data_path)
+        sources = [t.bone_target for v in driver.driver.variables if v.type == "TRANSFORMS"
+                   for t in v.targets if t.id == armature and t.bone_target]
+        if driven and sources:
+            found.setdefault(driven.group(1), set()).update(sources)
+    return found
+
+
+driven_by = bone_drivers(rig)
 for other in rigs:
     other.data.pose_position = "REST"
     # Drivers only serve the animators' controls; renamed bones would make
@@ -915,12 +932,26 @@ def attached_to(owner, pose_bone, seen):
     return pairs
 
 
+def moved_by(owner, bone, seen):
+    """What a bone's drivers and constraints make it follow."""
+    pairs = []
+    if owner == rig:
+        for source in driven_by.get(bone.name, ()):
+            if (owner.name, source) not in seen:
+                pairs += followed(rig, source, seen | {(owner.name, bone.name)})
+    pairs += attached_to(owner, bone, seen)
+    total = sum(w for _, w in pairs)
+    return [(name, w / total) for name, w in pairs]
+
+
 def followed(owner, control, seen=frozenset(), renamed=False):
     """The deform bones, with weights, that a bone of the rig (or of a prop's
-    own rig hanging from it) moves with: for the rig, the deform bone itself,
-    the one its name stands for or the role it mentions; otherwise what its
-    constraints attach it to, else the same for the bone it hangs from.
-    Names read before the renaming are translated unless `renamed`."""
+    own rig hanging from it) moves with: for the rig, the deform bone itself
+    or the one its name stands for; otherwise what its drivers or constraints
+    make it follow (a robot shoulder named after the collarbone it hangs from
+    turns with the upper arm); for the rig, the role its name mentions; else
+    the same for the bone it hangs from. Names read before the renaming are
+    translated unless `renamed`."""
     if owner == rig:
         if not renamed:
             control = current_name.get(control, control)
@@ -930,10 +961,15 @@ def followed(owner, control, seen=frozenset(), renamed=False):
         stem = CONTROL_PREFIX.sub("", control)
         if stem in stem_names:
             return [(stem_names[stem], 1.0)]
+    bone = owner.pose.bones.get(control)
+    if bone is not None:
+        pairs = moved_by(owner, bone, seen)
+        if pairs:
+            return pairs
+    if owner == rig:
         slot = role_slot_for(control)
         if slot in role_names:
             return [(role_names[slot], 1.0)]
-    bone = owner.pose.bones.get(control)
     while bone is not None:
         if owner == rig:
             if bone.bone.use_deform:
@@ -943,10 +979,9 @@ def followed(owner, control, seen=frozenset(), renamed=False):
                 return [(stem_names[stem], 1.0)]
             if family_names.get(split_side(stem)):
                 return [(family_names[split_side(stem)][-1], 1.0)]
-        pairs = attached_to(owner, bone, seen)
+        pairs = moved_by(owner, bone, seen)
         if pairs:
-            total = sum(w for _, w in pairs)
-            return [(name, w / total) for name, w in pairs]
+            return pairs
         bone = bone.parent
     return []
 
@@ -1015,9 +1050,8 @@ def touching_surface(obj, centre, reach=0.03):
 
 
 def reaches(source, point, margin=0.05):
-    """Whether a source's bounds come near a point: a helper that only the
-    film's pose brings to the part (one lying by the feet for Einar's
-    satchel buttons) has no weights to give it."""
+    """Whether a source's bounds come near a point: a helper lying away from
+    the part has no weights that fit it."""
     corners = [source.matrix_world @ Vector(c) for c in source.bound_box]
     return all(min(c[i] for c in corners) - margin <= point[i] <= max(c[i] for c in corners) + margin for i in range(3))
 
@@ -1116,7 +1150,7 @@ for obj in [o for o, how in placed_by.items() if how is None]:
     placed_by[obj] = skin(obj, fallback=True)
 unplaced = [obj for obj, how in placed_by.items() if not how]
 for obj in unplaced:
-    log("left out", obj.name, "(nothing places it but the film's pose)")
+    log("left out", obj.name, "(nothing places it)")
     meshes.remove(obj)
     bpy.data.objects.remove(obj)
 
@@ -1158,12 +1192,11 @@ def carrying_bone(obj):
     return max(tally, key=tally.get) if tally else None
 
 
-# Some parts reach their place only through the film's pose (helpers that
-# carry Einar's pockets, zip and arm hoses into position); at rest they
-# lie in a heap by the feet, far from the upper-body bone that carries
-# them. Whatever truly sits that low (boots, knee pads) hangs from a leg.
-# A whole body or a pair of arms is mostly carried by many bones, so only
-# the low parts are judged.
+# A part low down yet far from the bone that carries it was not shaped in
+# place (it would lie in a heap by the feet) and is left out rather than
+# shipped so. Whatever truly sits that low (boots, knee pads) hangs from a
+# leg. A whole body or a pair of arms is mostly carried by many bones, so
+# only the low parts are judged.
 out_of_place = []
 for obj in meshes:
     name = carrying_bone(obj)
@@ -1175,7 +1208,7 @@ for obj in meshes:
     if gap > 0.3 and middle.z - floor < tall / 3:
         out_of_place.append(obj)
 for obj in out_of_place:
-    log("left out", obj.name, "(only the film's pose puts it in place)")
+    log("left out", obj.name, "(lies far from the bone that carries it)")
     meshes.remove(obj)
     bpy.data.objects.remove(obj)
 
