@@ -21,9 +21,12 @@ const chosen = args.filter((a) => !a.startsWith("--"));
 if (args.includes("--check")) {
   const missing = categories.flatMap((category) =>
     JSON.parse(
-      fs.readFileSync(path.join(root, "shared/content", `${category}.json`), "utf8"),
+      fs.readFileSync(
+        path.join(root, "shared/content", `${category}.json`),
+        "utf8",
+      ),
     )
-      .flatMap((e) => [e.url, e.thumbnail, e.hdri])
+      .flatMap((e) => [e.url, e.thumbnail, e.hdri, e.backdrop?.image])
       .filter((url) => url?.startsWith("/content/"))
       .filter((url) => !fs.existsSync(path.join(out, url.slice(9)))),
   );

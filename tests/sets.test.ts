@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as T from "three";
-import sets from "../shared/content/sets.json";
+import catalogue from "../shared/content/sets.json";
 import { contentCredits } from "../shared/contentLibrary";
 import {
   allAssets,
@@ -25,20 +25,106 @@ import {
 } from "../src/hdriBackdrop";
 import { disposeObject } from "../src/world";
 
+/** A catalogue entry: a 3D set (url + set block) or a photo backdrop. */
+interface SetEntry {
+  id: string;
+  name: string;
+  style: string;
+  description: string;
+  url?: string;
+  thumbnail: string;
+  hdri?: string;
+  backdrop?: NonNullable<Asset["backdrop"]>;
+  set?: {
+    camera: { position: number[]; target: number[]; maxDistance: number };
+    bounds: { min: number[]; max: number[] };
+    spawn: number[];
+    heading: number;
+    walkable?: number[][];
+    collision: string;
+  };
+}
+const sets = catalogue as SetEntry[];
+// Real 3D sets come first in the catalogue, photographic backdrops last.
+const modelSets = sets.filter((set) => set.url);
+const photoSets = sets.filter((set) => set.backdrop);
 const first = () =>
-  allAssets(starterScene()).find((asset) => asset.id === sets[0].id)!;
-const withSet = (id = sets[0].id) =>
+  allAssets(starterScene()).find((asset) => asset.id === photoSets[0].id)!;
+const withSet = (id = photoSets[0].id) =>
   applyCommands(starterScene(), [{ type: "add", assetId: id }]);
+
+const licences = /^(CC0|CC BY( [34]\.0)?|CC BY-SA( [34]\.0)?|MIT)$/;
+const inside = (point: number[], min: number[], max: number[]) =>
+  point.every((value, k) => value >= min[k] && value <= max[k]);
+/** Even-odd test of (x, z) against a polygon of [x, z] points. */
+const insidePolygon = ([x, z]: number[], polygon: number[][]) => {
+  let hit = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, zi] = polygon[i];
+    const [xj, zj] = polygon[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi)
+      hit = !hit;
+  }
+  return hit;
+};
+
+describe("3D sets catalogue", () => {
+  it("lists real sets first, each with a model, a thumbnail and a complete set block", () => {
+    expect(modelSets.length).toBeGreaterThanOrEqual(1);
+    expect(sets.slice(0, modelSets.length)).toEqual(modelSets);
+    expect(photoSets.length + modelSets.length).toBe(sets.length);
+    const offered = offeredAssets(starterScene()).map((asset) => asset.id);
+    for (const set of modelSets) {
+      const asset = allAssets(starterScene()).find((a) => a.id === set.id)!;
+      expect(() => assetSchema.parse(asset)).not.toThrow();
+      expect(asset.category).toBe("environments");
+      expect(set.id).toMatch(/^set-[a-z0-9-]+$/);
+      expect(["Indoor", "Outdoor"]).toContain(set.style);
+      expect(set.url).toBe(`/content/sets/${set.id}.glb`);
+      expect(set.thumbnail).toBe(`/content/sets/${set.id}.png`);
+      if (set.hdri) expect(set.hdri).toBe(`/content/sets/${set.id}.hdr`);
+      expect(set.description).toMatch(/\d+ by \d+ metres/);
+      expect(set.backdrop).toBeUndefined();
+      const { camera, bounds, spawn, heading, walkable, collision } = set.set!;
+      const size = [0, 1, 2].map((k) => bounds.max[k] - bounds.min[k]);
+      expect(size[0]).toBeGreaterThanOrEqual(3);
+      expect(size[2]).toBeGreaterThanOrEqual(3);
+      expect(size[1]).toBeGreaterThanOrEqual(2);
+      expect(Math.max(size[0], size[2])).toBeLessThanOrEqual(120);
+      expect(inside(camera.position, bounds.min, bounds.max)).toBe(true);
+      expect(inside(camera.target, bounds.min, bounds.max)).toBe(true);
+      expect(camera.position[1]).toBeGreaterThan(0.3);
+      // The home camera looks at the cast from the +Z side.
+      expect(camera.position[2]).toBeGreaterThan(camera.target[2]);
+      expect(camera.maxDistance).toBeGreaterThanOrEqual(4);
+      expect(camera.maxDistance).toBeLessThanOrEqual(25);
+      expect(spawn).toEqual([0, 0, 0]);
+      expect(heading).toBe(0);
+      expect(inside(spawn, bounds.min, bounds.max)).toBe(true);
+      expect(bounds.min[1]).toBeLessThanOrEqual(0.02);
+      if (walkable) {
+        expect(walkable.length).toBeGreaterThanOrEqual(3);
+        expect(insidePolygon([0, 0], walkable)).toBe(true);
+      }
+      expect(["furniture", "none"]).toContain(collision);
+      const credit = contentCredits.get(set.id)!;
+      expect(credit.author.length).toBeGreaterThan(2);
+      expect(credit.license).toMatch(licences);
+      expect(credit.source).toMatch(/^https:\/\//);
+      expect(offered).toContain(set.id);
+    }
+  });
+});
 
 describe("photographic sets catalogue", () => {
   it("offers a varied, credited CC0 library of valid environment assets", () => {
-    expect(sets.length).toBeGreaterThanOrEqual(15);
+    expect(photoSets.length).toBeGreaterThanOrEqual(15);
     expect(new Set(sets.map((set) => set.id)).size).toBe(sets.length);
-    expect(new Set(sets.map((set) => set.style))).toEqual(
-      new Set(["Indoor", "Outdoor", "Night"]),
+    expect(new Set(photoSets.map((set) => set.style))).toEqual(
+      new Set(["Photo backdrop"]),
     );
     const offered = offeredAssets(starterScene()).map((asset) => asset.id);
-    for (const set of sets) {
+    for (const set of photoSets) {
       const asset = allAssets(starterScene()).find((a) => a.id === set.id)!;
       expect(() => assetSchema.parse(asset)).not.toThrow();
       expect(asset.category).toBe("environments");
@@ -71,10 +157,12 @@ describe("placing a photographic set", () => {
   it("sets the studio base with the set as environment asset and validates", () => {
     const scene = withSet();
     expect(scene.environment).toBe("studio");
-    expect(scene.environmentAssetId).toBe(sets[0].id);
+    expect(scene.environmentAssetId).toBe(photoSets[0].id);
     expect(validateScene(JSON.parse(JSON.stringify(scene)))).toEqual(scene);
-    expect(photoSetAsset(scene)?.id).toBe(sets[0].id);
-    expect(scene.entities.some((e) => e.assetId === sets[0].id)).toBe(false);
+    expect(photoSetAsset(scene)?.id).toBe(photoSets[0].id);
+    expect(scene.entities.some((e) => e.assetId === photoSets[0].id)).toBe(
+      false,
+    );
   });
 
   it("returns to the plain studio and still rejects unknown environments", () => {
@@ -92,7 +180,7 @@ describe("placing a photographic set", () => {
     const scene = applyCommands(withSet(), [
       { type: "scene", changes: { lighting: "moonlight" } },
     ]);
-    expect(scene.environmentAssetId).toBe(sets[0].id);
+    expect(scene.environmentAssetId).toBe(photoSets[0].id);
   });
 });
 
@@ -244,12 +332,12 @@ describe("camera in a photographic set", () => {
     // Regression: the position clamp used to fire at the ceiling while the
     // creator orbited upward at full zoom-out, and the orbit's damping then
     // kept pulling the camera in for a second after the mouse was released.
-    for (const set of sets) {
-      const limits = backdropLimits(set.backdrop);
+    for (const set of photoSets) {
+      const limits = backdropLimits(set.backdrop!);
       const { target, azimuth, minPolar, maxDistance } = limits;
       expect(maxDistance).toBeGreaterThanOrEqual(4.5);
       expect(maxDistance).toBeGreaterThan(
-        backdropHome(set.backdrop).position.distanceTo(target),
+        backdropHome(set.backdrop!).position.distanceTo(target),
       );
       for (let i = 0; i <= 6; i++)
         for (let j = 0; j <= 6; j++)
@@ -264,7 +352,7 @@ describe("camera in a photographic set", () => {
               .multiplyScalar(radius)
               .add(target);
             const before = position.clone();
-            expect(keepInsideBackdrop(position, set.backdrop)).toBe(false);
+            expect(keepInsideBackdrop(position, set.backdrop!)).toBe(false);
             expect(position.distanceTo(before)).toBe(0);
           }
     }
@@ -301,7 +389,7 @@ describe("exporting a photographic set", () => {
       await productionPackage(scene, new ArrayBuffer(8), read),
     );
     const saved = JSON.parse(await zip.file("scene.json")!.async("string"));
-    expect(saved.environmentAssetId).toBe(sets[0].id);
+    expect(saved.environmentAssetId).toBe(photoSets[0].id);
     expect(requested.some((url) => url.startsWith("/content/"))).toBe(false);
   });
 });

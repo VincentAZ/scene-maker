@@ -1,10 +1,1737 @@
 [
   {
+    "id": "set-classroom",
+    "name": "Classroom",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A sunlit school classroom with rows of wooden desks, a blackboard, radiators and children's drawings on the walls. About 13 by 12 metres.",
+    "url": "/content/sets/set-classroom.glb",
+    "thumbnail": "/content/sets/set-classroom.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.09,
+          4.36
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 11.5
+      },
+      "bounds": {
+        "min": [
+          -7.76,
+          0,
+          -6.19
+        ],
+        "max": [
+          4.81,
+          3.1,
+          5.39
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -7.5,
+          1.32
+        ],
+        [
+          -4.62,
+          -5.76
+        ],
+        [
+          -4.54,
+          -5.57
+        ],
+        [
+          -4.2,
+          -5.59
+        ],
+        [
+          -3.84,
+          -5.29
+        ],
+        [
+          -3.37,
+          -5.25
+        ],
+        [
+          -3.01,
+          -4.95
+        ],
+        [
+          -2.81,
+          -5.03
+        ],
+        [
+          -2.4,
+          -4.86
+        ],
+        [
+          -2.31,
+          -4.66
+        ],
+        [
+          -2.12,
+          -4.75
+        ],
+        [
+          -2.04,
+          -4.55
+        ],
+        [
+          -1.65,
+          -4.72
+        ],
+        [
+          -0.81,
+          -4.38
+        ],
+        [
+          -0.7,
+          -3.85
+        ],
+        [
+          -0.26,
+          -4.15
+        ],
+        [
+          3.63,
+          -2.57
+        ],
+        [
+          2.28,
+          0.76
+        ],
+        [
+          2.08,
+          0.85
+        ],
+        [
+          1.8,
+          1.54
+        ],
+        [
+          1.88,
+          1.74
+        ],
+        [
+          1.55,
+          2.57
+        ],
+        [
+          1.35,
+          2.65
+        ],
+        [
+          1.43,
+          2.85
+        ],
+        [
+          0.76,
+          4.52
+        ],
+        [
+          -0.08,
+          4.18
+        ],
+        [
+          -0.27,
+          4.26
+        ],
+        [
+          -4.72,
+          2.45
+        ],
+        [
+          -4.8,
+          2.26
+        ],
+        [
+          -5.28,
+          2.23
+        ],
+        [
+          -5.36,
+          2.03
+        ],
+        [
+          -5.83,
+          2
+        ],
+        [
+          -6.47,
+          1.58
+        ],
+        [
+          -6.81,
+          1.61
+        ],
+        [
+          -6.89,
+          1.41
+        ],
+        [
+          -7.22,
+          1.44
+        ],
+        [
+          -7.3,
+          1.24
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Christophe Seux",
+      "license": "CC0",
+      "source": "https://www.blender.org/download/demo-files/"
+    }
+  },
+  {
+    "id": "set-modern-flat",
+    "name": "Modern flat",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A bright modern flat: an open living room with an oak floor and a bedroom, with a hall and bathroom off to the side. About 18 by 14 metres.",
+    "url": "/content/sets/set-modern-flat.glb",
+    "thumbnail": "/content/sets/set-modern-flat.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.6,
+          4.91
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 14.2
+      },
+      "bounds": {
+        "min": [
+          -11.31,
+          -1.66,
+          -4.12
+        ],
+        "max": [
+          6.29,
+          5.6,
+          9.8
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -3.11,
+          -3.78
+        ],
+        [
+          4.41,
+          -2.38
+        ],
+        [
+          3.97,
+          -0.02
+        ],
+        [
+          3.85,
+          -0.2
+        ],
+        [
+          3.41,
+          -0.28
+        ],
+        [
+          3.17,
+          -0.63
+        ],
+        [
+          2.58,
+          -0.74
+        ],
+        [
+          2.34,
+          -1.09
+        ],
+        [
+          1.9,
+          -1.17
+        ],
+        [
+          1.78,
+          -1.35
+        ],
+        [
+          1.43,
+          -1.11
+        ],
+        [
+          1.34,
+          -0.66
+        ],
+        [
+          1.46,
+          -0.49
+        ],
+        [
+          1.29,
+          -0.37
+        ],
+        [
+          1.21,
+          0.07
+        ],
+        [
+          1.45,
+          0.42
+        ],
+        [
+          2.92,
+          0.7
+        ],
+        [
+          2.65,
+          2.17
+        ],
+        [
+          2.3,
+          2.41
+        ],
+        [
+          2.54,
+          2.76
+        ],
+        [
+          2.45,
+          3.2
+        ],
+        [
+          2.1,
+          3.44
+        ],
+        [
+          1.75,
+          5.36
+        ],
+        [
+          1.99,
+          5.71
+        ],
+        [
+          1.93,
+          6.01
+        ],
+        [
+          1.81,
+          5.83
+        ],
+        [
+          0.04,
+          5.5
+        ],
+        [
+          -0.31,
+          5.74
+        ],
+        [
+          -0.21,
+          6.06
+        ],
+        [
+          -4.34,
+          5.29
+        ],
+        [
+          -4.18,
+          4.41
+        ],
+        [
+          -4.57,
+          4.03
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Marek Moravec (bed by Lech Sokolowski)",
+      "license": "CC0",
+      "source": "https://download.blender.org/demo/eevee/archiviz/README.txt"
+    }
+  },
+  {
+    "id": "set-italian-flat",
+    "name": "Italian flat",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A lived-in Italian apartment: a living room with a sofa and bookshelves opening onto a kitchen. About 25 by 24 metres.",
+    "url": "/content/sets/set-italian-flat.glb",
+    "thumbnail": "/content/sets/set-italian-flat.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          0.94,
+          3.51
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 20.5
+      },
+      "bounds": {
+        "min": [
+          -12.26,
+          -0.13,
+          -10.77
+        ],
+        "max": [
+          12.99,
+          6.84,
+          13.41
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          5.56,
+          -0.51
+        ],
+        [
+          1.29,
+          3.27
+        ],
+        [
+          0.79,
+          2.71
+        ],
+        [
+          0.37,
+          2.68
+        ],
+        [
+          -0.19,
+          3.18
+        ],
+        [
+          -0.62,
+          3.15
+        ],
+        [
+          -2.08,
+          4.44
+        ],
+        [
+          -2.1,
+          4.87
+        ],
+        [
+          -3.79,
+          6.36
+        ],
+        [
+          -6.67,
+          3.1
+        ],
+        [
+          -6,
+          2.5
+        ],
+        [
+          -5.99,
+          2.29
+        ],
+        [
+          -5.79,
+          2.51
+        ],
+        [
+          -5.36,
+          2.54
+        ],
+        [
+          -4.69,
+          1.94
+        ],
+        [
+          -4.66,
+          1.52
+        ],
+        [
+          -4.96,
+          1.18
+        ],
+        [
+          -2.94,
+          -0.61
+        ],
+        [
+          -2.91,
+          -1.03
+        ],
+        [
+          -3.44,
+          -1.17
+        ],
+        [
+          -4.33,
+          -0.37
+        ],
+        [
+          -4.93,
+          -1.05
+        ],
+        [
+          -5.14,
+          -1.06
+        ],
+        [
+          0.59,
+          -6.13
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Flavio Della Tommasa",
+      "license": "CC BY",
+      "source": "https://www.blender.org/download/demo-files/"
+    }
+  },
+  {
+    "id": "set-barcelona-pavilion",
+    "name": "Barcelona pavilion",
+    "category": "environments",
+    "style": "Outdoor",
+    "description": "Mies van der Rohe's Barcelona pavilion: a travertine plaza with a shallow pool, marble walls and a flat roof on chrome columns. About 65 by 90 metres.",
+    "url": "/content/sets/set-barcelona-pavilion.glb",
+    "thumbnail": "/content/sets/set-barcelona-pavilion.png",
+    "hdri": "/content/sets/set-barcelona-pavilion.hdr",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.6,
+          4.5
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 25
+      },
+      "bounds": {
+        "min": [
+          -45,
+          -2.52,
+          -45
+        ],
+        "max": [
+          20.28,
+          4.75,
+          45
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -45,
+          -45
+        ],
+        [
+          19.2,
+          -45
+        ],
+        [
+          19.2,
+          45
+        ],
+        [
+          -8.4,
+          45
+        ],
+        [
+          -6,
+          45
+        ],
+        [
+          -3.6,
+          45
+        ],
+        [
+          -3.6,
+          45
+        ],
+        [
+          -0.6,
+          45
+        ],
+        [
+          -0.6,
+          45
+        ],
+        [
+          0.6,
+          45
+        ],
+        [
+          0.6,
+          45
+        ],
+        [
+          2.4,
+          45
+        ],
+        [
+          2.4,
+          34.2
+        ],
+        [
+          0.6,
+          31.8
+        ],
+        [
+          0.6,
+          26.4
+        ],
+        [
+          -1.8,
+          22.2
+        ],
+        [
+          -1.8,
+          20.4
+        ],
+        [
+          -3.6,
+          18.6
+        ],
+        [
+          -9,
+          9.6
+        ],
+        [
+          -16.8,
+          1.8
+        ],
+        [
+          -18.6,
+          1.2
+        ],
+        [
+          -18.6,
+          -4.8
+        ],
+        [
+          -18,
+          -5.4
+        ],
+        [
+          -18,
+          -36
+        ],
+        [
+          -13.8,
+          -36
+        ],
+        [
+          -12.6,
+          -37.2
+        ],
+        [
+          -12.6,
+          -45
+        ],
+        [
+          -13.8,
+          -45
+        ],
+        [
+          -34.2,
+          -45
+        ],
+        [
+          -34.8,
+          -45
+        ],
+        [
+          -36,
+          -45
+        ],
+        [
+          -37.2,
+          -45
+        ],
+        [
+          -37.2,
+          -7.8
+        ],
+        [
+          -42.6,
+          -7.8
+        ],
+        [
+          -43.2,
+          -8.4
+        ],
+        [
+          -45,
+          -7.8
+        ],
+        [
+          -45,
+          -6.6
+        ],
+        [
+          -45,
+          -6.6
+        ],
+        [
+          -45,
+          -4.2
+        ],
+        [
+          -45,
+          -4.2
+        ],
+        [
+          -45,
+          -3.6
+        ]
+      ],
+      "collision": "furniture",
+      "lighting": {
+        "exposure": 1,
+        "hemisphere": 1.2,
+        "fog": false,
+        "sky": true
+      }
+    },
+    "credit": {
+      "author": "Hamza Cheggour (eMirage)",
+      "license": "CC BY",
+      "source": "https://www.blender.org/download/demo-files/"
+    }
+  },
+  {
+    "id": "set-bar",
+    "name": "Bar",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "The inside of a Parisian bistro: a long bar with stools, bottles on the shelves and small tables by the windows. About 20 by 16 metres.",
+    "url": "/content/sets/set-bar.glb",
+    "thumbnail": "/content/sets/set-bar.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.05,
+          4.36
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 15.7
+      },
+      "bounds": {
+        "min": [
+          -12.01,
+          -0.17,
+          -9.23
+        ],
+        "max": [
+          8.02,
+          7.11,
+          6.4
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -0.41,
+          5.39
+        ],
+        [
+          -1.7,
+          4.8
+        ],
+        [
+          -1.16,
+          3.95
+        ],
+        [
+          -2.4,
+          2.77
+        ],
+        [
+          -2.83,
+          2.57
+        ],
+        [
+          -3.52,
+          3.41
+        ],
+        [
+          -4.25,
+          3.18
+        ],
+        [
+          -3.55,
+          2.2
+        ],
+        [
+          -4.65,
+          1.18
+        ],
+        [
+          -5.23,
+          0.97
+        ],
+        [
+          -6.38,
+          1.9
+        ],
+        [
+          -4.67,
+          -0.03
+        ],
+        [
+          -6.2,
+          -1.25
+        ],
+        [
+          -6.53,
+          -0.98
+        ],
+        [
+          -5.85,
+          -0.3
+        ],
+        [
+          -7.1,
+          1.53
+        ],
+        [
+          -11.47,
+          -1.34
+        ],
+        [
+          -8.64,
+          -5.42
+        ],
+        [
+          -8.09,
+          -4.91
+        ],
+        [
+          -9.3,
+          -3.38
+        ],
+        [
+          -9.08,
+          -2.6
+        ],
+        [
+          -7.53,
+          -1.54
+        ],
+        [
+          -7.2,
+          -1.8
+        ],
+        [
+          -8.72,
+          -3.17
+        ],
+        [
+          -7.65,
+          -4.71
+        ],
+        [
+          -4.59,
+          -2.29
+        ],
+        [
+          -0.13,
+          -8.91
+        ],
+        [
+          0.3,
+          -8.72
+        ],
+        [
+          -4.14,
+          -2.24
+        ],
+        [
+          -2.18,
+          -0.83
+        ],
+        [
+          -0.67,
+          -0.82
+        ],
+        [
+          3.34,
+          -5.99
+        ],
+        [
+          2.91,
+          -4.83
+        ],
+        [
+          4.01,
+          -3.81
+        ],
+        [
+          4.78,
+          -3.88
+        ],
+        [
+          4.02,
+          -2.45
+        ],
+        [
+          5.14,
+          -1.58
+        ],
+        [
+          4.93,
+          -1
+        ],
+        [
+          3.78,
+          -1.57
+        ],
+        [
+          3.11,
+          -0.88
+        ],
+        [
+          2.69,
+          0.28
+        ],
+        [
+          3.82,
+          1
+        ],
+        [
+          3.61,
+          1.58
+        ],
+        [
+          2.44,
+          1.16
+        ],
+        [
+          1.95,
+          1.56
+        ],
+        [
+          0.97,
+          3.72
+        ],
+        [
+          1.34,
+          4.51
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Amazon Lumberyard",
+      "license": "CC BY 4.0",
+      "source": "https://developer.nvidia.com/orca/amazon-lumberyard-bistro"
+    }
+  },
+  {
+    "id": "set-bathroom",
+    "name": "Bathroom",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A contemporary bathroom with a freestanding tub, a double washstand, tiled floor and a rug. About 5 by 6 metres.",
+    "url": "/content/sets/set-bathroom.glb",
+    "thumbnail": "/content/sets/set-bathroom.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          0.91,
+          2.25
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 6.6
+      },
+      "bounds": {
+        "min": [
+          -1.46,
+          -0.01,
+          -1.08
+        ],
+        "max": [
+          3.24,
+          2.79,
+          4.47
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -0.28,
+          -0.18
+        ],
+        [
+          0.1,
+          -0.41
+        ],
+        [
+          1.12,
+          1.25
+        ],
+        [
+          1.53,
+          1.35
+        ],
+        [
+          1.79,
+          1.19
+        ],
+        [
+          2.96,
+          3.11
+        ],
+        [
+          1.3,
+          4.13
+        ],
+        [
+          -0.19,
+          1.7
+        ],
+        [
+          0.06,
+          1.54
+        ],
+        [
+          0.21,
+          0.92
+        ],
+        [
+          0.11,
+          0.46
+        ],
+        [
+          -0.33,
+          0.03
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Mareck",
+      "license": "CC0",
+      "source": "https://benedikt-bitterli.me/resources/"
+    }
+  },
+  {
+    "id": "set-cosy-bedroom",
+    "name": "Bedroom",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A calm bedroom with a low double bed, wooden panelling and a teapot on the side table. About 9 by 9 metres.",
+    "url": "/content/sets/set-cosy-bedroom.glb",
+    "thumbnail": "/content/sets/set-cosy-bedroom.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.21,
+          3.43
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 9.3
+      },
+      "bounds": {
+        "min": [
+          -5.43,
+          -0.2,
+          -4.25
+        ],
+        "max": [
+          3.58,
+          2.64,
+          4.57
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -4.8,
+          -0.16
+        ],
+        [
+          -3.14,
+          -2.1
+        ],
+        [
+          -3.03,
+          -2
+        ],
+        [
+          -3.61,
+          -1.32
+        ],
+        [
+          -3.58,
+          -0.89
+        ],
+        [
+          -3.04,
+          -0.83
+        ],
+        [
+          -2.46,
+          -1.51
+        ],
+        [
+          -2.49,
+          -1.94
+        ],
+        [
+          -1.42,
+          -3.19
+        ],
+        [
+          -1.48,
+          -2.65
+        ],
+        [
+          -1.14,
+          -2.36
+        ],
+        [
+          -0.72,
+          -2.39
+        ],
+        [
+          -0.52,
+          -2.62
+        ],
+        [
+          -1.79,
+          -1.14
+        ],
+        [
+          -1.87,
+          -0.81
+        ],
+        [
+          -2.29,
+          -0.78
+        ],
+        [
+          -2.28,
+          -0.57
+        ],
+        [
+          -2.68,
+          -0.33
+        ],
+        [
+          -2.64,
+          0.31
+        ],
+        [
+          -2.31,
+          0.39
+        ],
+        [
+          -2.28,
+          0.81
+        ],
+        [
+          -1.85,
+          0.78
+        ],
+        [
+          -1.77,
+          0.46
+        ],
+        [
+          -1.46,
+          0.33
+        ],
+        [
+          -1.53,
+          0.86
+        ],
+        [
+          -1.2,
+          0.94
+        ],
+        [
+          -1.06,
+          1.46
+        ],
+        [
+          -0.63,
+          1.43
+        ],
+        [
+          -0.78,
+          0.91
+        ],
+        [
+          -0.59,
+          0.68
+        ],
+        [
+          -0.52,
+          0.15
+        ],
+        [
+          0.75,
+          -1.33
+        ],
+        [
+          0.68,
+          -0.8
+        ],
+        [
+          1.02,
+          -0.5
+        ],
+        [
+          1.76,
+          -0.67
+        ],
+        [
+          3.01,
+          0.41
+        ],
+        [
+          -0.02,
+          3.94
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "SlykDrako",
+      "license": "CC0",
+      "source": "https://benedikt-bitterli.me/resources/"
+    }
+  },
+  {
+    "id": "set-country-kitchen",
+    "name": "Country kitchen",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A farmhouse kitchen with a wooden table, hanging pans, a range cooker and open shelves. About 10 by 11 metres.",
+    "url": "/content/sets/set-country-kitchen.glb",
+    "thumbnail": "/content/sets/set-country-kitchen.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.83,
+          4.25
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 10.4
+      },
+      "bounds": {
+        "min": [
+          -4.61,
+          0,
+          -3.99
+        ],
+        "max": [
+          5.51,
+          3.38,
+          6.87
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -3.6,
+          3.38
+        ],
+        [
+          -2.57,
+          1.38
+        ],
+        [
+          -2.03,
+          1.65
+        ],
+        [
+          -1.63,
+          1.52
+        ],
+        [
+          -1.22,
+          0.72
+        ],
+        [
+          -1.01,
+          0.66
+        ],
+        [
+          -1.08,
+          0.46
+        ],
+        [
+          -0.87,
+          0.06
+        ],
+        [
+          -0.67,
+          -0.01
+        ],
+        [
+          -0.46,
+          -0.41
+        ],
+        [
+          -0.53,
+          -0.61
+        ],
+        [
+          -0.33,
+          -0.67
+        ],
+        [
+          -0.32,
+          -1.01
+        ],
+        [
+          -0.05,
+          -1.21
+        ],
+        [
+          -0.12,
+          -1.41
+        ],
+        [
+          0.43,
+          -2.48
+        ],
+        [
+          0.97,
+          -2.2
+        ],
+        [
+          1.03,
+          -2
+        ],
+        [
+          0.96,
+          -1.53
+        ],
+        [
+          0.48,
+          -0.93
+        ],
+        [
+          0.67,
+          -0.33
+        ],
+        [
+          1.47,
+          0.09
+        ],
+        [
+          2.42,
+          -0.1
+        ],
+        [
+          2.36,
+          -0.64
+        ],
+        [
+          2.63,
+          -1.18
+        ],
+        [
+          2.57,
+          -1.38
+        ],
+        [
+          4.57,
+          -0.35
+        ],
+        [
+          1.34,
+          5.92
+        ],
+        [
+          -0.8,
+          4.82
+        ],
+        [
+          -1.27,
+          5.08
+        ],
+        [
+          -3,
+          4.19
+        ],
+        [
+          -3.06,
+          3.65
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Jay-Artist",
+      "license": "CC BY 3.0",
+      "source": "https://benedikt-bitterli.me/resources/"
+    }
+  },
+  {
+    "id": "set-white-living-room",
+    "name": "Living room",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A white living room with a sofa, cushions, a bookcase and framed pictures. About 8 by 9 metres.",
+    "url": "/content/sets/set-white-living-room.glb",
+    "thumbnail": "/content/sets/set-white-living-room.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.6,
+          2.2
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 9.1
+      },
+      "bounds": {
+        "min": [
+          -4.47,
+          0,
+          -6.8
+        ],
+        "max": [
+          3.39,
+          3.14,
+          2.41
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          -4.09,
+          0.27
+        ],
+        [
+          -3.83,
+          -0.44
+        ],
+        [
+          -3.64,
+          -0.53
+        ],
+        [
+          -2.72,
+          -3.06
+        ],
+        [
+          -2.52,
+          -3.15
+        ],
+        [
+          -2.37,
+          -3.58
+        ],
+        [
+          -1.95,
+          -3.42
+        ],
+        [
+          -1.56,
+          -3.6
+        ],
+        [
+          -1.25,
+          -4.45
+        ],
+        [
+          -1.43,
+          -4.83
+        ],
+        [
+          -1.72,
+          -4.93
+        ],
+        [
+          -1.51,
+          -5.5
+        ],
+        [
+          -1.23,
+          -5.4
+        ],
+        [
+          -0.13,
+          -5.79
+        ],
+        [
+          1.42,
+          -5.23
+        ],
+        [
+          1.89,
+          -4.74
+        ],
+        [
+          2.01,
+          -4.22
+        ],
+        [
+          2.58,
+          -4.01
+        ],
+        [
+          2.38,
+          -3.92
+        ],
+        [
+          2.56,
+          -3.54
+        ],
+        [
+          2.76,
+          -3.63
+        ],
+        [
+          2.65,
+          -3.34
+        ],
+        [
+          2.42,
+          -3.59
+        ],
+        [
+          1.72,
+          -3.84
+        ],
+        [
+          1.33,
+          -3.66
+        ],
+        [
+          0.97,
+          -2.68
+        ],
+        [
+          1.15,
+          -2.29
+        ],
+        [
+          1.86,
+          -2.04
+        ],
+        [
+          2.05,
+          -2.13
+        ],
+        [
+          2.14,
+          -1.93
+        ],
+        [
+          0.7,
+          2.01
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Jay-Artist",
+      "license": "CC BY 3.0",
+      "source": "https://casual-effects.com/data"
+    }
+  },
+  {
+    "id": "set-breakfast-room",
+    "name": "Breakfast room",
+    "category": "environments",
+    "style": "Indoor",
+    "description": "A bright breakfast room with a marble-topped table, chairs and tall windows. About 6 by 6 metres.",
+    "url": "/content/sets/set-breakfast-room.glb",
+    "thumbnail": "/content/sets/set-breakfast-room.png",
+    "set": {
+      "camera": {
+        "position": [
+          0,
+          1.6,
+          2.2
+        ],
+        "target": [
+          0,
+          1,
+          0
+        ],
+        "maxDistance": 7.1
+      },
+      "bounds": {
+        "min": [
+          -3.38,
+          -0.1,
+          -3.28
+        ],
+        "max": [
+          2.45,
+          2.91,
+          2.44
+        ]
+      },
+      "spawn": [
+        0,
+        0,
+        0
+      ],
+      "heading": 0,
+      "walkable": [
+        [
+          0.07,
+          2.02
+        ],
+        [
+          -2.92,
+          -0.49
+        ],
+        [
+          -2.53,
+          -0.95
+        ],
+        [
+          -2.57,
+          -0.2
+        ],
+        [
+          -1.09,
+          -0.33
+        ],
+        [
+          -1.03,
+          -0.87
+        ],
+        [
+          -0.52,
+          -1.02
+        ],
+        [
+          -0.53,
+          -2.4
+        ],
+        [
+          -1.07,
+          -2.46
+        ],
+        [
+          -1.37,
+          -2.33
+        ],
+        [
+          -0.99,
+          -2.79
+        ],
+        [
+          2,
+          -0.28
+        ]
+      ],
+      "collision": "furniture"
+    },
+    "credit": {
+      "author": "Wig42",
+      "license": "CC BY 3.0",
+      "source": "https://casual-effects.com/data"
+    }
+  },
+  {
     "id": "photo-corner-cafe",
     "name": "Corner café",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A cosy coffee shop with sofas, small tables and warm lamps on a wooden floor.",
+    "style": "Photo backdrop",
+    "description": "A cosy coffee shop with sofas, small tables and warm lamps on a wooden floor. Photographed indoors.",
     "thumbnail": "/content/sets/photo-corner-cafe.png",
     "hdri": "/content/sets/photo-corner-cafe.hdr",
     "backdrop": {
@@ -23,8 +1750,8 @@
     "id": "photo-lodge-restaurant",
     "name": "Lodge restaurant",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A bright restaurant under timber trusses, with long tables and a terracotta floor.",
+    "style": "Photo backdrop",
+    "description": "A bright restaurant under timber trusses, with long tables and a terracotta floor. Photographed indoors.",
     "thumbnail": "/content/sets/photo-lodge-restaurant.png",
     "hdri": "/content/sets/photo-lodge-restaurant.hdr",
     "backdrop": {
@@ -43,8 +1770,8 @@
     "id": "photo-living-room",
     "name": "Living room",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A sunny Italian living room with a sofa, armchairs and a rug on a terrazzo floor.",
+    "style": "Photo backdrop",
+    "description": "A sunny Italian living room with a sofa, armchairs and a rug on a terrazzo floor. Photographed indoors.",
     "thumbnail": "/content/sets/photo-living-room.png",
     "hdri": "/content/sets/photo-living-room.hdr",
     "backdrop": {
@@ -63,8 +1790,8 @@
     "id": "photo-loft-apartment",
     "name": "Loft apartment",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A white loft with an open kitchen, a bed under tall windows and a pale floor.",
+    "style": "Photo backdrop",
+    "description": "A white loft with an open kitchen, a bed under tall windows and a pale floor. Photographed indoors.",
     "thumbnail": "/content/sets/photo-loft-apartment.png",
     "hdri": "/content/sets/photo-loft-apartment.hdr",
     "backdrop": {
@@ -83,8 +1810,8 @@
     "id": "photo-small-office",
     "name": "Small office",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A working office with desks, monitors and office chairs under a wooden ceiling.",
+    "style": "Photo backdrop",
+    "description": "A working office with desks, monitors and office chairs under a wooden ceiling. Photographed indoors.",
     "thumbnail": "/content/sets/photo-small-office.png",
     "hdri": "/content/sets/photo-small-office.hdr",
     "backdrop": {
@@ -103,8 +1830,8 @@
     "id": "photo-warehouse",
     "name": "Empty warehouse",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A large, empty industrial hall with a bare concrete floor and strip lights.",
+    "style": "Photo backdrop",
+    "description": "A large, empty industrial hall with a bare concrete floor and strip lights. Photographed indoors.",
     "thumbnail": "/content/sets/photo-warehouse.png",
     "hdri": "/content/sets/photo-warehouse.hdr",
     "backdrop": {
@@ -123,8 +1850,8 @@
     "id": "photo-carpentry-workshop",
     "name": "Carpentry workshop",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A timber workshop with racks of planks, workbenches and saws.",
+    "style": "Photo backdrop",
+    "description": "A timber workshop with racks of planks, workbenches and saws. Photographed indoors.",
     "thumbnail": "/content/sets/photo-carpentry-workshop.png",
     "hdri": "/content/sets/photo-carpentry-workshop.hdr",
     "backdrop": {
@@ -143,8 +1870,8 @@
     "id": "photo-school-stage",
     "name": "School stage",
     "category": "environments",
-    "style": "Indoor",
-    "description": "The wooden stage of a school hall, in front of black stage curtains.",
+    "style": "Photo backdrop",
+    "description": "The wooden stage of a school hall, in front of black stage curtains. Photographed indoors.",
     "thumbnail": "/content/sets/photo-school-stage.png",
     "hdri": "/content/sets/photo-school-stage.hdr",
     "backdrop": {
@@ -163,8 +1890,8 @@
     "id": "photo-underground-car-park",
     "name": "Underground car park",
     "category": "environments",
-    "style": "Indoor",
-    "description": "A concrete parking garage with pillars, painted arrows and parked cars.",
+    "style": "Photo backdrop",
+    "description": "A concrete parking garage with pillars, painted arrows and parked cars. Photographed indoors.",
     "thumbnail": "/content/sets/photo-underground-car-park.png",
     "hdri": "/content/sets/photo-underground-car-park.hdr",
     "backdrop": {
@@ -183,8 +1910,8 @@
     "id": "photo-residential-street",
     "name": "Residential street",
     "category": "environments",
-    "style": "Outdoor",
-    "description": "A quiet street of brick houses and parked cars on an overcast day.",
+    "style": "Photo backdrop",
+    "description": "A quiet street of brick houses and parked cars on an overcast day. Photographed outdoors.",
     "thumbnail": "/content/sets/photo-residential-street.png",
     "hdri": "/content/sets/photo-residential-street.hdr",
     "backdrop": {
@@ -203,8 +1930,8 @@
     "id": "photo-city-park",
     "name": "City park",
     "category": "environments",
-    "style": "Outdoor",
-    "description": "A shady city park with a gravel square, a fountain and huge old fig trees.",
+    "style": "Photo backdrop",
+    "description": "A shady city park with a gravel square, a fountain and huge old fig trees. Photographed outdoors.",
     "thumbnail": "/content/sets/photo-city-park.png",
     "hdri": "/content/sets/photo-city-park.hdr",
     "backdrop": {
@@ -223,8 +1950,8 @@
     "id": "photo-backyard-garden",
     "name": "Backyard garden",
     "category": "environments",
-    "style": "Outdoor",
-    "description": "A wide lawn with flower beds and thatched gazebos under a clear sky.",
+    "style": "Photo backdrop",
+    "description": "A wide lawn with flower beds and thatched gazebos under a clear sky. Photographed outdoors.",
     "thumbnail": "/content/sets/photo-backyard-garden.png",
     "hdri": "/content/sets/photo-backyard-garden.hdr",
     "backdrop": {
@@ -243,8 +1970,8 @@
     "id": "photo-woodland",
     "name": "Woodland",
     "category": "environments",
-    "style": "Outdoor",
-    "description": "An open grove of bare trees on a flat, leafy forest floor at low sun.",
+    "style": "Photo backdrop",
+    "description": "An open grove of bare trees on a flat, leafy forest floor at low sun. Photographed outdoors.",
     "thumbnail": "/content/sets/photo-woodland.png",
     "hdri": "/content/sets/photo-woodland.hdr",
     "backdrop": {
@@ -263,8 +1990,8 @@
     "id": "photo-sandy-beach",
     "name": "Sandy beach",
     "category": "environments",
-    "style": "Outdoor",
-    "description": "A broad Mediterranean beach of fine sand, with pines and hills behind.",
+    "style": "Photo backdrop",
+    "description": "A broad Mediterranean beach of fine sand, with pines and hills behind. Photographed outdoors.",
     "thumbnail": "/content/sets/photo-sandy-beach.png",
     "hdri": "/content/sets/photo-sandy-beach.hdr",
     "backdrop": {
@@ -283,8 +2010,8 @@
     "id": "photo-parking-lot",
     "name": "Parking lot",
     "category": "environments",
-    "style": "Outdoor",
-    "description": "A large, nearly empty parking lot with painted bays in the afternoon sun.",
+    "style": "Photo backdrop",
+    "description": "A large, nearly empty parking lot with painted bays in the afternoon sun. Photographed outdoors.",
     "thumbnail": "/content/sets/photo-parking-lot.png",
     "hdri": "/content/sets/photo-parking-lot.hdr",
     "backdrop": {
@@ -303,8 +2030,8 @@
     "id": "photo-night-street",
     "name": "Night street",
     "category": "environments",
-    "style": "Night",
-    "description": "A cobbled side street at night, lit by warm street lamps, with parked cars.",
+    "style": "Photo backdrop",
+    "description": "A cobbled side street at night, lit by warm street lamps, with parked cars. Photographed at night.",
     "thumbnail": "/content/sets/photo-night-street.png",
     "hdri": "/content/sets/photo-night-street.hdr",
     "backdrop": {
@@ -323,8 +2050,8 @@
     "id": "photo-night-square",
     "name": "Town square at night",
     "category": "environments",
-    "style": "Night",
-    "description": "A paved city square at night, ringed by lit apartment blocks and bare trees.",
+    "style": "Photo backdrop",
+    "description": "A paved city square at night, ringed by lit apartment blocks and bare trees. Photographed at night.",
     "thumbnail": "/content/sets/photo-night-square.png",
     "hdri": "/content/sets/photo-night-square.hdr",
     "backdrop": {
