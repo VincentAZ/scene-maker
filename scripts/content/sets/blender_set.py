@@ -725,7 +725,8 @@ def surface_kind(material):
             see_through = True
         elif node.type == "BSDF_PRINCIPLED":
             weight, alpha = node.inputs["Transmission Weight"], node.inputs["Alpha"]
-            if not weight.is_linked and weight.default_value > 0.5:
+            # A texture on the transmission is smudges on a pane.
+            if weight.is_linked or weight.default_value > 0.5:
                 clear = True
             else:
                 solid = True
@@ -1044,18 +1045,52 @@ def rebuild_material(material, spec):
     material.use_backface_culling = False
 
 
-def ensure_uv(objects):
-    """Baking needs UVs. Objects without any get a smart projection, and so
-    do those whose UVs cover no area (their shader used generated
-    coordinates instead), or the bake would never land on them."""
-    missing = [o for o in objects if not o.data.uv_layers or float(face_uv_areas(o.data).sum()) < 1e-8]
-    for o in missing:
-        with context_objects([o]):
-            bpy.ops.object.mode_set(mode="EDIT")
-            bpy.ops.mesh.select_all(action="SELECT")
-            bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.003)
-            bpy.ops.object.mode_set(mode="OBJECT")
-    return len(missing)
+def render_uv_layer(mesh):
+    """The UV map a mesh renders with (the one its textures use)."""
+    return next((layer for layer in mesh.uv_layers if layer.active_render), mesh.uv_layers[0])
+
+
+def unfold_flat_faces(objects, materials):
+    """Baking needs UVs: the faces of `materials` that cover no UV area (a
+    mesh without a UV map, or a shader that used generated coordinates)
+    are laid out on a grid, one cell per face, each face flat in its cell.
+    They bake into their material's own texture, so sharing UV space with
+    other materials' faces is harmless. Returns the faces unfolded."""
+    count = 0
+    for o in objects:
+        me = o.data
+        wanted_slots = [k for k, s in enumerate(o.material_slots) if s.material in materials]
+        if not wanted_slots or not len(me.polygons):
+            continue
+        if not me.uv_layers:
+            me.uv_layers.new(name="UVMap")
+        layer = render_uv_layer(me)
+        if layer != me.uv_layers[0]:
+            continue
+        areas = face_uv_areas(me)
+        slots = np.empty(len(me.polygons), dtype=np.int64)
+        me.polygons.foreach_get("material_index", slots)
+        for k in wanted_slots:
+            faces = np.flatnonzero(slots == k)
+            # Under a hundredth of the map each way the bake has no texel to land on.
+            if not len(faces) or float(areas[faces].sum()) > 1e-4:
+                continue
+            grid = math.ceil(math.sqrt(len(faces)))
+            cell = 1.0 / grid
+            for n, f in enumerate(faces):
+                polygon = me.polygons[int(f)]
+                normal = polygon.normal if polygon.normal.length > 1e-9 else Vector((0, 0, 1))
+                u = normal.orthogonal().normalized()
+                v = normal.cross(u)
+                flat = [(me.vertices[i].co.dot(u), me.vertices[i].co.dot(v)) for i in polygon.vertices]
+                xs, ys = [p[0] for p in flat], [p[1] for p in flat]
+                size = max(max(xs) - min(xs), max(ys) - min(ys), 1e-9)
+                x0, y0 = (n % grid) * cell, (n // grid) * cell
+                for loop, (x, y) in zip(polygon.loop_indices, flat):
+                    layer.data[loop].uv = (x0 + cell * (0.1 + 0.8 * (x - min(xs)) / size),
+                                           y0 + cell * (0.1 + 0.8 * (y - min(ys)) / size))
+            count += len(faces)
+    return count
 
 
 def surface_area(o):
@@ -1427,9 +1462,12 @@ def bake_cache(work):
         return {}
     if manifest.get("version") != BAKE_VERSION:
         return {}
+    # A material the bake never reached (it stood in with a plain colour)
+    # is tried again.
     return {name: entry for name, entry in manifest.get("materials", {}).items()
-            if all(os.path.exists(os.path.join(work, entry[key])) for key in ("color", "roughness")
-                   if isinstance(entry[key], str))}
+            if isinstance(entry["color"], str)
+            and all(os.path.exists(os.path.join(work, entry[key])) for key in ("color", "roughness")
+                    if isinstance(entry[key], str))}
 
 
 def bake_materials(scene, materials, objects, work):
@@ -1443,7 +1481,9 @@ def bake_materials(scene, materials, objects, work):
     users = [o for o in objects if any(s.material in bake_set for s in o.material_slots)]
     if not users:
         return {}
-    ensure_uv(users)
+    unfolded = unfold_flat_faces(users, bake_set)
+    if unfolded:
+        say("laid out %d faces that had no UV area" % unfolded)
     areas = {m: 0.0 for m in bake_set}
     for o in users:
         for slot, area in polygon_areas_by_material(o).items():
