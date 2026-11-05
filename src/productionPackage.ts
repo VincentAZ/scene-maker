@@ -7,6 +7,18 @@ import {
   libraryAssetURLs,
 } from "../shared/characterLibrary";
 import { furnitureAssets, furnitureURLs } from "../shared/furnitureLibrary";
+import { contentAssets, contentCredits } from "../shared/contentLibrary";
+
+/** Licence texts a package must carry beside the library models a source
+ * made: MIT asks for Microsoft's notice with every copy of a Rocketbox
+ * character. */
+const contentLicenses = [
+  {
+    source: "https://github.com/microsoft/Microsoft-Rocketbox/",
+    url: "/library/rocketbox/LICENSE.txt",
+    destination: "assets/library/rocketbox/LICENSE.txt",
+  },
+];
 
 const adapters = {
   "blender_import.py": "blender_import.py",
@@ -49,7 +61,33 @@ export async function productionPackage(
   ]);
   const libraryAssets = libraryCharacters.filter((asset) => used.has(asset.id));
   const furniture = furnitureAssets.filter((asset) => used.has(asset.id));
+  // Realistic library models travel baked into scene.glb, so their credits
+  // (and any licence text their source requires) travel with the package.
+  const credited = contentAssets.filter(
+    (asset) => used.has(asset.id) || asset.id === scene.environmentAssetId,
+  );
+  const credits = credited.map((asset) => ({
+    name: asset.name,
+    ...contentCredits.get(asset.id)!,
+  }));
+  if (credits.length)
+    zip.file(
+      "assets/library/CREDITS.txt",
+      "Library models in this scene, with their authors, licences and sources:\n\n" +
+        credits
+          .map((c) => `${c.name}: ${c.author}, ${c.license}, ${c.source}\n`)
+          .join(""),
+    );
   const files = [
+    ...contentLicenses
+      .filter((license) =>
+        credits.some((credit) => credit.source.startsWith(license.source)),
+      )
+      .map((license) => ({
+        url: license.url,
+        destination: license.destination,
+        error: "The character library license could not be loaded.",
+      })),
     ...(used.has(motionSource.id)
       ? [
           {
@@ -187,7 +225,14 @@ blender --background --python blender_import.py -- scene.glb scene.blend
 
 Keep editing in Scene Maker
 Open this ZIP from your projects to restore the editable scene and original assets. Imported source files are included under assets/. scene.glb contains the baked production animation; scene.json retains the editable timeline.
-`,
+${
+  credits.length
+    ? `
+Credits
+The library models in this scene, their authors, licences and sources are listed in assets/library/CREDITS.txt; licence texts their sources require are beside it.
+`
+    : ""
+}`,
   );
   // A production export contains both the baked scene and its editable source
   // models. STORE duplicates large geometry/morph buffers and can exceed the

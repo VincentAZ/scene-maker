@@ -125,6 +125,40 @@ it("includes only used bundled models and their license in a portable export", a
   ).toHaveLength(1);
 });
 
+it("credits the realistic library models a scene uses and carries the licence text their source requires", async () => {
+  const scene = starterScene();
+  scene.entities[0].assetId = "rocketbox-female-child-02";
+  scene.entities = scene.entities.slice(0, 1);
+  const zip = await JSZip.loadAsync(
+    await productionPackage(scene, new ArrayBuffer(0), read),
+  );
+  const credits = await zip.file("assets/library/CREDITS.txt")!.async("string");
+  expect(credits).toContain(
+    "Amina: Microsoft, MIT, https://github.com/microsoft/Microsoft-Rocketbox/tree/0943055db6ec570bcef9f2c8b41c9e5467c808f9/Assets/Avatars/Children/Female_Child_02",
+  );
+  expect(credits.trim().split("\n")).toHaveLength(3);
+  const license = await zip
+    .file("assets/library/rocketbox/LICENSE.txt")!
+    .async("string");
+  expect(license).toContain("Copyright (c) 2020 Microsoft");
+  expect(license).toContain(
+    "The above copyright notice and this permission notice shall be included in all",
+  );
+  expect(await zip.file("README.txt")!.async("string")).toContain(
+    "assets/library/CREDITS.txt",
+  );
+  // A scene without library models carries neither.
+  const plain = await JSZip.loadAsync(
+    await productionPackage(
+      { ...scene, entities: [] },
+      new ArrayBuffer(0),
+      read,
+    ),
+  );
+  expect(plain.file("assets/library/CREDITS.txt")).toBeNull();
+  expect(plain.file("assets/library/rocketbox/LICENSE.txt")).toBeNull();
+});
+
 it("preserves a designed character, its thumbnail, recipe, starting model, and license together", async () => {
   const scene = starterScene(),
     asset = {

@@ -7,6 +7,8 @@ The characters offered in the library are realistic, rigged, textured humans dow
 - **Microsoft Rocketbox** (115 characters, [MIT](https://github.com/microsoft/Microsoft-Rocketbox/blob/master/LICENSE.md)): the complete avatar library, pinned to commit `0943055d`. Adults, children and professions (business, medical, chef, delivery, gardener, woodworker, construction, police, security, pilots, firefighters, soldiers, athletes). Display names, roles, collections and descriptions belong to Scene Maker; the ids come from the upstream folder names (`rocketbox-female-adult-01`). `Female_Party_01/02` exist under both `Adults` and `Professions` upstream, so a twin under another folder would carry its folder in its id; the Adults pair keep the plain ids. The two Professions copies hold only a stray facial FBX and are not converted.
 - **Blender Studio** characters (CC BY 4.0) and **Grab3D** rigged characters (CC0) are being added as further source modules on the same pipeline; their credits appear in the catalogue when their modules land.
 
+Microsoft's MIT notice from the pinned commit is kept verbatim at [public/library/rocketbox/LICENSE.txt](../public/library/rocketbox/LICENSE.txt). A production or Unreal package of a scene that uses library models lists each one with its author, licence and source in `assets/library/CREDITS.txt`, and carries the Rocketbox licence beside it when a Rocketbox character is among them, since the models travel baked into `scene.glb`.
+
 Sources that cannot be bundled stay with the creator's own account: Adobe Mixamo characters and animations are imported by the creator through the guided round trip (see below) and are never shipped with the app.
 
 ## Pipeline
