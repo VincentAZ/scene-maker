@@ -30,11 +30,12 @@ const first = () =>
 const withSet = (id = sets[0].id) =>
   applyCommands(starterScene(), [{ type: "add", assetId: id }]);
 
-describe("photographic sets catalogue", () => {
-  it("offers a varied, credited CC0 library of valid environment assets", () => {
+describe("sets catalogue", () => {
+  it("offers a varied, credited library of valid photographic and 3D sets", () => {
     expect(sets.length).toBeGreaterThanOrEqual(15);
     expect(new Set(sets.map((set) => set.id)).size).toBe(sets.length);
-    expect(new Set(sets.map((set) => set.style))).toEqual(
+    const photos = sets.filter((set) => !("url" in set));
+    expect(new Set(photos.map((set) => set.style))).toEqual(
       new Set(["Indoor", "Outdoor", "Night"]),
     );
     const offered = offeredAssets(starterScene()).map((asset) => asset.id);
@@ -42,13 +43,24 @@ describe("photographic sets catalogue", () => {
       const asset = allAssets(starterScene()).find((a) => a.id === set.id)!;
       expect(() => assetSchema.parse(asset)).not.toThrow();
       expect(asset.category).toBe("environments");
-      expect(asset.url).toBeUndefined();
+      expect(["Indoor", "Outdoor", "Night"]).toContain(asset.style);
+      expect(asset.thumbnail).toMatch(/^\/content\/sets\/[a-z0-9-]+\.png$/);
+      expect(asset.description.length).toBeGreaterThan(20);
+      expect(offered).toContain(set.id);
+      const credit = contentCredits.get(set.id)!;
+      expect(credit.source).toMatch(/^https:\/\//);
+      if (asset.url) {
+        // A real 3D set: a self-contained model, its staging, an open licence.
+        expect(asset.url).toMatch(/^\/content\/sets\/[a-z0-9-]+\.glb$/);
+        expect(asset.set).toBeDefined();
+        expect(asset.backdrop).toBeUndefined();
+        expect(credit.license).toMatch(/^(CC0|CC BY(-SA)?( \d\.\d)?|MIT)$/);
+        continue;
+      }
       expect(asset.hdri).toMatch(/^\/content\/sets\/[a-z0-9-]+\.hdr$/);
       expect(asset.backdrop?.image).toMatch(
         /^\/content\/sets\/[a-z0-9-]+\.jpg$/,
       );
-      expect(asset.thumbnail).toMatch(/^\/content\/sets\/[a-z0-9-]+\.png$/);
-      expect(asset.description.length).toBeGreaterThan(20);
       // The camera always fits inside the projection dome.
       const limits = backdropLimits(asset.backdrop!);
       expect(
@@ -58,11 +70,10 @@ describe("photographic sets catalogue", () => {
       expect(limits.center.length()).toBeLessThan(
         (asset.backdrop!.radius * 2) / 3,
       );
-      expect(contentCredits.get(set.id)).toMatchObject({
+      expect(credit).toMatchObject({
         license: "CC0",
         source: expect.stringMatching(/^https:\/\/polyhaven\.com\/a\/\w+$/),
       });
-      expect(offered).toContain(set.id);
     }
   });
 });

@@ -16,6 +16,7 @@ import {
 } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
 import { contentAssets, contentURL } from "./contentLibrary";
+import { keepOnSetFloor, setSchema, spawnPosition } from "./sets";
 import { thinkingLevels } from "./thinking";
 import { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE } from "./clipTiming";
 export const providers = [
@@ -285,12 +286,15 @@ export const assetSchema = z
       .regex(/^\/(uploads|content)\/[a-zA-Z0-9_./-]+\.(png|jpg|webp)$/)
       .refine((url) => !url.includes(".."))
       .optional(),
-    /** A photographic 360° set: the environment map under /content/. */
+    /** An environment map under /content/: a photographic 360° set on its
+     * own, or the image-based light of a 3D set when `url` is present too. */
     hdri: z
       .string()
       .regex(/^\/content\/[a-zA-Z0-9_./-]+\.(hdr|exr|jpg)$/)
       .refine((url) => !url.includes(".."))
       .optional(),
+    /** How a real 3D set (an environment with a model `url`) is staged. */
+    set: setSchema.optional(),
     /** How a photographic set is shown: the visible panorama, projected onto
      * the floor from the photographer's height (m) within a dome radius (m),
      * turned by a yaw in degrees. */
@@ -345,6 +349,11 @@ export const assetSchema = z
         code: "custom",
         message:
           "This helmet covers the face. Choose another look for glasses.",
+      });
+    if (asset.set && (asset.category !== "environments" || !asset.url))
+      context.addIssue({
+        code: "custom",
+        message: "A 3D set needs its model file.",
       });
   });
 export type Asset = z.infer<typeof assetSchema>;
@@ -636,6 +645,9 @@ const legacyAssets = [
 ];
 export const assets = [...legacyAssets, ...contentAssets];
 export const allAssets = (s: Scene) => [...assets, ...s.customAssets];
+/** The staging of the scene's 3D set, when it has one. */
+export const environmentSet = (s: Scene) =>
+  allAssets(s).find((a) => a.id === s.environmentAssetId)?.set;
 /** The only built-in still offered is the plain studio stage. The cartoon
  * characters, low-poly props and furniture, and code-built or furnished sets
  * are retired: a project that uses one still renders it, but the library,
@@ -731,16 +743,17 @@ export function applyCommands(
         }
         continue;
       }
+      // In a 3D set the cast appears at its spawn point, facing its heading,
+      // and a chosen spot is kept on the set's open floor.
+      const set = environmentSet(s);
       s.entities.push({
         id: cmd.id || uid(),
         assetId: a.id,
         name: cmd.name || a.name,
-        position: cmd.position || [
-          (s.entities.length % 4) - 1.5,
-          0,
-          Math.floor(s.entities.length / 4) % 3,
-        ],
-        rotation: 0,
+        position: cmd.position
+          ? keepOnSetFloor(set, cmd.position)
+          : spawnPosition(set, s.entities.length),
+        rotation: set?.heading ?? 0,
         scale: 1,
         color: a.color,
         visible: true,

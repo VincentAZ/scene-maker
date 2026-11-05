@@ -1,10 +1,12 @@
 import * as T from "three";
 import {
   allAssets,
+  environmentSet,
   type Asset,
   type Entity,
   type Scene,
 } from "../shared/scene";
+import { keepOnSetFloor } from "../shared/sets";
 import { loadImportedAsset } from "./importedAsset";
 import { createCharacter, createProp, disposeObject } from "./world";
 import {
@@ -303,8 +305,12 @@ export function sceneDragging(options: {
     }
     if (!p) g.valid = false;
     if (g.valid && p) {
+      // A drop lands on the set's open floor, never inside its walls.
       g.position.fromArray(
-        draggedPosition(p, g.offset, g.asset ? p.y : g.start.y, e.shiftKey),
+        keepOnSetFloor(
+          environmentSet(current().scene),
+          draggedPosition(p, g.offset, g.asset ? p.y : g.start.y, e.shiftKey),
+        ),
       );
     }
     if (g.asset && g.item) g.item.visible = g.valid;
