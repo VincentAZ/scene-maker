@@ -42,7 +42,7 @@ Drag any character or prop card from the side library into the 3D scene to place
 
 1. Choose characters, props, and a set from the library. The starter café is already populated.
 2. Select an object to edit its placement, size, character personality, and (for geometric presets) color. The move tool also provides a 3D translation gizmo.
-3. Select a character and add actions. Reorder actions, change their duration, and assign props in Details. Space plays/pauses; the timeline scrubs; Ctrl/Cmd+Z undoes.
+3. Select a character and add actions. Reorder actions, change their duration, and assign props in Details. In the timeline, drag an action's right edge to change its length (the actions after it follow), hold **Shift** to snap to other characters' cues, the playhead or the ruler, and **Alt** to stretch a recording's speed instead; drag a recording's left edge to trim into it (Shift cuts to the frame under the playhead). Click an action to select it (Delete removes it and moves on to the next; Escape clears the selection), and double-click a path to edit it. Space plays/pauses; the timeline scrubs; Ctrl/Cmd+Z undoes.
 4. Describe changes to the assistant. Without a provider, the **offline command helper** supports a small, explicit command vocabulary, such as “Add a coffee cup”, “Mila walk then jump”, and “Set moonlight”. It is not a simulated AI service.
 5. Use **Direct the cast** to open the collapsible, resizable conversation aside. Give the visible cast a mission or topic; connected characters respond in turn, and each completed reply saves and plays in the scene as it arrives. Speech bubbles follow the speaker, a thinking bubble marks the character preparing a reply, and the cast turns, looks and gestures toward each other. **Voice & pace** enables browser voices, individual voice choices and playback speed. **Write a line yourself** works without an AI connection. **Draw a path for this line** times a walking or running route to that line without moving the next speaker's turn. Stop preserves completed replies; continuing starts with the next speaker. Preview any transcript line, frame the cast, or save dialogue and timed SRT subtitles.
 6. Export an editable project, an animated production package, a Blender file, or a still image. Open a package again from the project browser to restore the scene and imported assets.
@@ -154,7 +154,6 @@ Requirements: Linux with Git, installed studio dependencies, a connected model w
 The bottom-left footer shows the app version and a UTC build number. Include both when reporting an issue so the running build can be identified precisely.
 
 Adjust **Thinking effort** in the top model dropdown or Studio settings → Connections. The dropdown saves immediately; Connections applies it when you save. The preference is separate for each provider and applies to scene replies, cast conversations and coding tasks. Available levels depend on the selected model; higher levels can increase latency and token use.
-
 
 ### Asset manipulation, collisions, and waypoint actions
 

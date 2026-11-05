@@ -17,7 +17,11 @@ import {
 import { setAssets, setLayout } from "./setLayouts";
 import { contentAssets, contentURL } from "./contentLibrary";
 import { thinkingLevels } from "./thinking";
-import { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE } from "./clipTiming";
+import {
+  MIN_PLAYBACK_RATE,
+  MAX_PLAYBACK_RATE,
+  routeActiveDuration,
+} from "./clipTiming";
 export const providers = [
   "openai",
   "anthropic",
@@ -507,6 +511,17 @@ export const commandSchema = z.discriminatedUnion("type", [
     id: z.string(),
     clipId: z.string(),
   }),
+  // Change how long one action lasts; the actions after it follow. A
+  // standalone imported take may also start later in its recording or play at
+  // another speed. Values outside what the action allows are clamped.
+  z.object({
+    type: z.literal("retimeClip"),
+    id: z.string(),
+    clipId: z.string(),
+    duration: z.number().finite().optional(),
+    sourceStart: z.number().finite().min(0).optional(),
+    playbackRate: z.number().finite().positive().optional(),
+  }),
   // Delete one of the creator's own actions (imports, routes) and every clip
   // that plays it. Library recordings cannot be deleted.
   z.object({
@@ -821,6 +836,51 @@ export function applyCommands(
       e.clips = e.clips.filter(
         (c) => c.id !== cmd.clipId && c.routeWait !== cmd.clipId,
       );
+    }
+    if (cmd.type === "retimeClip") {
+      const e = find(cmd.id);
+      const clip = e.clips.find((c) => c.id === cmd.clipId);
+      if (!clip) throw Error("That action is no longer in the sequence.");
+      if (clip.routeWait)
+        throw Error(
+          "This action waits in a stopped pose. Its length follows the route it waits for.",
+        );
+      const motion = allMotions(s).find((m) => m.id === clip.motionId);
+      if (cmd.duration !== undefined) {
+        // A route keeping a saved terminal hold must still travel for a moment.
+        const hold =
+          clip.routeStop === undefined && clip.routeHold !== undefined
+            ? clip.routeHold + 0.2
+            : 0;
+        const seconds = Math.min(
+          60,
+          Math.max(0.2, clip.routeStop ?? 0, hold, cmd.duration),
+        );
+        // A stopped route keeps the travelling time it was cut from; whatever
+        // the slot has beyond it holds the stopped pose.
+        if (clip.routeStop !== undefined && motion?.path) {
+          const active = routeActiveDuration(clip);
+          clip.routeActive = active;
+          if (seconds > active) clip.routeHold = seconds - active;
+          else delete clip.routeHold;
+        }
+        clip.duration = seconds;
+      }
+      if (motion?.kind === "imported" && !motion.path) {
+        // Leave at least a moment of the recording to play.
+        if (cmd.sourceStart !== undefined)
+          clip.sourceStart = Math.min(
+            cmd.sourceStart,
+            Math.max(0, motion.duration - 0.001),
+          );
+        if (cmd.playbackRate !== undefined) {
+          clip.playbackRate = Math.min(
+            MAX_PLAYBACK_RATE,
+            Math.max(MIN_PLAYBACK_RATE, cmd.playbackRate),
+          );
+          delete clip.legacyFit;
+        }
+      }
     }
     const dropMotion = (motion: Motion) => {
       s.customMotions = s.customMotions.filter((m) => m !== motion);
