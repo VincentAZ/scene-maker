@@ -102,6 +102,15 @@ describe("realistic character catalogue", () => {
         source: expect.stringContaining(`/Assets/Avatars/${cast[i].folder}`),
       });
       expect(entry.style).toBe(cast[i].style);
+      // Each person keeps the height their file was made at, hats included:
+      // children about 1.4 m, adults 1.7 to 1.9 m.
+      if (entry.style === "Children") {
+        expect(entry.height, entry.id).toBeGreaterThan(1.3);
+        expect(entry.height, entry.id).toBeLessThan(1.55);
+      } else {
+        expect(entry.height, entry.id).toBeGreaterThan(1.65);
+        expect(entry.height, entry.id).toBeLessThan(1.95);
+      }
     }
     // Upstream files Female_Party_01/02 under both Adults and Professions:
     // the Adults pair keep the plain ids the library shipped with, a twin
@@ -178,10 +187,12 @@ describe.skipIf(!built)("built realistic characters", () => {
         group.updateMatrixWorld(true);
         const rest = new T.Box3().setFromObject(group);
         const height = rest.max.y - rest.min.y;
-        if (asset.style === "Children")
-          expect(height, asset.id).toBeGreaterThan(1.1);
-        else expect(height, asset.id).toBeGreaterThan(1.5);
-        expect(height, asset.id).toBeLessThan(2.05);
+        // Shown at the recorded height (1.85 m without one), so a child is
+        // not stretched to an adult's size.
+        expect(height, asset.id).toBeCloseTo(asset.height ?? 1.85, 2);
+        const child = asset.style === "Children";
+        expect(height, asset.id).toBeGreaterThan(child ? 1.1 : 1.5);
+        expect(height, asset.id).toBeLessThan(child ? 1.6 : 2.05);
         expect(Math.abs(rest.min.y), asset.id).toBeLessThan(0.05);
 
         const scene = applyCommands(starterScene(), [

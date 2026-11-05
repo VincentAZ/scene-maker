@@ -1,9 +1,11 @@
 // Helpers shared by the content modules: a bounded worker pool, a patient
-// downloader, the Blender runner, GLB JSON rewriting and the thumbnail crop of
-// an upstream preview render.
+// downloader, the Blender runner, GLB JSON rewriting, a character's measured
+// height and the thumbnail crop of an upstream preview render.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { Box3 } from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 /** Runs `work` over `items` with at most `limit` jobs in flight. */
 export async function pool(items, limit, work) {
@@ -89,8 +91,8 @@ export function readGlb(file) {
   };
 }
 
-/** Writes `json` in front of `rest` as a GLB. */
-export function writeGlb(file, json, rest) {
+/** `json` in front of `rest` as GLB bytes. */
+function glbBytes(json, rest) {
   let text = Buffer.from(JSON.stringify(json), "utf8");
   if (text.length % 4)
     text = Buffer.concat([text, Buffer.alloc(4 - (text.length % 4), 0x20)]);
@@ -100,7 +102,12 @@ export function writeGlb(file, json, rest) {
   header.writeUInt32LE(20 + text.length + rest.length, 8);
   header.writeUInt32LE(text.length, 12);
   header.write("JSON", 16, "ascii");
-  fs.writeFileSync(file, Buffer.concat([header, text, rest]));
+  return Buffer.concat([header, text, rest]);
+}
+
+/** Writes `json` in front of `rest` as a GLB. */
+export function writeGlb(file, json, rest) {
+  fs.writeFileSync(file, glbBytes(json, rest));
 }
 
 /** Edits a GLB's JSON in place. The library is served as single files, so a
@@ -111,6 +118,30 @@ export function rewriteGlb(file, edit) {
   if ([...(json.buffers ?? []), ...(json.images ?? [])].some((e) => e.uri))
     throw Error(`${path.basename(file)} is not self-contained`);
   writeGlb(file, json, rest);
+}
+
+/** A character's standing height in metres: the bind-pose bounds of the GLB
+ * as the studio's loader sees them, so the catalogue can record how tall each
+ * person really is. Textures are dropped before parsing because Node has no
+ * image decoder, and a skinned mesh's bounds come from its bones, not from
+ * the raw vertex box. */
+export async function glbHeight(file) {
+  const { json, rest } = readGlb(file);
+  for (const material of json.materials ?? [])
+    for (const part of [material, material.pbrMetallicRoughness ?? {}])
+      for (const key of Object.keys(part))
+        if (key.endsWith("Texture")) delete part[key];
+  delete json.images;
+  delete json.textures;
+  delete json.samplers;
+  const glb = glbBytes(json, rest);
+  const gltf = await new GLTFLoader().parseAsync(
+    glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength),
+    "",
+  );
+  gltf.scene.updateMatrixWorld(true);
+  const bounds = new Box3().setFromObject(gltf.scene);
+  return bounds.max.y - bounds.min.y;
 }
 
 // Quaternion helpers for attachClaviclesToChest.

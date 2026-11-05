@@ -18,7 +18,8 @@ The Rocketbox module (`scripts/content/characters/rocketbox.mjs`) downloads each
 1. shrinks and re-encodes the 4K TGA textures in Blender (JPEG ≤2k for colour, ≤1k for normals; PNG ≤1k for the RGBA hair/lash sheet) and renames the references inside the binary FBX in place;
 2. converts the FBX with the app's own importer, `engine/convert.py` (bind frame restored from the FBX bind pose, no scale or axis change: the centimetre units survive as a 0.01 scale on the Biped root);
 3. corrects the GLB: every material becomes dielectric (Rocketbox ships them fully metallic, which renders as dark chrome), hair and lashes are alpha-tested so their cards never sort over the face, the empty "Take 001" is dropped, the children's `Bip02` prefix becomes `Bip01`, and the clavicles are re-parented from the neck to the chest while keeping their world binds, so a neck bend no longer swings the shoulders;
-4. crops the upstream preview render to the figure as the 384 px card.
+4. crops the upstream preview render to the figure as the 384 px card;
+5. records the character's standing height, measured from the converted file's bind pose (hats and helmets included), as `height` in the catalogue. The studio shows a character at its recorded height, so the children stand about 1.4 m tall and the adults 1.72–1.87 m; a character without one (an import, a Mixamo download) is sized to 1.85 m as before.
 
 Conversions are idempotent (a GLB is rebuilt only when it or its `converted-v<version>` stamp is missing), run six side by side, and `CHARACTERS_ONLY=<id>,<id>` limits a rebuild. The library was built with the bundled Blender 4.5 LTS; set `BLENDER_PATH` to pin it. Every character is recognised by the studio's rig mapping (3ds Max Biped names) with all fifteen body roles, stands on the floor and takes the studio actions; `tests/characters.test.ts` checks the catalogue and, when the files are built, every GLB.
 

@@ -15,6 +15,7 @@ import {
   blenderScript,
   cropPreview,
   download,
+  glbHeight,
   pool,
   rewriteGlb,
 } from "../lib.mjs";
@@ -359,14 +360,19 @@ export async function build({ out, cache, root, log }) {
   await pool(avatars, 6, (avatar) =>
     convert(avatar, { out, cache, root, log }),
   );
-  return cast
-    .filter((a) => fs.existsSync(path.join(out, "characters", idOf(a) + ".glb")))
-    .map((a) => ({
+  const entries = [];
+  for (const a of cast) {
+    const glb = path.join(out, "characters", idOf(a) + ".glb");
+    if (!fs.existsSync(glb)) continue;
+    entries.push({
       id: idOf(a),
       name: a.role ? `${a.name} — ${a.role}` : a.name,
       category: "characters",
       style: a.style,
       body: a.body,
+      // The files are made at real-world scale, so each person keeps their
+      // own height (a child about 1.4 m) rather than the studio's 1.85 m.
+      height: Number((await glbHeight(glb)).toFixed(3)),
       url: `/content/characters/${idOf(a)}.glb`,
       thumbnail: `/content/characters/${idOf(a)}.png`,
       description: a.description,
@@ -375,5 +381,7 @@ export async function build({ out, cache, root, log }) {
         license: "MIT",
         source: `${REPO}/tree/${COMMIT}/Assets/Avatars/${a.folder}`,
       },
-    }));
+    });
+  }
+  return entries;
 }
