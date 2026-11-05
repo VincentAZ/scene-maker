@@ -26,3 +26,28 @@ Production and Unreal ZIPs retain used library GLBs under `assets/quaternius/`, 
 Character designs use a separate local GLB and rendered PNG; the shipped starting model is never overwritten. Blender recolors the existing materials and adds head/spine-weighted glasses or a backpack. A recipe records the starting catalogue ID, palette, and wearable choices. Generated model-only exports normalize measured near-unit bone scale noise and correct inverse binds before the studio calibrates them. Production packages include the recipe, generated GLB, preview, starting model, and license. Reopening uploads the generated model and preview to new local filenames.
 
 Contact actions still use the studio's geometric approximations. The pack does not add facial animation, physical collision solving, automatic Mixamo service access, or validated Unreal playback.
+
+## Grab3D realistic characters
+
+Nine rigged humans from [Grab3D](https://grab3d.com/models/characters/) join the Rocketbox cast: Soldier, Samurai, Pirate captain, Ninja, Armoured knight, Sci-fi trooper, Cyborg courier, Man in a T-shirt and Woman in a sports top. Every package is dedicated to the public domain (CC0 1.0) by its author, Alexander Popov; the models are AI-assisted (a Meshy image-to-3D base cleaned up, textured and rigged in Blender, which the package's `LICENSE.txt` discloses), so the catalogue credits them as "Alexander Popov (Grab3D), AI-assisted" with each model page as the source. `scripts/content/characters/grab3d.mjs` downloads the rigged GLB with its `manifest.json` and `LICENSE.txt` into `content/.cache/grab3d/<slug>/`, refuses any package whose licence text is not the CC0 dedication, and converts it with glTF Transform: welded and simplified to at most 120k triangles (meshopt keeps the skin weights), the bundled walk and run clips dropped, textures kept at 2048 px, the spine renamed the Mixamo way (`Spine`, `Spine1`, `Spine2` counting up from the hips) and the material made dielectric unless the outfit carries metal. Thumbnails are EEVEE renders of the converted file, framed like the Rocketbox previews. `node scripts/build-grab3d.mjs` builds this source alone and merges its entries into `shared/content/characters.json`.
+
+The skeleton is Meshy's 24-joint humanoid: hips, a three-segment spine, neck, head, shoulders, arms, hands, legs, feet and toes. There are no face bones, and only the Samurai and the Viking carry finger bones (added in Blender by the author), so the other hands stay in their relaxed rest pose while the arms act. The ankle joints sit a little up the shin, which is why the tests check the floor contact of the mesh rather than the joint height.
+
+Every candidate was converted and reviewed as a thumbnail, as face and hand close-ups and in the studio (a walk route to the upholstered armchair, Wave hello, Sit down). The creator wants nothing that looks fake, so only convincing characters ship:
+
+| Model                 | Decision | Why                                                                                |
+| --------------------- | -------- | ---------------------------------------------------------------------------------- |
+| Soldier               | kept     | Realistic face and kit; gloves hide the lack of finger bones.                      |
+| Samurai               | kept     | Realistic face, lacquered armour, finger bones.                                    |
+| Pirate captain        | kept     | Realistic face, detailed coat and sash.                                            |
+| Ninja                 | kept     | Masked face with realistic eyes, convincing cloth.                                 |
+| Armoured knight       | kept     | Clean plate armour; the face is the most stylised of the kept set but not uncanny. |
+| Sci-fi trooper        | kept     | Visored helmet, clean plating, no face to go wrong.                                |
+| Cyborg courier        | kept     | Realistic face, believable prosthetics.                                            |
+| Man in a T-shirt      | kept     | Plain realistic body, usable as an everyday character.                             |
+| Woman in a sports top | kept     | Plain realistic body, usable as an everyday character.                             |
+| Firefighter           | rejected | Cartoon face (animated-film style).                                                |
+| Chef                  | rejected | Cartoon face and proportions.                                                      |
+| Viking                | rejected | Heroic proportions, oversized hands, cartoon face.                                 |
+| Elderly woman         | rejected | Painterly, stylised face.                                                          |
+| Teenager              | rejected | Anime-style face with oversized eyes.                                              |

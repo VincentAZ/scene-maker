@@ -22,7 +22,10 @@ const file = (url: string) => path.join(content, url.slice("/content/".length));
 // The files are downloaded by `node scripts/build-content.mjs characters`.
 const built =
   characters.length > 0 && characters.every((c) => fs.existsSync(file(c.url)));
-const assets = contentAssets.filter((a) => a.category === "characters");
+// Other sources (Grab3D) have their own tests.
+const assets = contentAssets.filter(
+  (a) => a.category === "characters" && a.id.startsWith("rocketbox-"),
+);
 
 function readGlb(url: string) {
   const data = fs.readFileSync(file(url));
