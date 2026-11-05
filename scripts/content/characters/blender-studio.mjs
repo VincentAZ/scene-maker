@@ -22,14 +22,15 @@ import { fileURLToPath } from "node:url";
 const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 10;
+const CONVERTER_VERSION = 11;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../blender",
 );
 
 // folder: content/.cache/blender-studio/<folder>. blend: inside the extracted
-// zip, or the downloaded file itself. body: feminine | masculine.
+// zip, or the downloaded file itself. body: feminine | masculine. options:
+// passed to the converter (skip: name patterns of parts to leave out).
 export const cast = [
   {
     id: "blender-rain",
@@ -42,7 +43,7 @@ export const cast = [
     blend: "Rain v3.3/rain_v3.2.blend",
     body: "feminine",
     description:
-      "A young woman with an undercut and a swept-back ponytail, in a white tank top, blue jeans and sneakers. Blender Studio's Rain, version 3.",
+      "A young woman with an undercut and a swept-back ponytail, in a white tank top, blue jeans and sneakers. Blender Studio's Rain, version 3, adapted for the studio.",
   },
   {
     id: "blender-snow",
@@ -55,7 +56,7 @@ export const cast = [
     blend: "Snow/snow_v4.2.blend",
     body: "masculine",
     description:
-      "A young man with his dark hair tied in a top knot, in a grey V-neck T-shirt, jeans and trainers. Blender Studio's Snow, version 4.",
+      "A young man with his dark hair tied in a top knot, in a grey V-neck T-shirt, jeans and trainers. Blender Studio's Snow, version 4, adapted for the studio.",
   },
   {
     id: "blender-einar",
@@ -66,9 +67,11 @@ export const cast = [
     sha256: "3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7",
     file: "einar-v1.zip",
     blend: "einar_release_v1.blend",
+    // The film's injury decals.
+    options: { skip: ["blood"] },
     body: "masculine",
     description:
-      "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1.",
+      "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1, adapted for the studio.",
   },
   {
     id: "blender-phil",
@@ -80,7 +83,7 @@ export const cast = [
     file: "phil.blend",
     body: "masculine",
     description:
-      "A big, round-faced teenager with curly red hair, in a dark T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1.",
+      "A big, round-faced teenager with curly red hair, in a dark T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
   },
   {
     id: "blender-jay",
@@ -92,7 +95,7 @@ export const cast = [
     file: "jay.blend",
     body: "masculine",
     description:
-      "A lanky teenager in a black bucket hat, red shutter shades, a white track jacket, a gold chain, red shorts and chunky trainers: the would-be eighties music star of the open movie Sprite Fright. Blender Studio's Jay, version 1.",
+      "A lanky teenager in a black bucket hat, red shutter shades, a white track jacket, a gold chain, red shorts and chunky trainers: the would-be eighties music star of the open movie Sprite Fright. Blender Studio's Jay, version 1, adapted for the studio.",
   },
   {
     id: "blender-victoria",
@@ -104,7 +107,7 @@ export const cast = [
     file: "victoria.blend",
     body: "feminine",
     description:
-      "A teenage girl with a huge mane of yellow and orange hair, in a pink dress, black tights and long black gloves, with bead necklaces and teal boots: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1.",
+      "A teenage girl with a huge mane of yellow and orange hair, in a pink dress, black tights and long black gloves, with bead necklaces and teal boots: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
   },
   {
     id: "blender-phileas",
@@ -116,7 +119,7 @@ export const cast = [
     file: "phileas.blend",
     body: "masculine",
     description:
-      "Sir Phileas Fish, an explorer with a purple fish's head, big round eyes and a fin on top, in an orange jumpsuit with a backpack and white boots, from Blender Studio's Settlers. Blender Studio's Phileas, version 3.",
+      "Sir Phileas Fish, an explorer with a purple fish's head, big round eyes and a fin on top, in an orange jumpsuit with a backpack and white boots, from Blender Studio's Settlers. Blender Studio's Phileas, version 3, adapted for the studio.",
   },
   {
     id: "blender-gabby",
@@ -128,7 +131,7 @@ export const cast = [
     file: "gabby.blend",
     body: "feminine",
     description:
-      "A freckled girl whose teal hair curls up like a devil's horns, with goggles on her head, a white T-shirt, purple shorts and yellow boots: the only settler who is (probably) human, from Blender Studio's Settlers. Blender Studio's Gabby, version 3.",
+      "A freckled girl whose teal hair curls up like a devil's horns, with goggles on her head, a white T-shirt, purple shorts and yellow boots: the only settler who is (probably) human, from Blender Studio's Settlers. Blender Studio's Gabby, version 3, adapted for the studio.",
   },
   {
     id: "blender-lunte",
@@ -140,7 +143,7 @@ export const cast = [
     file: "lunte.blend",
     body: "masculine",
     description:
-      "A settler in a boxy metal mask that somehow still shows his face, ready to explore, from Blender Studio's Settlers. Blender Studio's Lunte, version 4.",
+      "A settler with a shock of orange hair and a boxy metal mask that somehow still shows his glowing eyes and grin, in a dark suit with a backpack, from Blender Studio's Settlers. Blender Studio's Lunte, version 4, adapted for the studio.",
   },
 ];
 const idOf = (c) => c.id;

@@ -270,6 +270,10 @@ for obj in [rig, *meshes]:
 # the neutral body with every modelling modifier baked in.
 scene.frame_set(scene.frame_start)
 for obj in meshes:
+    # Film files drive detail parts' viewport visibility (Einar's jacket
+    # pockets, his arm's hoses); the drivers would hide them again on every
+    # update, and a hidden part neither evaluates nor exports.
+    obj.animation_data_clear()
     if obj.data.users > 1:
         obj.data = obj.data.copy()
     if obj.data.shape_keys:
@@ -291,6 +295,8 @@ for obj in meshes:
     evaluated = obj.evaluated_get(depsgraph)
     mesh = bpy.data.meshes.new_from_object(evaluated, preserve_all_data_layers=True, depsgraph=depsgraph)
     if not len(mesh.polygons):
+        # A guide curve, or a part the film masks away in this outfit.
+        log("left out", obj.name, "(no faces at rest)")
         bpy.data.meshes.remove(mesh)
         continue
     mesh.name = "EXPORT-" + obj.name
@@ -796,6 +802,7 @@ def transfer_weights(obj, source):
     """Nearest-face weights from a skinned mesh, frozen into the part."""
     if source.name not in export_collection.objects:
         export_collection.objects.link(source)
+    source.animation_data_clear()
     source.hide_viewport = source.hide_render = False
     source.hide_set(False)
     for group in source.vertex_groups:
@@ -1367,7 +1374,7 @@ rig.hide_viewport = rig.hide_render = False
 rig.hide_set(False)
 select_only([rig, *meshes])
 bpy.ops.export_scene.gltf(
-    filepath=destination, export_format="GLB", use_visible=True,
+    filepath=destination, export_format="GLB", use_visible=False,
     export_apply=False, export_def_bones=True, export_rest_position_armature=True,
     export_skins=True, export_all_influences=False, export_influence_nb=4,
     export_morph=False, export_animations=False, export_image_format="AUTO",
