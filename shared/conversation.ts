@@ -10,6 +10,7 @@ import {
   allAssets,
 } from "./scene";
 import { interactionSessions } from "./interactions";
+import { seatedRecording } from "./motionLibrary";
 
 export const performanceActionSchema = z.object({
   motionId: z.string().min(1),
@@ -106,16 +107,19 @@ export function appendSpeech(
     const targeted = ["pick", "sip", "place", "climb", "sit"].includes(
       motion.role ?? "",
     );
+    // A take performed seated may name the seat it is held on; without one
+    // it keeps the seat the speaker already sits on.
+    const seatable = seatedRecording(motion);
     const target = scene.entities.find((e) => e.id === action.targetId);
     if (
-      targeted &&
+      (targeted || (seatable && action.targetId)) &&
       (!target ||
         !target.visible ||
         allAssets(scene).find((a) => a.id === target.assetId)?.category !==
           "props")
     )
       throw Error(`Choose a visible prop for ${motion.name}.`);
-    if (!targeted && action.targetId)
+    if (!targeted && !seatable && action.targetId)
       throw Error(`${motion.name} does not take a prop target.`);
     return { ...action, duration: action.duration ?? motion.duration };
   });

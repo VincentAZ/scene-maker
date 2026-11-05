@@ -8,6 +8,7 @@ import {
   type Scene,
   type Motion,
 } from "./scene";
+import { seatedRecording } from "./motionLibrary";
 /** A disposable rehearsal. It never writes into the creator's scene. */
 export function actionPreview(
   scene: Scene,
@@ -79,7 +80,11 @@ export function actionPreview(
   actor.scale = view === "original" ? 1 : original?.scale || 1;
   if (view === "character" && original?.color) actor.color = original.color;
   let targetId: string | undefined;
-  if (["sit", "stand"].includes(motion.role ?? "")) {
+  // Sitting down, standing up and takes performed seated rehearse on a bench.
+  // The original-skeleton copy is a private take the catalogue does not know,
+  // so that comparison plays as recorded, without a seat.
+  const seatedTake = seatedRecording(performedMotion);
+  if (["sit", "stand"].includes(motion.role ?? "") || seatedTake) {
     preview = applyCommands(preview, [
       {
         type: "add",
@@ -120,7 +125,9 @@ export function actionPreview(
   }
   const performer = preview.entities[0];
   performer.clips = [
-    ...(motion.role === "stand"
+    // Standing up and a seated take follow a Sit down onto the bench, so the
+    // rehearsal shows the seated hold without asking for one.
+    ...(motion.role === "stand" || seatedTake
       ? [{ id: "preview-sit", motionId: "sit", duration: 3, targetId }]
       : []),
     ...(motion.role === "place"

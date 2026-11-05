@@ -48,6 +48,7 @@ import {
   allMotions,
 } from "../shared/scene";
 import { entityPose, type Pose } from "../shared/animation";
+import { seatedRecording } from "../shared/motionLibrary";
 import { defaultLadder, type Point } from "../shared/ladder";
 import { measureSeatBody, applySeatSupport } from "./seating";
 import { sampleWithTransitions } from "./transitions";
@@ -435,6 +436,7 @@ export function applyEntityPose(
   group.visible = e.visible;
   group.userData.climb = pose.climb;
   group.userData.seat = pose.seat;
+  group.userData.seatWarning = pose.seatWarning;
   group.userData.motionWarning =
     e.visible &&
     e.clips.some(
@@ -673,11 +675,10 @@ function applyUnblendedEntityPose(
   const bones = group.userData.bones as Record<string, T.Bone> | undefined;
   if (
     !group.userData.seatBody &&
-    entity.clips.some(
-      (c) =>
-        allMotions(scene).find((m) => m.id === c.motionId)?.role === "sit" &&
-        c.targetId,
-    )
+    entity.clips.some((c) => {
+      const motion = allMotions(scene).find((m) => m.id === c.motionId);
+      return c.targetId && (motion?.role === "sit" || seatedRecording(motion));
+    })
   ) {
     applyEntityPose(group, entity, scene, 0, false, {
       root: [...entity.position],

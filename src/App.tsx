@@ -1,12 +1,16 @@
 import { usePlayhead } from "./usePlayhead";
 import { routeActiveDuration } from "../shared/clipTiming";
-import { importedTakeLabel } from "../shared/animation";
+import { entityPose, importedTakeLabel } from "../shared/animation";
+import { loadImportedAsset } from "./importedAsset";
+import { disposeObject } from "./world";
+import { measureSeatSurface } from "./seatSurface";
 import { studioVersion, studioBuild } from "./version";
 import { CodingAssistant } from "./CodingAssistant";
 import { ChatExportMenu } from "./ChatExportMenu";
 import { exportAssistantChat, exportFilename } from "./code/transcriptExport";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
+  Armchair,
   Clapperboard,
   Sparkles,
   Plus,
@@ -56,14 +60,20 @@ import { ActionPreview } from "./ActionPreview";
 import { ImportedClipTiming } from "./ImportedClipTiming";
 import { TimelineTrack, type TimelineTrackProps } from "./TimelineTrack";
 import { clipAfterRemoval, durationBounds } from "./timelineGeometry";
-import { motionDetails } from "../shared/motionLibrary";
+import { motionDetails, seatedRecording } from "../shared/motionLibrary";
 import { ActionLibrary } from "./ActionLibrary";
 import { AssetLibrary } from "./AssetLibrary";
 import { CharacterCreator } from "./CharacterCreator";
 import { libraryEntry } from "../shared/characterLibrary";
 import { furnitureEntry } from "../shared/furnitureLibrary";
 import { setLayout } from "../shared/setLayouts";
-import { seatProfile, nearestSeat } from "../shared/seating";
+import {
+  seatProfile,
+  nearestSeat,
+  reseat,
+  seatedAddPlan,
+  missingSitDown,
+} from "../shared/seating";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
 import { savePathCommands, type PathFrame } from "../shared/path";
@@ -262,6 +272,7 @@ export default function App() {
     [connectionsRevision, setConnectionsRevision] = useState(0),
     [castProgress, setCastProgress] = useState<CastProgressState | null>(null),
     [exporting, setExporting] = useState(false),
+    [measuringSeat, setMeasuringSeat] = useState(false),
     [projects, setProjects] = useState<
       { id: string; name: string; environment: string; updated: number }[]
     >([]),
@@ -939,6 +950,30 @@ export default function App() {
   );
   const update = (id: string, changes: Partial<Entity>, coalesce?: string) =>
     execute([{ type: "update", id, changes }], coalesce);
+  // An imported chair becomes a seat once its sitting surface is measured
+  // from its own model, the way the library's chairs were.
+  async function measureSeat(asset: Asset) {
+    setMeasuringSeat(true);
+    try {
+      const model = await loadImportedAsset(asset);
+      const seat = measureSeatSurface(model);
+      disposeObject(model);
+      if (!seat) {
+        report(
+          `No level sitting surface at least 20 cm wide was found on ${asset.name} between knee and table height.`,
+        );
+        return;
+      }
+      if (execute([{ type: "setSeat", assetId: asset.id, seat }]))
+        toast(
+          `${asset.name} is ready for sitting: its seat is ${Math.round(seat.position[1] * 100)} cm up.`,
+        );
+    } catch (error) {
+      report((error as Error).message);
+    } finally {
+      setMeasuringSeat(false);
+    }
+  }
   function add(asset: Asset, position?: [number, number, number]) {
     const before = sceneRef.current.entities.length;
     try {
@@ -1066,30 +1101,83 @@ export default function App() {
       toast("Add a ladder from Props, then try this action.");
       return;
     }
-    const seat =
+    // A seated take nobody sat down on yet gets this Sit down put in front of
+    // it, on its own seat; otherwise Sit down goes on the nearest seat.
+    const gap =
       motion.role === "sit"
+        ? missingSitDown(actor.clips, allMotions(current))
+        : undefined;
+    const seat =
+      motion.role === "sit" && !gap
         ? nearestSeat(current, allAssets(current), actor)
         : undefined;
-    if (motion.role === "sit" && !seat) {
+    if (motion.role === "sit" && !gap && !seat) {
       toast(
         "Add a chair with a sitting surface from Props, then try this action.",
       );
       return;
     }
+    // A take performed seated goes on the nearest seat, after a Sit down
+    // when the actor is still standing. Without a seat it is added as it is.
+    const seated = seatedAddPlan(
+      current,
+      allAssets(current),
+      allMotions(current),
+      actor.id,
+      motion.id,
+    );
     try {
+      const library = studioLibraryCommands(current, studioLibrary, {
+        motionIds: [motion.id],
+      });
+      if (gap) {
+        const clips = [...actor.clips];
+        clips.splice(gap.index, 0, {
+          id: uid(),
+          motionId: motion.id,
+          duration: motion.duration,
+          ...(motion.kind === "imported" ? { playbackRate: 1 } : {}),
+          targetId: gap.targetId,
+          transition: "smooth",
+        });
+        if (
+          execute([
+            ...library,
+            { type: "update", id: actor.id, changes: { clips } },
+          ])
+        )
+          toast(
+            `${motion.name} added to ${actor.name}’s sequence, before ${gap.name}`,
+          );
+        return;
+      }
       const added = execute([
-        ...studioLibraryCommands(current, studioLibrary, {
-          motionIds: [motion.id],
-        }),
+        ...library,
+        ...(seated.leadIn
+          ? [
+              {
+                type: "chain" as const,
+                id: actor.id,
+                motionId: "sit",
+                targetId: seated.targetId,
+              },
+            ]
+          : []),
         {
           type: "chain",
           id: actor.id,
           motionId: motion.id,
           ...(seat ? { targetId: seat.id } : {}),
           ...(ladder ? { targetId: ladder.id } : {}),
+          ...(seated.targetId ? { targetId: seated.targetId } : {}),
         },
       ]);
-      if (added) toast(`${motion.name} added to ${actor.name}’s sequence`);
+      if (added)
+        toast(
+          `${motion.name} added to ${actor.name}’s sequence${
+            seated.notice ? `. ${seated.notice}` : ""
+          }`,
+        );
     } catch (error) {
       report((error as Error).message);
     }
@@ -2956,6 +3044,21 @@ export default function App() {
                       }
                     />
                   </label>
+                  {selectedAsset?.url &&
+                    selectedAsset.category === "props" &&
+                    !selectedAsset.seat &&
+                    scene.customAssets.some(
+                      (asset) => asset.id === selectedAsset.id,
+                    ) && (
+                      <button
+                        className="secondary full"
+                        disabled={measuringSeat}
+                        onClick={() => void measureSeat(selectedAsset)}
+                      >
+                        <Armchair size={14} />{" "}
+                        {measuringSeat ? "Measuring…" : "Measure the seat"}
+                      </button>
+                    )}
                   {isCharacter && (
                     <>
                       {selectedAsset?.url &&
@@ -3042,6 +3145,44 @@ export default function App() {
                           const motion = allMotions(scene).find(
                             (m) => m.id === c.motionId,
                           );
+                          const target = scene.entities.find(
+                            (e) => e.id === c.targetId,
+                          );
+                          const seatAction =
+                            motion?.role === "sit" || seatedRecording(motion);
+                          // What the seat makes of this action, said once
+                          // under the action that takes the seat. Reach and
+                          // width are judged on the body the viewport
+                          // measured; until the character is loaded there
+                          // only the missing Sit down can be told.
+                          const seatNote = (() => {
+                            if (!target || !seatAction) return;
+                            const start = entity.clips
+                              .slice(0, i)
+                              .reduce((sum, clip) => sum + clip.duration, 0);
+                            const body = viewport.current?.seatingBody(
+                              entity.id,
+                            );
+                            const options = { seatBody: body };
+                            const pose = entityPose(
+                              entity,
+                              scene,
+                              start + 1e-3,
+                              options,
+                            );
+                            if (!pose.seat)
+                              return body ? pose.seatWarning : undefined;
+                            if (
+                              pose.seat.plan.targetId !== target.id ||
+                              (i > 0 &&
+                                entityPose(entity, scene, start - 1e-3, options)
+                                  .seat?.plan.targetId === target.id)
+                            )
+                              return;
+                            return body
+                              ? pose.seat.plan.warning || pose.seat.notice
+                              : pose.seat.notice;
+                          })();
                           return (
                             <div
                               className={`clip-editor${selectedClip === c.id ? " selected" : ""}`}
@@ -3056,6 +3197,16 @@ export default function App() {
                                   {c.routeWait
                                     ? "Wait for clear route"
                                     : motion?.name}
+                                  {target && (
+                                    <span className="clip-target">
+                                      {["pick", "sip", "place"].includes(
+                                        motion?.role ?? "",
+                                      )
+                                        ? " with "
+                                        : " on "}
+                                      {target.name}
+                                    </span>
+                                  )}
                                 </strong>
                                 <button
                                   aria-label={`Remove action ${i + 1}`}
@@ -3201,42 +3352,43 @@ export default function App() {
                                     <Footprints size={13} /> Edit path
                                   </button>
                                 )}
-                              {[
+                              {([
                                 "sip",
                                 "pick",
                                 "place",
                                 "climb",
                                 "sit",
-                              ].includes(
-                                allMotions(scene).find(
-                                  (m) => m.id === c.motionId,
-                                )?.kind || "",
-                              ) && (
+                              ].includes(motion?.role ?? "") ||
+                                seatAction) && (
                                 <select
                                   aria-label={`Action ${i + 1} prop`}
                                   value={c.targetId || ""}
                                   onChange={(event) =>
                                     update(entity.id, {
-                                      clips: entity.clips.map((x) =>
-                                        x.id === c.id
-                                          ? {
-                                              ...x,
-                                              targetId:
-                                                event.target.value || undefined,
-                                            }
-                                          : x,
-                                      ),
+                                      clips: seatAction
+                                        ? reseat(
+                                            entity.clips,
+                                            allMotions(scene),
+                                            c.id,
+                                            event.target.value || undefined,
+                                          )
+                                        : entity.clips.map((x) =>
+                                            x.id === c.id
+                                              ? {
+                                                  ...x,
+                                                  targetId:
+                                                    event.target.value ||
+                                                    undefined,
+                                                }
+                                              : x,
+                                          ),
                                     })
                                   }
                                 >
                                   <option value="">
-                                    {allMotions(scene).find(
-                                      (m) => m.id === c.motionId,
-                                    )?.role === "climb"
+                                    {motion?.role === "climb"
                                       ? "Choose a ladder…"
-                                      : allMotions(scene).find(
-                                            (m) => m.id === c.motionId,
-                                          )?.role === "sit"
+                                      : seatAction
                                         ? "Choose a seat…"
                                         : "Choose a prop…"}
                                   </option>
@@ -3247,14 +3399,9 @@ export default function App() {
                                       );
                                       return (
                                         asset?.category === "props" &&
-                                        (allMotions(scene).find(
-                                          (m) => m.id === c.motionId,
-                                        )?.role !== "climb" ||
+                                        (motion?.role !== "climb" ||
                                           ladderProfile(asset)) &&
-                                        (allMotions(scene).find(
-                                          (m) => m.id === c.motionId,
-                                        )?.role !== "sit" ||
-                                          seatProfile(asset))
+                                        (!seatAction || seatProfile(asset))
                                       );
                                     })
                                     .map((e) => (
@@ -3263,6 +3410,9 @@ export default function App() {
                                       </option>
                                     ))}
                                 </select>
+                              )}
+                              {seatNote && (
+                                <p className="clip-note">{seatNote}</p>
                               )}
                             </div>
                           );

@@ -109,11 +109,21 @@ export function measureSeatBody(rig: T.Group): SeatBody | undefined {
 /** Seat support is applied after body blending, leaving upper-body gestures free. */
 export function applySeatSupport(rig: T.Group, actor: Entity) {
   const sample = rig.userData.seat as SeatSample | undefined;
-  if (!sample || !actor.visible) return;
+  if (!actor.visible) return;
+  if (!sample) {
+    // A chosen seat that could not be used placed nothing; say why.
+    if (rig.userData.seatWarning && !rig.userData.motionWarning)
+      rig.userData.motionWarning = rig.userData.seatWarning;
+    return;
+  }
   if (sample.plan.warning) {
     rig.userData.motionWarning = sample.plan.warning;
     return;
   }
+  if (sample.notice)
+    rig.userData.motionNotice = [rig.userData.motionNotice, sample.notice]
+      .filter(Boolean)
+      .join(" ");
   if (sample.amount <= 0) return;
   const bones = rig.userData.bones as Record<string, T.Bone>;
   const contacts =

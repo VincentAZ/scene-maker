@@ -1,6 +1,7 @@
 import { interactionSessions } from "./interactions";
 import type { Asset, Entity, Scene, Motion } from "./scene";
 import { ease, mixPoint, turnPoint, type Point } from "./ladder";
+import { seatedRecording } from "./motionLibrary";
 
 export type SeatProfile = { position: Point; width: number; depth: number };
 export function seatProfile(asset: Asset): SeatProfile | undefined {
@@ -16,11 +17,18 @@ export function seatProfile(asset: Asset): SeatProfile | undefined {
   if (asset.style === "sofa")
     return { position: [0, 0.625, 0.08], width: 1.8, depth: 0.6 };
 }
-export function nearestSeat(scene: Scene, assets: Asset[], actor: Entity) {
+/** The closest still, visible seat, leaving out the ids in `taken`. */
+export function nearestSeat(
+  scene: Scene,
+  assets: Asset[],
+  actor: Entity,
+  taken?: Set<string>,
+) {
   return scene.entities
     .filter(
       (e) =>
         e.id !== actor.id &&
+        !taken?.has(e.id) &&
         e.visible &&
         !e.clips.length &&
         assets.some((a) => a.id === e.assetId && seatProfile(a)),
@@ -60,7 +68,11 @@ export type SeatSample = {
   amount: number;
   progress: number;
   standing: boolean;
+  /** Staging advice that does not stop the seat from placing the body. */
+  notice?: string;
 };
+/** `held`: a take performed seated has no approach. The body is already on
+ * the seat wherever the actor stood, so only the seat itself is checked. */
 export function planSeat(
   from: Point,
   heading: number,
@@ -69,6 +81,7 @@ export function planSeat(
   asset: Asset,
   supported = true,
   body?: SeatBody,
+  held = false,
 ): SeatPlan {
   const profile = seatProfile(asset)!;
   const offset = turnPoint(
@@ -94,11 +107,11 @@ export function planSeat(
     warning = `${actor.name} needs a recognizable hip and leg rig to sit here.`;
   else if (!target.visible || target.clips.length)
     warning = `Keep ${target.name} visible and still while it is occupied.`;
-  else if (Math.abs(from[1] - target.position[1]) > 0.2 * actor.scale)
+  else if (!held && Math.abs(from[1] - target.position[1]) > 0.2 * actor.scale)
     warning = `Place ${actor.name} at the floor height of ${target.name}.`;
   else if (
-    Math.hypot(from[0] - front[0], from[2] - front[2]) >
-    1.5 * actor.scale
+    !held &&
+    Math.hypot(from[0] - front[0], from[2] - front[2]) > 1.5 * actor.scale
   )
     warning = `Move ${actor.name} near the front of ${target.name} before sitting.`;
   else if (
@@ -182,21 +195,32 @@ export function validateSeating(
   }[] = [];
   for (const actor of scene.entities) {
     let time = 0,
-      occupied: (typeof uses)[number] | undefined;
+      occupied: (typeof uses)[number] | undefined,
+      // The seated take that opened the occupation when no Sit down did.
+      snapped: string | undefined;
     for (const clip of actor.clips) {
-      const kind = motions.find((m) => m.id === clip.motionId)?.role;
-      if (kind === "sit" && clip.targetId) {
-        if (occupied)
+      const motion = motions.find((m) => m.id === clip.motionId);
+      const kind = motion?.role;
+      // A take performed seated continues the occupation of its own seat,
+      // or opens one when nobody sat down before it.
+      const seatedTake = seatedRecording(motion);
+      if ((kind === "sit" || seatedTake) && clip.targetId) {
+        if (occupied && kind === "sit" && snapped)
+          throw Error(`Move Sit down before ${snapped}.`);
+        if (occupied && (kind === "sit" || occupied.targetId !== clip.targetId))
           throw Error(
             `${actor.name} is already seated. Add Stand up before sitting again.`,
           );
-        occupied = {
-          actorId: actor.id,
-          targetId: clip.targetId,
-          start: time,
-          end: Infinity,
-        };
-        if (actor.visible) uses.push(occupied);
+        if (!occupied) {
+          occupied = {
+            actorId: actor.id,
+            targetId: clip.targetId,
+            start: time,
+            end: Infinity,
+          };
+          snapped = seatedTake ? motion!.name : undefined;
+          if (actor.visible) uses.push(occupied);
+        }
       } else if (kind === "stand") {
         if (!occupied)
           throw Error(
@@ -206,6 +230,7 @@ export function validateSeating(
         occupied = undefined;
       } else if (
         occupied &&
+        !seatedTake &&
         !["idle", "talk", "wave", "bow", "pick", "sip", "place"].includes(
           kind || "",
         )
@@ -242,4 +267,100 @@ export function validateSeating(
           "Leave occupied seats in place. Put the seat down before anyone sits on it.",
         );
   return uses;
+}
+/** Where a seated recording added to the end of an actor's sequence sits: on
+ * the seat the actor already sits on (the take continues it), else on the
+ * nearest free seat after a Sit down onto it, or untargeted with advice when
+ * no seat is free. */
+export function seatedAddPlan(
+  scene: Scene,
+  assets: Asset[],
+  motions: Motion[],
+  actorId: string,
+  motionId: string,
+): { targetId?: string; leadIn?: boolean; notice?: string } {
+  const actor = scene.entities.find((e) => e.id === actorId);
+  if (!actor || !seatedRecording(motions.find((m) => m.id === motionId)))
+    return {};
+  let seat: string | undefined;
+  for (const clip of actor.clips) {
+    const motion = motions.find((m) => m.id === clip.motionId);
+    if (clip.targetId && (motion?.role === "sit" || seatedRecording(motion)))
+      seat = clip.targetId;
+    else if (motion?.role === "stand") seat = undefined;
+  }
+  if (seat) return { targetId: seat };
+  // Seats other characters still occupy when this sequence ends are taken.
+  const end = actor.clips.reduce((sum, clip) => sum + clip.duration, 0);
+  const taken = new Set(
+    validateSeating(scene, motions)
+      .filter((use) => use.actorId !== actor.id && use.end > end)
+      .map((use) => use.targetId),
+  );
+  const free = nearestSeat(scene, assets, actor, taken);
+  if (!free)
+    return {
+      notice: nearestSeat(scene, assets, actor)
+        ? "Every seat is taken. Add a chair, then choose it in Details."
+        : "Add a chair, then choose it in Details.",
+    };
+  return {
+    targetId: free.id,
+    leadIn: true,
+    notice: `Sit down on ${free.name} comes first.`,
+  };
+}
+/** The first take performed seated that nobody sat down on: where the
+ * recorded Sit down belongs in the sequence, and on which seat. */
+export function missingSitDown(
+  clips: Entity["clips"],
+  motions: Motion[],
+): { index: number; targetId: string; name: string } | undefined {
+  let seated = false;
+  for (const [index, clip] of clips.entries()) {
+    const motion = motions.find((m) => m.id === clip.motionId);
+    if (motion?.role === "stand") seated = false;
+    else if (
+      motion &&
+      clip.targetId &&
+      (motion.role === "sit" || seatedRecording(motion))
+    ) {
+      if (!seated && motion.role !== "sit")
+        return { index, targetId: clip.targetId, name: motion.name };
+      seated = true;
+    }
+  }
+}
+/** Choosing another seat for one action of a seated stretch moves the whole
+ * stretch with it: the Sit down that opened it and the seated takes up to its
+ * Stand up, which all sat on the seat being replaced. Clearing a seat, or
+ * choosing one for an action that had none, changes that action alone. */
+export function reseat(
+  clips: Entity["clips"],
+  motions: Motion[],
+  clipId: string,
+  targetId: string | undefined,
+): Entity["clips"] {
+  const index = clips.findIndex((clip) => clip.id === clipId);
+  if (index < 0) return clips;
+  const previous = clips[index].targetId;
+  const motionOf = (clip: Entity["clips"][number]) =>
+    motions.find((m) => m.id === clip.motionId);
+  let from = index,
+    to = index;
+  if (previous && targetId) {
+    while (from > 0 && motionOf(clips[from - 1])?.role !== "stand") from--;
+    while (to < clips.length - 1 && motionOf(clips[to + 1])?.role !== "stand")
+      to++;
+  }
+  return clips.map((clip, i) => {
+    const motion = motionOf(clip);
+    return i === index ||
+      (i >= from &&
+        i <= to &&
+        clip.targetId === previous &&
+        (motion?.role === "sit" || seatedRecording(motion)))
+      ? { ...clip, targetId }
+      : clip;
+  });
 }
