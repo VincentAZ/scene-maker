@@ -119,11 +119,16 @@ export function combineColliders(colliders: Collider[]): Collider {
   return combined;
 }
 
+/** A set's shell — floor, walls, ceiling, a merged room — is marked passable
+ * when it loads (modelSet.ts); only its furniture-scale meshes are obstacles. */
+export const obstacleMesh = (mesh: T.Object3D) => !mesh.userData.passable;
+
 /**
  * Detached snapshot of rendered mesh bounds, including ancestors' visibility and
  * transforms. Static geometry.boundingBox is cached by Three; after editing its
  * vertices, invalidate it (boundingBox = null) or recompute it. Skin/morph bounds
- * are refreshed on every snapshot, and instances retain separate boxes.
+ * are refreshed on every snapshot, and instances retain separate boxes. Meshes
+ * the optional filter rejects are left out.
  *
  * These are conservative geometric AABBs, not triangle/physics colliders: empty
  * space inside a region's box can still block. Skins use complete-triangle
@@ -131,7 +136,10 @@ export function combineColliders(colliders: Collider[]): Collider {
  * environment meshes never fill the room between them. Material groups, shader displacement,
  * clipping, camera layers and alpha holes are not resolved.
  */
-export function snapshotCollider(root: T.Object3D): Collider {
+export function snapshotCollider(
+  root: T.Object3D,
+  include?: (mesh: T.Mesh) => boolean,
+): Collider {
   const collider: Collider = { boxes: [], bounds: new T.Box3() };
   const entries: Part[] = [];
   parts.set(collider, entries);
@@ -154,7 +162,7 @@ export function snapshotCollider(root: T.Object3D): Collider {
     entries.push({ id, matrix: matrix.clone() });
   };
   root.traverseVisible((object) => {
-    if (!(object instanceof T.Mesh)) return;
+    if (!(object instanceof T.Mesh) || (include && !include(object))) return;
     const materials = Array.isArray(object.material)
       ? object.material
       : [object.material];

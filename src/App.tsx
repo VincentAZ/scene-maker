@@ -41,6 +41,7 @@ import {
   EyeOff,
   MessageCircle,
   FolderOpen,
+  Heart,
   Sun,
   MoreHorizontal,
   X,
@@ -137,6 +138,9 @@ import {
 } from "./voiceCatalog";
 import { Viewport, type ViewportHandle } from "./Viewport";
 import { environmentAsset, photoSetAsset } from "./environmentModel";
+import { measureModelBounds } from "./importedAsset";
+import { defaultSetBlock } from "../shared/sets";
+import { Credits } from "./Credits";
 import { AssetArt } from "./AssetArt";
 import { Modal } from "./Modal";
 import { GenerateAsset, type ImportedModel } from "./GenerateAsset";
@@ -228,6 +232,7 @@ export default function App() {
       | "character"
       | "clearScene"
       | "conflict"
+      | "credits"
       | null
     >(null),
     [previewAction, setPreviewAction] = useState<{
@@ -263,9 +268,9 @@ export default function App() {
     >([]),
     [rounds, setRounds] = useState(1),
     [historyVersion, setHistoryVersion] = useState(0),
-    [importCategory, setImportCategory] = useState<"characters" | "props">(
-      "characters",
-    );
+    [importCategory, setImportCategory] = useState<
+      "characters" | "props" | "environments"
+    >("characters");
   const libraryRequest = useRef(0);
   const refreshStudioLibrary = useCallback(async () => {
     const request = ++libraryRequest.current;
@@ -1371,6 +1376,9 @@ export default function App() {
   async function importAsset(file: File) {
     setBusy(true);
     try {
+      const set = importCategory === "environments";
+      if (set && !/\.glb$/i.test(file.name))
+        throw Error("A set comes in as one GLB file with its textures inside.");
       // Motion capture arrives as an animated armature GLB; VRM as its GLB.
       file = await importableFile(file);
       const data = new FormData();
@@ -1381,6 +1389,8 @@ export default function App() {
         animations: { name: string; duration: number }[];
         hasMesh: boolean;
       }>("/api/import", { method: "POST", body: data });
+      if (set && !result.hasMesh)
+        throw Error("This file has no room to stand in. Choose a set model.");
       // A capture or animation-only take has no body to place: its takes go
       // to Actions for any cast.
       const capture = !result.hasMesh && result.animations.length > 0;
@@ -1412,9 +1422,18 @@ export default function App() {
         description: "Imported from your files.",
         ...(capture ? { motionOnly: true } : {}),
       };
+      // A set is staged from its own extent: a home camera at eye height,
+      // the cast at its origin, furniture-scale meshes as obstacles.
+      if (set) {
+        const bounds = await measureModelBounds(await file.arrayBuffer());
+        asset.set = defaultSetBlock({
+          min: bounds.min.toArray(),
+          max: bounds.max.toArray(),
+        });
+      }
       execute([
         { type: "createAsset", asset },
-        ...result.animations
+        ...(set ? [] : result.animations)
           .map((a, index, all) => ({
             ...a,
             label: importedTakeLabel(a.name, asset.name, index, all.length),
@@ -1441,6 +1460,9 @@ export default function App() {
         setFilter("My actions");
         setSearch("");
         toast(`${asset.name} is ready in Actions${skipped}`);
+      } else if (set) {
+        setTab("environments");
+        toast(`${asset.name} is ready`);
       } else {
         setSelected(sceneRef.current.entities.at(-1)!.id);
         toast(`${asset.name} is ready${skipped}`);
@@ -1811,7 +1833,9 @@ export default function App() {
                     : a.category === "environments"
                       ? setLayout(a.id)
                         ? `${setLayout(a.id)!.props.length} editable props`
-                        : "Scene backdrop"
+                        : a.url
+                          ? "Walk-in set"
+                          : "Scene backdrop"
                       : seatProfile(a)
                         ? "Ready for sitting"
                         : furnitureEntry(a)?.collection || "Scene prop"
@@ -1894,6 +1918,11 @@ export default function App() {
               </div>
             ))}
           </div>
+          <footer className="library-footer">
+            <button className="text-button" onClick={() => setModal("credits")}>
+              Library credits
+            </button>
+          </footer>
         </aside>
         <main className="main-workspace">
           <div className="scene-toolbar">
@@ -3440,6 +3469,19 @@ export default function App() {
               </span>
               <ChevronRight size={18} />
             </button>
+            <button
+              className="settings-card"
+              onClick={() => setModal("credits")}
+            >
+              <Heart size={22} />
+              <span>
+                <strong>Credits</strong>
+                <small>
+                  The artists behind the library's characters, props and sets
+                </small>
+              </span>
+              <ChevronRight size={18} />
+            </button>
             <div className="guide">
               <h3>A quick tour</h3>
               <p>
@@ -3741,6 +3783,11 @@ export default function App() {
           />
         </Modal>
       )}
+      {modal === "credits" && (
+        <Modal title="Thanks to the artists" onClose={() => setModal(null)}>
+          <Credits />
+        </Modal>
+      )}
       {modal === "import" && (
         <Modal
           error={error}
@@ -3750,9 +3797,10 @@ export default function App() {
         >
           <div className="import-content">
             <p className="muted">
-              Bring in your own characters and props, including characters from
-              Mixamo and VRoid, and BVH motion capture. Choose a GLB, FBX, VRM
-              or BVH file, up to 100 MB.
+              Bring in your own characters, props and sets, including characters
+              from Mixamo and VRoid, and BVH motion capture. Choose a GLB, FBX,
+              VRM or BVH file, up to 100 MB. A set is a single GLB in metres
+              with its textures inside.
             </p>
             <label>
               This asset is a…
@@ -3764,6 +3812,7 @@ export default function App() {
               >
                 <option value="characters">Character</option>
                 <option value="props">Prop</option>
+                <option value="environments">Set</option>
               </select>
             </label>
             <button

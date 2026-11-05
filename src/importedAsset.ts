@@ -1,5 +1,8 @@
 import * as T from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import {
   resolveMotionSource,
   allMotions,
@@ -18,6 +21,25 @@ import { embeddedHumanoidMapping } from "./vrmHumanoid";
 const downloads = new Map<string, Promise<ArrayBuffer>>();
 const DOWNLOAD_CACHE_LIMIT = 24;
 let loader: GLTFLoader | undefined;
+let textures: KTX2Loader | undefined;
+/** One loader for every import, able to read compressed files: Draco and
+ * meshopt geometry, KTX2 textures. The decoders are served under /engine. */
+function gltfLoader() {
+  if (!loader) {
+    loader = new GLTFLoader();
+    loader.setDRACOLoader(new DRACOLoader().setDecoderPath("/engine/draco/"));
+    textures = new KTX2Loader().setTranscoderPath("/engine/basis/");
+    loader.setKTX2Loader(textures);
+    loader.setMeshoptDecoder(MeshoptDecoder);
+  }
+  return loader;
+}
+/** Compressed textures are transcoded to what this renderer's GPU accepts;
+ * tell the loader about the renderer before the first file loads. */
+export function prepareLoaders(renderer: T.WebGLRenderer) {
+  gltfLoader();
+  textures!.detectSupport(renderer);
+}
 function downloadModel(url: string): Promise<ArrayBuffer> {
   let pending = downloads.get(url);
   if (!pending) {
@@ -35,18 +57,63 @@ function downloadModel(url: string): Promise<ArrayBuffer> {
   }
   return pending;
 }
+/** Bytes received so far and the file's size, 0 while unknown. */
+export type DownloadProgress = (received: number, total: number) => void;
+// A set is far larger than a character and is placed once, so its bytes are
+// streamed with progress and never kept in the session cache.
+async function streamModel(
+  url: string,
+  progress?: DownloadProgress,
+): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok)
+    throw Error(`Could not download the set file (${response.status}).`);
+  if (!response.body) return response.arrayBuffer();
+  const total = Number(response.headers.get("Content-Length")) || 0;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    progress?.(received, total);
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
+}
 
-export async function loadImportedAsset(asset: Asset): Promise<T.Group> {
+export async function loadImportedAsset(
+  asset: Asset,
+  progress?: DownloadProgress,
+): Promise<T.Group> {
   if (!asset.url)
     throw Error(`Reimport ${asset.name} to use its original motions.`);
-  const bytes = await downloadModel(asset.url);
-  loader ??= new GLTFLoader();
-  // Parse from a copy: geometry attributes keep views into the parsed buffer.
-  const gltf = await loader.parseAsync(
-    bytes.slice(0),
+  const set = asset.category === "environments";
+  const bytes = set
+    ? await streamModel(asset.url, progress)
+    : await downloadModel(asset.url);
+  // Parse cached bytes from a copy: geometry attributes keep views into the
+  // parsed buffer.
+  const gltf = await gltfLoader().parseAsync(
+    set ? bytes : bytes.slice(0),
     T.LoaderUtils.extractUrlBase(asset.url),
   );
   return prepareImportedAsset(asset, gltf);
+}
+
+/** The extent of a model file about to be imported as a set, in its own
+ * metres, so the import can be staged before the studio shows it. */
+export async function measureModelBounds(bytes: ArrayBuffer): Promise<T.Box3> {
+  const gltf = await gltfLoader().parseAsync(bytes, "");
+  gltf.scene.updateWorldMatrix(true, true);
+  return new T.Box3().setFromObject(gltf.scene, true);
 }
 
 /** Animation-only files (an armature without a mesh, e.g. a "without skin"

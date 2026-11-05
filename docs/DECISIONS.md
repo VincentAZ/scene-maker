@@ -185,3 +185,10 @@
 - A run's final status is set only after its cleanup finishes, so a follow-up sent the moment a run fails cannot race the old run's teardown.
 - Restart runs `npm run build` first and refuses to restart into a broken build. It only works when `start.sh` launched the service, which marks it with `SCENE_MAKER_LAUNCHER`, because only then is something present to bring the service back.
 - Side panels wrap long text and code instead of scrolling sideways.
+
+## Real 3D sets
+
+- A library set can be a real glTF interior or exterior (`url`, optional `hdri` for its light) staged by a `set` block: home camera, bounds, spawn point and heading, an optional walkable polygon, a collision mode and lighting notes. A photographic set stays `hdri` without `url`. A creator's own GLB imported as a set gets the same block derived from its extent, so it opens with a sensible camera and collides like a library set.
+- A 3D set brings its own floor: no studio slab is drawn or exported under it, its home view replaces the studio's, and the camera orbits freely down to the floor (the photo limits apply only to photos). With an HDR the set is lit by it, optionally as the sky; without one the lighting preset applies with the set's notes. Sets are shown clear unless they ask for fog, and the sun's shadow box follows their bounds.
+- Collisions and routes read a per-mesh decision made once when the set loads: shell meshes (floor, ceiling, anything spanning 5 m both ways, or tagged `sceneMaker.role` "shell"/"floor" in glTF extras) never block; furniture-scale meshes keep their boxes; `collision: "none"` frees everything. A one-mesh room no longer blocks every route. New cast members appear around the set's spawn point facing its heading, and drops stay on the walkable floor.
+- Large sets stream with a visible percentage and are never kept in the session download cache; the shared glTF loader reads Draco, meshopt and KTX2 files with decoders served under `/engine`. A library 3D set and its credit travel with the production package, and a Credits dialog names every library artist, licence and source.

@@ -2,6 +2,7 @@ import * as T from "three";
 import type { Entity, Scene } from "../shared/scene";
 import {
   collisionBetween,
+  obstacleMesh,
   snapshotCollider,
   type Collider,
   type CollisionObstacle,
@@ -72,7 +73,7 @@ export function sceneObstacles(
     obstacles.push({
       id: "environment",
       name: "the backdrop",
-      collider: snapshotCollider(environment),
+      collider: snapshotCollider(environment, obstacleMesh),
     });
   // Match the studio's visible level floor (Viewport.tsx), including an Empty room.
   const ground = new T.Box3(

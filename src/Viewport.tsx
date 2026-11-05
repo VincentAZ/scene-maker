@@ -33,15 +33,18 @@ import {
   loadImportedAsset,
   planningMotionSources,
   loadPlanningMotionSources,
+  prepareLoaders,
 } from "./importedAsset";
 import { EnvironmentModel, environmentModelKey } from "./environmentModel";
 import {
-  applyStageLighting,
   backdropHome,
   keepInsideBackdrop,
   ORBIT_MAX_POLAR,
   loadPhotoSet,
+  PhotoSet,
 } from "./hdriBackdrop";
+import { loadSetLight, ModelSet, setHome } from "./modelSet";
+import { applyStageLighting, type StageView } from "./stageLighting";
 import { libraryEntry } from "../shared/characterLibrary";
 import type { SeatBody } from "../shared/seating";
 import type { PathFrame } from "../shared/path";
@@ -152,6 +155,18 @@ const modelKey = (scene: Scene) => {
 };
 type PendingModel = { key: string };
 const stateKey = (scene: Scene) => JSON.stringify({ ...scene, revision: 0 });
+/** The home view of what is shown: the photographer's spot in a photographic
+ * set, a 3D set's authored camera, or the studio's default. */
+const stageHome = (view: StageView) =>
+  view instanceof PhotoSet
+    ? backdropHome(view.backdrop)
+    : view instanceof ModelSet
+      ? setHome(view.set)
+      : {
+          position: new T.Vector3(8, 6.5, 10),
+          target: new T.Vector3(0, 0.85, -0.5),
+          maxDistance: 25,
+        };
 export const Viewport = forwardRef<ViewportHandle, Props>(
   function Viewport(props, ref) {
     const host = useRef<HTMLDivElement>(null),
@@ -202,6 +217,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         return;
       }
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      prepareLoaders(renderer);
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = T.PCFSoftShadowMap;
       renderer.outputColorSpace = T.SRGBColorSpace;
@@ -317,6 +333,11 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       status.setAttribute("role", "status");
       status.hidden = true;
       host.current.appendChild(status);
+      const loading = document.createElement("div");
+      loading.className = "set-loading";
+      loading.setAttribute("role", "status");
+      loading.hidden = true;
+      host.current.appendChild(loading);
       const editing = gizmoEditing({
         transform,
         objects,
@@ -643,36 +664,42 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         editing,
         environment: new EnvironmentModel(content, undefined, {
           load: (asset) => loadPhotoSet(asset, renderer),
-          // A photographic set replaces the stage around the cast; open it at
-          // eye level inside the photographed place.
-          show: (photo) => {
+          light: loadSetLight,
+          progress: (state) => {
+            loading.hidden = !state;
+            if (state)
+              loading.textContent = state.total
+                ? `Loading the set… ${Math.min(100, Math.round((state.received / state.total) * 100))} %`
+                : `Loading the set… ${Math.round(state.received / 1048576)} MB`;
+          },
+          // A set replaces the stage around the cast and opens at its own
+          // home view: eye level inside a photographed place, or where a 3D
+          // set's author framed it.
+          show: (view) => {
             const previous = world.getObjectByName("SceneMakerBackdrop");
             if (previous) world.remove(previous);
-            if (photo) world.add(photo.group);
+            if (view instanceof PhotoSet) world.add(view.group);
             applyStageLighting(
               world,
               renderer,
               live.current.scene.lighting,
-              photo,
+              view,
             );
-            if (photo) {
-              // Spend any orbit inertia first so it cannot turn the new view.
-              controls.enableDamping = false;
-              controls.update();
-              controls.enableDamping = true;
-              const home = backdropHome(photo.backdrop);
-              camera.position.copy(home.position);
-              controls.target.copy(home.target);
-              controls.maxDistance = home.maxDistance;
-              controls.minAzimuthAngle = -home.azimuth;
-              controls.maxAzimuthAngle = home.azimuth;
-              controls.minPolarAngle = home.minPolar;
-            } else {
-              controls.minPolarAngle = 0;
-              controls.maxDistance = 25;
-              controls.minAzimuthAngle = -Infinity;
-              controls.maxAzimuthAngle = Infinity;
-            }
+            // Spend any orbit inertia first so it cannot turn the new view.
+            controls.enableDamping = false;
+            controls.update();
+            controls.enableDamping = true;
+            const home = stageHome(view);
+            camera.position.copy(home.position);
+            controls.target.copy(home.target);
+            controls.maxDistance = home.maxDistance;
+            // Only a photo holds the camera near where it was taken; a 3D set
+            // is seen from every side, down to the floor like the studio.
+            const photo =
+              view instanceof PhotoSet ? backdropHome(view.backdrop) : null;
+            controls.minAzimuthAngle = photo ? -photo.azimuth : -Infinity;
+            controls.maxAzimuthAngle = photo ? photo.azimuth : Infinity;
+            controls.minPolarAngle = photo ? photo.minPolar : 0;
             controls.update();
           },
         }),
@@ -837,6 +864,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         dragging.dispose();
         editing.dispose();
         status.remove();
+        loading.remove();
         renderer.domElement.removeEventListener("pointerdown", down);
         renderer.domElement.removeEventListener("pointerup", up);
         selection.geometry.dispose();
@@ -893,7 +921,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         ctx.world,
         ctx.renderer,
         props.scene.lighting,
-        ctx.environment.photo,
+        ctx.environment.view,
       );
       // Remove objects whose entity left or whose model inputs changed; keep
       // the rest so a color or asset edit never rebuilds the whole cast.
@@ -1163,6 +1191,15 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           const object = focusId ? c.objects.get(focusId) : undefined;
           if (focusId && !object)
             throw Error("The selected object is not loaded.");
+          if (!object && view === "default" && c.environment.view) {
+            // A set is framed the way its author meant it to be seen.
+            const home = stageHome(c.environment.view);
+            c.controls.target.copy(home.target);
+            c.camera.position.copy(home.position);
+            c.controls.update();
+            c.renderer.render(c.world, c.camera);
+            return;
+          }
           const target = object
             ? new T.Box3().setFromObject(object).getCenter(new T.Vector3())
             : new T.Vector3(0, 0.85, -0.5);
@@ -1191,14 +1228,10 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         },
         reset() {
           const c = context.current;
-          if (c?.environment.photo) {
-            const home = backdropHome(c.environment.photo.backdrop);
-            c.camera.position.copy(home.position);
-            c.controls.target.copy(home.target);
-          } else if (c) {
-            c.camera.position.set(8, 6.5, 10);
-            c.controls.target.set(0, 0.85, -0.5);
-          }
+          if (!c) return;
+          const home = stageHome(c.environment.view);
+          c.camera.position.copy(home.position);
+          c.controls.target.copy(home.target);
         },
         startCinema(width, height) {
           return context.current?.startCinema(width, height) ?? null;

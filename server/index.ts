@@ -120,6 +120,9 @@ app.use(
     setHeaders: (r) => r.setHeader("X-Content-Type-Options", "nosniff"),
   }),
 );
+// Decoders for compressed models (public/engine/README.md) sit beside the
+// production adapters; the dev server proxies /engine here too.
+app.use("/engine", express.static(path.resolve("public/engine")));
 app.use(
   "/engine",
   express.static(path.resolve("engine"), { fallthrough: false }),
