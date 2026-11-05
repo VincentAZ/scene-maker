@@ -2606,6 +2606,9 @@ label > span {
   border-radius: 12px;
   cursor: crosshair;
   touch-action: none;
+  user-select: none;
+  /* Room for the sticky footer when the map is scrolled into view. */
+  scroll-margin: 12px 0 80px;
 }
 .path-map text {
   font-family: inherit;
@@ -2743,13 +2746,164 @@ label > span {
   color: #737e68;
   margin: 20px 0;
 }
+/* A field reached with Tab, or otherwise scrolled into view, stops above the
+   sticky footer rather than behind it. */
+.path-editor :is(input, select, summary, button):not(.path-footer *) {
+  scroll-margin-bottom: 80px;
+}
 .path-footer {
+  /* Stays in view however far the dialog scrolls, so Save, Cancel and the
+     discard question are never below the fold. */
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   justify-content: flex-end;
-  padding-top: 8px;
+  margin: 0 -26px -26px;
+  padding: 12px 26px 18px;
+  background: #fcfdf8;
+  border-top: 1px solid #e2e7da;
+}
+.path-map:focus {
+  outline: none;
+}
+.path-map:focus-visible {
+  outline: 2px solid #9fb787;
+  outline-offset: 2px;
+}
+.path-map.panning,
+.path-map.panning .path-point {
+  cursor: grabbing;
+}
+.path-map .path-arrow {
+  fill: none;
+  stroke: #f7faef;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.path-map .path-ghost {
+  fill: #f7faef;
+  stroke: #6b8053;
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+  pointer-events: none;
+}
+.path-map .path-halo {
+  fill: #b9d48a55;
+  stroke: #6b8053;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.path-map .selected > circle:not(.path-halo) {
+  stroke-width: 3;
+}
+.path-map .path-remove {
+  cursor: pointer;
+}
+.path-map .path-remove circle {
+  fill: #b4443a;
+}
+.path-map .path-remove path {
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.path-map .path-heading line {
+  stroke: #3f5230;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.path-map .path-heading-hit {
+  fill: transparent;
+  cursor: grab;
+}
+.path-map .path-heading-tip {
+  fill: #3f5230;
+  stroke: #f7faef;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.path-map .path-heading.natural line {
+  stroke: #9fb787;
+}
+.path-map .path-heading.natural .path-heading-tip {
+  fill: #f7faef;
+  stroke: #9fb787;
+  stroke-dasharray: 3 2;
+}
+.path-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #8a9480;
+}
+.path-warning {
+  color: #a24d2a;
+}
+.path-toolbar .icon-button:disabled {
+  opacity: 0.35;
+}
+.path-timing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 12px;
+}
+.path-timing > div {
+  display: inline-flex;
+  border: 1px solid #d9e1cf;
+  border-radius: 7px;
+  overflow: hidden;
+  background: white;
+}
+.path-timing > div > button {
+  padding: 7px 12px;
+  font-size: 11px;
+  color: #788c64;
+}
+.path-timing > div > button + button {
+  border-left: 1px solid #d9e1cf;
+}
+.path-timing > div > button.active {
+  background: #d8eaa9;
+  color: #4b6634;
+  font-weight: 600;
+}
+.path-timing > div > button:disabled {
+  opacity: 0.5;
+}
+.path-timing > .muted {
+  line-height: 1.5;
+}
+.path-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e6cba7;
+  border-radius: 9px;
+  background: #fff3e4;
+  color: #916d46;
+  font-size: 12px;
+}
+.path-confirm > span {
+  flex: 1;
+  min-width: 180px;
 }
 @media (max-width: 600px) {
   .path-editor {
     padding: 18px;
+  }
+  .path-footer {
+    margin: 0 -18px -18px;
+    padding: 12px 18px 16px;
   }
   .path-options {
     grid-template-columns: 1fr 1fr;
