@@ -21,8 +21,9 @@ const entries = await build({
   log,
 });
 const file = path.join(root, "shared/content/characters.json");
+// This source owns every blender- entry: one no longer in the cast goes.
 const others = JSON.parse(fs.readFileSync(file, "utf8")).filter(
-  (entry) => !entries.some((e) => e.id === entry.id),
+  (entry) => !entry.id.startsWith("blender-"),
 );
 fs.writeFileSync(file, JSON.stringify([...others, ...entries], null, 2) + "\n");
 log(`${entries.length} Blender Studio items`);

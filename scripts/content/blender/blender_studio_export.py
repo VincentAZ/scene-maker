@@ -1512,13 +1512,16 @@ def choose_uv(obj, loops, usable, default, udim=False):
     clean layer gives those faces far more texels (an iris drawn through a
     layer of its own takes a sliver of the eyeball's); failing a clean one,
     the layer that overlaps least. Secondary layers such as Alignment or
-    HairMap often fold islands together."""
+    HairMap often fold islands together. Also returns how many texels the
+    faces cover through it."""
     scores = {name: uv_overlap(obj, name, loops, udim) for name in usable}
     clean = [name for name in usable if scores[name][0] <= 0.02]
     if clean:
         best = max(clean, key=lambda name: scores[name][1])
-        return default if default in clean and 4 * scores[default][1] >= scores[best][1] else best
-    return min(usable, key=lambda name: (round(scores[name][0], 2), name != default, -scores[name][1]))
+        name = default if default in clean and 4 * scores[default][1] >= scores[best][1] else best
+    else:
+        name = min(usable, key=lambda name: (round(scores[name][0], 2), name != default, -scores[name][1]))
+    return name, scores[name][1]
 
 
 def uv_reads(material):
@@ -1646,10 +1649,32 @@ for obj in meshes:
     udim = [any(n.bl_idname == "ShaderNodeTexImage" and n.image and n.image.source == "TILED"
                 for n in tree_nodes(m.node_tree)) for m in originals]
     if room:
-        layer_of = {int(slot): choose_uv(obj, loops[index[polygon_of] == slot], usable, default_name, udim[slot])
-                    for slot in np.unique(index)}
+        chosen = {int(slot): choose_uv(obj, loops[index[polygon_of] == slot], usable, default_name, udim[slot])
+                  for slot in np.unique(index)}
+        layer_of = {slot: name for slot, (name, _) in chosen.items()}
+        # Faces every layer collapses to a point or a line (Gabby's nails,
+        # Jay's gums take one colour that way) cover no texel a bake could
+        # write: they get a fresh unwrap of their own.
+        bare = [slot for slot, (_, covered) in chosen.items() if not covered]
+        keep = wanted | set(layer_of.values())
+        if bare and (len(obj.data.uv_layers) < 8 or any(l.name not in keep for l in obj.data.uv_layers)):
+            if len(obj.data.uv_layers) >= 8:
+                obj.data.uv_layers.remove(obj.data.uv_layers[next(l.name for l in obj.data.uv_layers
+                                                                  if l.name not in keep)])
+            fresh = obj.data.uv_layers.new(name="unwrapped-bare").name
+            obj.data.uv_layers.active = obj.data.uv_layers[fresh]
+            for poly in obj.data.polygons:
+                poly.select = int(index[poly.index]) in bare
+            select_only([obj])
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.02)
+            bpy.ops.object.mode_set(mode="OBJECT")
+            obj.data.uv_layers[default_name].active_render = True
+            for slot in bare:
+                layer_of[slot] = fresh
+            log("unwrapped", obj.name, "for", ", ".join(originals[slot].name for slot in bare))
     else:
-        whole = choose_uv(obj, loops, usable, default_name, all(udim))
+        whole = choose_uv(obj, loops, usable, default_name, all(udim))[0]
         layer_of = {int(slot): whole for slot in np.unique(index)}
     uv = np.empty((len(obj.data.loops), 2), np.float32)
     loop_slot = np.repeat(index, [p.loop_total for p in obj.data.polygons])

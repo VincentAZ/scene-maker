@@ -141,6 +141,10 @@ function riddenBy(group: T.Object3D, bones: T.Object3D[], height: number) {
   return ridden;
 }
 
+// Materials the films make black: lashes, eyeliner and eyebrows, Jay's
+// hair, Lunte's eye and mouth outlines, the membrane of Einar's arm.
+const meantDark = /lash|eyeliner|eyebrow|black|^jay\.hair|^einar\.cover/;
+
 const overlap = (a: number[], b: number[]) =>
   a[0] < b[2] - 1e-3 &&
   b[0] < a[2] - 1e-3 &&
@@ -279,18 +283,21 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
       expect(json.skins?.length, asset.id).toBe(1);
       expect(json.animations, asset.id).toBeUndefined();
       expect(json.extensionsUsed ?? [], asset.id).toEqual([]);
-      let textured = 0;
       for (const material of json.materials) {
         const pbr = material.pbrMetallicRoughness;
         expect(pbr.metallicFactor, `${asset.id} ${material.name}`).toBe(0);
         expect(material.emissiveTexture, asset.id).toBeUndefined();
-        if (pbr.baseColorTexture) textured++;
         // Cut-outs are alpha-tested; nothing blends.
         expect(material.alphaMode, `${asset.id} ${material.name}`).not.toBe(
           "BLEND",
         );
+        // A bake that comes out one colour ships as a colour; black means
+        // the shader lost its inputs (Einar's jacket, Gabby's nails), unless
+        // the film made it black.
+        const [r, g, b] = pbr.baseColorFactor ?? [1, 1, 1];
+        if (!pbr.baseColorTexture && Math.max(r, g, b) < 0.01)
+          expect(material.name, asset.id).toMatch(meantDark);
       }
-      expect(textured, asset.id).toBeGreaterThan(json.materials.length / 2);
       for (const image of json.images)
         expect(["image/jpeg", "image/png"]).toContain(image.mimeType);
       // One skeleton hanging from the hips: a joint outside it, or the
