@@ -4,6 +4,10 @@
 //   node scripts/build-content.mjs                 build what is missing
 //   node scripts/build-content.mjs props sets      only these categories
 //   node scripts/build-content.mjs --check         exit 1 if files are missing
+//   node scripts/build-content.mjs --defer-3d-sets keep the real 3D sets as
+//                                                  listed (about 2 GB of
+//                                                  downloads converted by
+//                                                  Blender) for a later run
 // Each category is a module in scripts/content/<category>.mjs exporting
 // `build({ out, cache, log })`, which returns catalogue entries and is
 // idempotent: finished files are kept, downloads are cached in content/.cache.
@@ -21,9 +25,12 @@ const chosen = args.filter((a) => !a.startsWith("--"));
 if (args.includes("--check")) {
   const missing = categories.flatMap((category) =>
     JSON.parse(
-      fs.readFileSync(path.join(root, "shared/content", `${category}.json`), "utf8"),
+      fs.readFileSync(
+        path.join(root, "shared/content", `${category}.json`),
+        "utf8",
+      ),
     )
-      .flatMap((e) => [e.url, e.thumbnail, e.hdri])
+      .flatMap((e) => [e.url, e.thumbnail, e.hdri, e.backdrop?.image])
       .filter((url) => url?.startsWith("/content/"))
       .filter((url) => !fs.existsSync(path.join(out, url.slice(9)))),
   );
@@ -40,7 +47,13 @@ for (const category of chosen.length ? chosen : categories) {
   if (!fs.existsSync(modulePath)) continue;
   const { build } = await import(modulePath);
   const log = (...m) => console.log(`[${category}]`, ...m);
-  const entries = await build({ out, cache, root, log });
+  const entries = await build({
+    out,
+    cache,
+    root,
+    log,
+    deferModels: args.includes("--defer-3d-sets"),
+  });
   fs.writeFileSync(
     path.join(root, "shared/content", `${category}.json`),
     JSON.stringify(entries, null, 2) + "\n",
