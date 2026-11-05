@@ -30,7 +30,7 @@ The **Assistant**, **Details**, and **Code** sidebar sections can be resized by 
 
 Use **Clear scene** above the viewport to start with a blank studio: it removes placed characters, props, actions, dialogue, and the scene direction. Your project name and library assets are kept. **Undo** (Ctrl/Cmd+Z) restores the scene.
 
-The character library includes **46 ready-to-use characters**: 32 bundled Quaternius humanoids plus 14 original studio presets and mannequins. Browse Everyday, Professionals, Adventure, Fantasy, or Mannequins; search by name or role. The new cards show rendered previews of their actual models. Try “Add Harper” or “Add Dr Amara”, then chain their actions as usual. The [asset provenance and conversion notes](docs/CHARACTER_ASSETS.md) record the CC0 sources and local processing.
+The character library includes **115 ready-to-use realistic characters**, the complete Microsoft Rocketbox cast (MIT): everyday people, business, medical, service, uniformed, emergency, military and sports professionals, and children. Browse by collection or search by name or role; each card shows the character's preview. Try “Add Emma” or “Add Carlos”, then chain their actions as usual. The [asset provenance and conversion notes](docs/CHARACTER_ASSETS.md) record the sources, licences and local processing, including how more sources plug into the same pipeline.
 
 Choose **Characters → Create a character** to make one of your own. Pick a starting look, name, outfit/skin/hair/accent colors, glasses, and a backpack. The character maker creates a separate skinned model and a preview card, then adds it to your cast and **My assets**. It needs the local production connection set up once. The assistant opens this flow with “Create a character”; the offline helper also accepts “Create a character named Cleo based on Sage”. Connected AI can author the same recipe and chain actions in one request. This customizes existing clothing and hair shapes; it does not invent a new haircut or outfit cut.
 
@@ -85,7 +85,7 @@ Conversation gestures and facing are included in baked animation. Voice playback
 
 - React + TypeScript + Vite; Three.js for the interactive scene and animated GLB export.
 - An engine-neutral scene schema and command reducer in `shared/`; scene changes use the same validation path from both UI and AI.
-- 46 rigged character choices, 105 props, 12 sets, 32 built-in actions, custom keyframed actions, and imported native clips.
+- 115 rigged realistic characters, 105 props, 12 sets, 32 built-in actions, custom keyframed actions, and imported native clips.
 - The AI SDK uses native provider adapters for OpenAI/Anthropic/Google and OpenAI-compatible adapters for xAI/Kimi/OpenRouter/LM Studio. Credentials are server-side only after entry and are stored with mode `0600` in `.data/connections.json` (local disk storage, not an encrypted credential vault).
 - Local JSON persistence uses atomic writes and optimistic revision checks. Imported assets and generated exports live under `.data/`; nothing in this folder is committed.
 - `SCENE_MAKER_DATA` changes the data directory; `PORT` changes the production server port (dev proxy uses 4311). Browser write requests require the studio header and an allowed loopback origin.
@@ -154,7 +154,6 @@ Requirements: Linux with Git, installed studio dependencies, a connected model w
 The bottom-left footer shows the app version and a UTC build number. Include both when reporting an issue so the running build can be identified precisely.
 
 Adjust **Thinking effort** in the top model dropdown or Studio settings → Connections. The dropdown saves immediately; Connections applies it when you save. The preference is separate for each provider and applies to scene replies, cast conversations and coding tasks. Available levels depend on the selected model; higher levels can increase latency and token use.
-
 
 ### Asset manipulation, collisions, and waypoint actions
 

@@ -12,6 +12,7 @@ import {
 } from "../shared/scene";
 import { contentAssets, contentCredits } from "../shared/contentLibrary";
 import characters from "../shared/content/characters.json";
+import { cast, idOf } from "../scripts/content/characters/rocketbox.mjs";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning } from "../src/rig";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
@@ -60,30 +61,60 @@ function withoutTextures(data: Buffer) {
 }
 
 describe("realistic character catalogue", () => {
-  it("lists Rocketbox humans with credits, bodies and collections", () => {
-    expect(characters.length).toBeGreaterThanOrEqual(30);
+  it("lists realistic humans with credits, bodies and collections", () => {
+    expect(characters.length).toBeGreaterThanOrEqual(115);
     expect(new Set(characters.map((c) => c.id)).size).toBe(characters.length);
     for (const asset of assets) {
       expect(assetSchema.parse(asset), asset.id).toEqual(asset);
-      expect(asset.id).toMatch(/^rocketbox-[a-z0-9-]+$/);
+      expect(asset.id).toMatch(/^[a-z0-9]+-[a-z0-9-]+$/);
       expect(asset.url).toBe(`/content/characters/${asset.id}.glb`);
       expect(asset.thumbnail).toBe(`/content/characters/${asset.id}.png`);
       expect(["feminine", "masculine"]).toContain(asset.body);
       expect(asset.description.length).toBeGreaterThan(10);
-      expect(contentCredits.get(asset.id)).toMatchObject({
-        author: "Microsoft",
-        license: "MIT",
-      });
+      expect(contentCredits.get(asset.id)?.license, asset.id).toMatch(
+        /^(MIT|CC0|CC BY( 4\.0)?|CC BY-SA( 4\.0)?)/,
+      );
     }
     const styles = new Set(assets.map((a) => a.style));
     for (const style of [
       "Everyday",
       "Business",
       "Medical",
+      "Service",
       "Uniformed",
+      "Emergency",
+      "Military",
+      "Sports",
       "Children",
     ])
       expect(styles).toContain(style);
+  });
+
+  it("ships the whole Rocketbox cast under MIT with ids that cannot collide", () => {
+    const rocketbox = characters.filter((c) => c.id.startsWith("rocketbox-"));
+    expect(cast).toHaveLength(115);
+    expect(new Set(cast.map((a) => a.folder)).size).toBe(115);
+    expect(rocketbox.map((c) => c.id)).toEqual(cast.map(idOf));
+    for (const [i, entry] of rocketbox.entries()) {
+      expect(entry.credit).toEqual({
+        author: "Microsoft",
+        license: "MIT",
+        source: expect.stringContaining(`/Assets/Avatars/${cast[i].folder}`),
+      });
+      expect(entry.style).toBe(cast[i].style);
+    }
+    // Upstream files Female_Party_01/02 under both Adults and Professions:
+    // the Adults pair keep the plain ids the library shipped with, a twin
+    // elsewhere carries its folder.
+    expect(idOf({ folder: "Adults/Female_Party_02" })).toBe(
+      "rocketbox-female-party-02",
+    );
+    expect(idOf({ folder: "Professions/Female_Party_02" })).toBe(
+      "rocketbox-professions-female-party-02",
+    );
+    expect(idOf({ folder: "Professions/Police_Male_01" })).toBe(
+      "rocketbox-police-male-01",
+    );
   });
 });
 
