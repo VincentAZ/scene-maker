@@ -1,10 +1,12 @@
 import * as T from "three";
 import {
   allAssets,
+  environmentSet,
   type Asset,
   type Entity,
   type Scene,
 } from "../shared/scene";
+import { keepOnSetFloor } from "../shared/sets";
 import { loadImportedAsset } from "./importedAsset";
 import { createCharacter, createProp, disposeObject } from "./world";
 import {
@@ -14,6 +16,7 @@ import {
 } from "./collision";
 import {
   emptyCollider,
+  besideSupport,
   sceneObstacles,
   TransformCollisionGuard,
 } from "./assetManipulation";
@@ -52,6 +55,8 @@ type Gesture = {
   obstacles?: CollisionObstacle[];
   guard?: TransformCollisionGuard;
   blocked?: string;
+  /** Where a new prop rests on the set's own furniture, when it does. */
+  support?: T.Vector3;
 };
 
 /** Direct manipulation stays outside React's render loop; a release is one scene edit. */
@@ -65,6 +70,10 @@ export function sceneDragging(options: {
   gizmo: { dragging: boolean; axis: string | null; enabled: boolean };
   status: HTMLElement;
   environment?: () => T.Object3D | null;
+  /** A 3D set's furniture meshes: a dragged prop can be put on them too. */
+  surfaces?: () => T.Object3D[];
+  /** The height a prop put on the set's furniture at x, z rests at. */
+  restingHeight?: (x: number, z: number, y: number) => number;
 }) {
   const { canvas, camera, world, objects, current, orbit, gizmo, status } =
     options;
@@ -277,11 +286,16 @@ export function sceneDragging(options: {
     e.preventDefault();
     g.valid = inside(e);
     g.blocked = "";
+    g.support = undefined;
     const pointer = ray(e);
     let p = pointer.ray.intersectPlane(g.plane, new T.Vector3());
     if (g.asset?.category === "props" && g.valid) {
       world.updateMatrixWorld(true);
       const scene = current().scene;
+      const facesUp = (hit: T.Intersection) =>
+        !!hit.face &&
+        hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y >
+          0.7;
       const surface = pointer
         .intersectObjects([...objects.values()], true)
         .find((hit) => {
@@ -292,19 +306,33 @@ export function sceneDragging(options: {
           const asset =
             entity &&
             allAssets(scene).find((item) => item.id === entity.assetId);
-          return (
-            asset?.category === "props" &&
-            hit.face &&
-            hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
-              .y > 0.7
-          );
+          return asset?.category === "props" && facesUp(hit);
         });
-      if (surface) p = surface.point;
+      // The set's own table, bed or counter takes a prop as well, when it is
+      // the first thing under the pointer.
+      const furniture = pointer.intersectObjects(
+        options.surfaces?.() ?? [],
+        false,
+      )[0];
+      const nearest = [surface, furniture && facesUp(furniture) && furniture]
+        .filter((hit): hit is T.Intersection => !!hit)
+        .sort((a, b) => a.distance - b.distance)[0];
+      if (nearest) {
+        p = nearest.point.clone();
+        if (nearest === furniture) {
+          if (options.restingHeight) p.y = options.restingHeight(p.x, p.z, p.y);
+          g.support = p.clone();
+        }
+      }
     }
     if (!p) g.valid = false;
     if (g.valid && p) {
+      // A drop lands on the set's open floor, never inside its walls.
       g.position.fromArray(
-        draggedPosition(p, g.offset, g.asset ? p.y : g.start.y, e.shiftKey),
+        keepOnSetFloor(
+          environmentSet(current().scene),
+          draggedPosition(p, g.offset, g.asset ? p.y : g.start.y, e.shiftKey),
+        ),
       );
     }
     if (g.asset && g.item) g.item.visible = g.valid;
@@ -405,11 +433,12 @@ export function sceneDragging(options: {
           g.position.copy(g.item.position);
         }
       } else if (g.asset && g.valid) {
+        const obstacles = g.obstacles ?? [];
         g.blocked =
           collisionBetween(
             emptyCollider(),
             snapshotCollider(g.item),
-            g.obstacles ?? [],
+            g.support ? besideSupport(obstacles, g.support) : obstacles,
             false,
           ) || "";
         if (g.blocked) g.valid = false;

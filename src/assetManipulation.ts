@@ -1,7 +1,9 @@
 import * as T from "three";
 import type { Entity, Scene } from "../shared/scene";
+import { FLOOR_TOP } from "../shared/sets";
 import {
   collisionBetween,
+  obstacleMesh,
   snapshotCollider,
   type Collider,
   type CollisionObstacle,
@@ -72,7 +74,7 @@ export function sceneObstacles(
     obstacles.push({
       id: "environment",
       name: "the backdrop",
-      collider: snapshotCollider(environment),
+      collider: snapshotCollider(environment, obstacleMesh),
     });
   // Match the studio's visible level floor (Viewport.tsx), including an Empty room.
   const ground = new T.Box3(
@@ -150,6 +152,34 @@ export class TransformCollisionGuard {
 /** Detection only: animation stays deterministic, including authored contacts.
  * `touching` lists pairs that are meant to be in contact (an actor and the
  * seat, ladder or prop its own actions target), keyed "a|b" in either order. */
+/**
+ * The obstacles something resting on a 3D set's furniture at `support` must
+ * clear: everything but the boxes of the furniture under it. Those boxes
+ * reach higher than the surface it sits on (a bed's box takes in its
+ * headboard), so they would refuse every spot on it.
+ */
+export function besideSupport(
+  obstacles: CollisionObstacle[],
+  support: T.Vector3,
+): CollisionObstacle[] {
+  return obstacles.map((obstacle) => {
+    if (obstacle.id !== "environment") return obstacle;
+    const boxes = obstacle.collider.boxes.filter(
+      (box) =>
+        !(
+          box.min.y < support.y &&
+          support.x >= box.min.x &&
+          support.x <= box.max.x &&
+          support.z >= box.min.z &&
+          support.z <= box.max.z
+        ),
+    );
+    const bounds = new T.Box3();
+    for (const box of boxes) bounds.union(box);
+    return { ...obstacle, collider: { boxes, bounds } };
+  });
+}
+
 export function sceneCollisionWarning(
   obstacles: CollisionObstacle[],
   touching: ReadonlySet<string> = new Set(),
@@ -158,12 +188,25 @@ export function sceneCollisionWarning(
   for (let i = 0; i < obstacles.length; i++) {
     const source = obstacles[i];
     if (source.id === "environment") continue;
+    const others = obstacles
+      .slice(i + 1)
+      .filter((other) => !touching.has(`${source.id}|${other.id}`));
+    // Something raised off the floor rests on whatever is under its middle.
+    const { bounds } = source.collider;
+    const raised = !bounds.isEmpty() && bounds.min.y > FLOOR_TOP;
     const blocked = collisionBetween(
       empty,
       source.collider,
-      obstacles
-        .slice(i + 1)
-        .filter((other) => !touching.has(`${source.id}|${other.id}`)),
+      raised
+        ? besideSupport(
+            others,
+            new T.Vector3(
+              (bounds.min.x + bounds.max.x) / 2,
+              bounds.min.y + 1e-3,
+              (bounds.min.z + bounds.max.z) / 2,
+            ),
+          )
+        : others,
       false,
     );
     if (blocked)

@@ -1,6 +1,12 @@
 import JSZip from "jszip";
 import { dialogueSubtitles } from "../shared/conversation";
 import { allMotions, type Scene } from "../shared/scene";
+import {
+  CONVERTED,
+  contentAssets,
+  contentCredits,
+  licenseURL,
+} from "../shared/contentLibrary";
 import { motionSource, capturedMotionSources } from "../shared/motionLibrary";
 import {
   libraryCharacters,
@@ -49,7 +55,31 @@ export async function productionPackage(
   ]);
   const libraryAssets = libraryCharacters.filter((asset) => used.has(asset.id));
   const furniture = furnitureAssets.filter((asset) => used.has(asset.id));
+  // A library 3D set is part of the scene, so its files travel with it and
+  // its makers are credited; a photographic set is only referenced.
+  const set = contentAssets.find(
+    (asset) => asset.id === scene.environmentAssetId && asset.url,
+  );
+  const credit = set && contentCredits.get(set.id);
+  if (set && credit)
+    zip.file(
+      "assets/sets/CREDITS.txt",
+      [
+        `${set.name} by ${credit.author}`,
+        `Licence: ${credit.license}${licenseURL(credit.license) ? ` (${licenseURL(credit.license)})` : ""}`,
+        `Source: ${credit.source}`,
+        CONVERTED,
+        "",
+      ].join("\n"),
+    );
   const files = [
+    ...(set
+      ? [set.url!, ...(set.hdri ? [set.hdri] : [])].map((url) => ({
+          url,
+          destination: "assets/sets/" + url.split("/").pop(),
+          error: `Cannot package ${set.name}. The set file is missing.`,
+        }))
+      : []),
     ...(used.has(motionSource.id)
       ? [
           {

@@ -2,12 +2,14 @@ import * as T from "three";
 import {
   allAssets,
   allMotions,
+  environmentSet,
   motionSchema,
   uid,
   type Scene,
   type Entity,
   type Motion,
 } from "../shared/scene";
+import { floorEdges } from "../shared/sets";
 import { interactionSessions } from "../shared/interactions";
 import { retimeDialogueAfterChange } from "../shared/dialogueSchedule";
 import { inside, type Footprint } from "../shared/navigation";
@@ -26,7 +28,7 @@ import type { Point } from "../shared/ladder";
 import { applyAnimatedEntityPose } from "./world";
 import { entityPose } from "../shared/animation";
 import { reachableGrip } from "./interactions";
-import { snapshotCollider } from "./collision";
+import { obstacleMesh, snapshotCollider } from "./collision";
 import {
   routeLocomotionFields,
   routePace,
@@ -179,7 +181,10 @@ export function routeContext(
       ];
     });
   if (environment) {
-    for (const [index, box] of snapshotCollider(environment).boxes.entries()) {
+    for (const [index, box] of snapshotCollider(
+      environment,
+      obstacleMesh,
+    ).boxes.entries()) {
       if (
         box.max.y <= frame.position[1] + 1e-4 * actor.scale ||
         box.min.y > frame.position[1] + 1.9 * actor.scale
@@ -195,6 +200,10 @@ export function routeContext(
       });
     }
   }
+  // A 3D set's walls may be walked through (part of a room built as one
+  // mesh), so its floor plan's edge keeps routes inside.
+  const set = environmentSet(scene);
+  if (set) footprints.push(...floorEdges(set));
   const bones = rig.userData.bones as Record<string, T.Bone> | undefined;
   const shoulderWidth =
     bones?.leftArm && bones.rightArm
