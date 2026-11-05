@@ -67,8 +67,16 @@ export const cast = [
     sha256: "3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7",
     file: "einar-v1.zip",
     blend: "einar_release_v1.blend",
-    // The film's injury decals.
-    options: { skip: ["blood"] },
+    // The film's injury decals, and parts that only the film's pose lifts
+    // into place yet attach to a leg at rest (they would lie by his feet).
+    options: {
+      skip: [
+        "blood",
+        "tire_knee$",
+        "jacket_pocket1$",
+        "electrical_wires\\.001\\.mesh$",
+      ],
+    },
     body: "masculine",
     description:
       "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1, adapted for the studio.",

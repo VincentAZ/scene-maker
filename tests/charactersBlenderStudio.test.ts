@@ -255,6 +255,13 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
         expect(height, asset.id).toBeGreaterThan(1.5);
         expect(height, asset.id).toBeLessThan(2.05);
         expect(Math.abs(rest.min.y), asset.id).toBeLessThan(0.05);
+        // The figure stands on its soles: anything hanging below them would
+        // lift the ankles off the floor (chunky trainers keep them near 8%).
+        for (const foot of [bones.leftFoot, bones.rightFoot])
+          expect(
+            foot.getWorldPosition(new T.Vector3()).y / height,
+            asset.id,
+          ).toBeLessThan(0.1);
         // Every part sits by the bone that carries it; one that only the
         // film's pose brings into place would lie in a heap by the feet.
         expect(strayParts(group, height, 0.35), asset.id).toEqual([]);
