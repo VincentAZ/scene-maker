@@ -1582,7 +1582,11 @@ def face_areas(obj):
 
 
 def bake_size(area):
-    return BAKE_SIZE if area >= 0.25 else BAKE_SIZE // 2 if area >= 0.02 else BAKE_SIZE // 4
+    """2K for a garment, down to 256 for a bolt (under 20 square centimetres)."""
+    for share, floor_area in ((1, 0.25), (2, 0.02), (4, 0.002)):
+        if area >= floor_area:
+            return BAKE_SIZE // share
+    return BAKE_SIZE // 8
 
 
 class Target:
@@ -1601,7 +1605,7 @@ class Target:
 
     def bake_into(self, name, non_color, size=None):
         # Roughness and normal detail reads fine at half the colour's size.
-        size = size or (self.size if not non_color else max(256, self.size // 2))
+        size = size or (self.size if not non_color else max(128, self.size // 2))
         image = bpy.data.images.new(f"bake-{self.copy.name}-{name}", size, size, alpha=True)
         # Untouched texels keep zero alpha (a flat normal where it is one).
         image.generated_color = (0.5, 0.5, 1.0, 0.0) if name == "normal" else (0.0, 0.0, 0.0, 0.0)
@@ -1895,7 +1899,7 @@ for material, area in material_area.items():
                      or l.to_socket.name in ("Roughness", "Metallic", "Specular IOR Level")
                      for l in node.outputs["Color"].links)
         size = bake_size(area)
-        limits[image] = max(limits.get(image, 0), max(256, size // 2) if detail else size)
+        limits[image] = max(limits.get(image, 0), max(128, size // 2) if detail else size)
         users.setdefault(image, []).append(node)
 for image, limit in limits.items():
     if max(image.size) > limit:

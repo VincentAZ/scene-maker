@@ -24,7 +24,7 @@ const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
 // Bump to rebuild every GLB after changing the converter, or every card
 // after changing character_thumbnail.py.
-const CONVERTER_VERSION = 18;
+const CONVERTER_VERSION = 19;
 const CARD_VERSION = 2;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
