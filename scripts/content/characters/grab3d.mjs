@@ -1,28 +1,39 @@
 // Realistic characters from Grab3D (CC0, grab3d.com): AI-assisted humans by
 // Alexander Popov, rigged by Meshy with a Mixamo-named skeleton. The skeleton
-// has no face bones and, apart from the samurai's, no finger bones, so hands
-// stay in their relaxed rest pose. Each rigged GLB is downloaded with its
-// manifest and LICENSE.txt, and a model is only used once its LICENSE.txt
-// dedicates the package to the public domain. The mesh is
-// then simplified to at most 120k triangles with glTF Transform (meshopt keeps
-// the skin weights), textures are capped at 2048 px, the bundled walk and run
-// clips are dropped (the studio has its own recordings), the rest pose is
-// given straight vertical legs and the material is made dielectric unless the
+// has no face or finger bones; each hand gets one unweighted joint at its
+// knuckles so the studio can straighten its wrist like any other. Each rigged
+// GLB is downloaded with its manifest and LICENSE.txt, and a model is only
+// used once its LICENSE.txt dedicates the package to the public domain and
+// both files are the ones that were reviewed. The mesh is then simplified to
+// at most 120k triangles with glTF Transform (meshopt keeps the skin
+// weights), textures are capped at 2048 px, the bundled walk and run clips
+// are dropped (the studio has its own recordings), the rest pose is given
+// straight vertical legs and the material is made dielectric unless the
 // outfit carries metal. Idempotent: downloads are cached in
 // content/.cache/grab3d/<slug> and a character is converted again only when
-// its GLB is missing or the converter version has moved on.
+// its GLB is missing or the converter version has moved on. A character that
+// cannot be built is reported and left out; the others still build.
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import * as T from "three";
 
 const SITE = "https://grab3d.com";
-// Pinned so every machine simplifies the same way; `npx` fetches it on demand.
-const GLTF_TRANSFORM = "@gltf-transform/cli@4.2.1";
+// glTF Transform and the simplifier it runs, each at an exact version (the
+// CLI alone would let npx pick newer libraries), so every machine simplifies
+// the same way; `npx` fetches them on demand.
+const GLTF_TRANSFORM = [
+  "@gltf-transform/cli@4.2.1",
+  "@gltf-transform/core@4.5.1",
+  "@gltf-transform/functions@4.5.1",
+  "@gltf-transform/extensions@4.5.1",
+  "meshoptimizer@0.24.0",
+];
 const MAX_TRIANGLES = 120_000;
 const MAX_TEXTURE = 2048;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 2;
+const CONVERTER_VERSION = 4;
 
 // The cast is the vetted subset of Grab3D's human characters: the ones whose
 // faces, hands and textures hold up as real people (docs/CHARACTER_ASSETS.md
@@ -30,7 +41,10 @@ const CONVERTER_VERSION = 2;
 // grab3d.com/models/characters/<slug>/. metal: the outfit has small metal
 // parts (buckles, buttons, a blade) whose painted metal mask is kept;
 // otherwise the character is fully dielectric so stray mask values cannot
-// darken skin or cloth. body: feminine | masculine.
+// darken skin or cloth. body: feminine | masculine. sha256: the reviewed
+// rigged GLB and LICENSE.txt. Grab3D's download links carry no version and
+// the author does revise packages, so a changed file is refused until it has
+// been looked at again.
 export const cast = [
   // Everyday
   {
@@ -39,7 +53,12 @@ export const cast = [
     body: "masculine",
     style: "Everyday",
     description:
-      "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot.",
+      "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot. An AI-assisted model.",
+    sha256: {
+      glb: "3038f56e1225d0ef9692189ed19ff688f1424e669281148a4cc6995fed568496",
+      license:
+        "66eda0cadb138a0b94a4c7b850ee0e074b537d66368cd41cd312ba8f23d65347",
+    },
   },
   {
     slug: "woman-base-character",
@@ -47,27 +66,14 @@ export const cast = [
     body: "feminine",
     style: "Everyday",
     description:
-      "A woman with her dark hair in a bun, in a taupe sports top and fitted charcoal shorts, barefoot.",
-  },
-  // Uniformed
-  {
-    slug: "soldier",
-    name: "Soldier",
-    body: "masculine",
-    style: "Uniformed",
-    description:
-      "A modern infantry soldier in grey-green digital camouflage with a helmet, plate carrier, knee pads, gloves and tan combat boots.",
+      "A woman with her dark hair in a bun, in a taupe sports top and fitted charcoal shorts, barefoot. An AI-assisted model.",
+    sha256: {
+      glb: "ea49ef6644dfcaa503b2e009f37b43cf6b2069501201552dc10a5b5ab1fc8bfa",
+      license:
+        "66eda0cadb138a0b94a4c7b850ee0e074b537d66368cd41cd312ba8f23d65347",
+    },
   },
   // Historical
-  {
-    slug: "samurai",
-    name: "Samurai",
-    body: "masculine",
-    style: "Historical",
-    metal: true,
-    description:
-      "A samurai in layered red lacquered armour edged with gold, a crested helmet and a katana at his hip.",
-  },
   {
     slug: "pirate",
     name: "Pirate captain",
@@ -75,7 +81,12 @@ export const cast = [
     style: "Historical",
     metal: true,
     description:
-      "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots.",
+      "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots. An AI-assisted model.",
+    sha256: {
+      glb: "1646442b39cb3168c14001a47f7ea20b32543538adb770b692582148fe308927",
+      license:
+        "66eda0cadb138a0b94a4c7b850ee0e074b537d66368cd41cd312ba8f23d65347",
+    },
   },
   {
     slug: "ninja",
@@ -83,7 +94,12 @@ export const cast = [
     body: "masculine",
     style: "Historical",
     description:
-      "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back.",
+      "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back. An AI-assisted model.",
+    sha256: {
+      glb: "dcaedffe5f363db7a07bdca70edb72d364288f8dff6d4b5539560c5ce1bb9bfb",
+      license:
+        "66eda0cadb138a0b94a4c7b850ee0e074b537d66368cd41cd312ba8f23d65347",
+    },
   },
 ];
 const idOf = (c) => "grab3d-" + c.slug;
@@ -99,17 +115,24 @@ async function pool(items, limit, work) {
 
 async function fetchText(url) {
   for (let attempt = 1; ; attempt++) {
+    let status;
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
       if (res.ok) return res.text();
+      status = res.status;
       await res.body?.cancel();
-      if (res.status === 404) throw Error(`${url}: not found`);
     } catch (error) {
       if (attempt >= 5) throw error;
     }
+    // A missing file stays missing: no point waiting for it.
+    if (status === 404) throw Error(`${url}: not found`);
+    if (attempt >= 5) throw Error(`${url}: ${status}`);
     await new Promise((r) => setTimeout(r, attempt * 2000));
   }
 }
+
+const sha256 = (bytes) =>
+  crypto.createHash("sha256").update(bytes).digest("hex");
 
 async function download(url, file, size) {
   if (fs.existsSync(file) && fs.statSync(file).size === size) return;
@@ -134,7 +157,8 @@ async function download(url, file, size) {
 
 /** The rigged package of one character: manifest.json, LICENSE.txt and the
  * rigged GLB, kept together in the cache. The licence text is the authority:
- * a package that is not dedicated to the public domain is never used. */
+ * a package that is not dedicated to the public domain is never used, and a
+ * licence or model that differs from the reviewed one is refused. */
 async function fetchPackage(character, dir, log) {
   const base = `${SITE}/dl/${character.slug}-rigged/`;
   fs.mkdirSync(dir, { recursive: true });
@@ -144,8 +168,12 @@ async function fetchPackage(character, dir, log) {
     fs.writeFileSync(manifestFile, await fetchText(base + "manifest.json"));
   if (!fs.existsSync(licenseFile))
     fs.writeFileSync(licenseFile, await fetchText(base + "LICENSE.txt"));
-  const license = fs.readFileSync(licenseFile, "utf8");
-  if (!/CC0 1\.0 Universal/.test(license) || !/public domain/i.test(license))
+  const changed = `Grab3D changed ${character.name}; review it before it ships`;
+  const license = fs.readFileSync(licenseFile);
+  if (sha256(license) !== character.sha256.license)
+    throw Error(`${changed} (LICENSE.txt)`);
+  const text = license.toString("utf8");
+  if (!/CC0 1\.0 Universal/.test(text) || !/public domain/i.test(text))
     throw Error(`${character.slug}: LICENSE.txt is not a CC0 dedication`);
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
   // A light variant is simplified already; so far only the unrigged packages
@@ -157,10 +185,12 @@ async function fetchPackage(character, dir, log) {
   if (!(fs.existsSync(file) && fs.statSync(file).size === glb.bytes))
     log(`downloading ${character.slug} (${(glb.bytes / 1e6).toFixed(1)} MB)`);
   await download(base + glb.name, file, glb.bytes);
+  if (sha256(fs.readFileSync(file)) !== character.sha256.glb)
+    throw Error(`${changed} (${glb.name})`);
   return file;
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, label) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, timeout: 600_000 });
     let output = "";
@@ -170,12 +200,22 @@ function run(command, args, cwd) {
     child.on("close", (code) =>
       code === 0
         ? resolve(output)
-        : reject(Error(`${command} ${args[0]} failed: ${output.slice(-2000)}`)),
+        : reject(Error(`${label} failed: ${output.slice(-2000)}`)),
     );
   });
 }
 const gltfTransform = (root, args) =>
-  run("npx", ["-y", GLTF_TRANSFORM, ...args], root);
+  run(
+    "npx",
+    [
+      "-y",
+      ...GLTF_TRANSFORM.flatMap((spec) => ["-p", spec]),
+      "gltf-transform",
+      ...args,
+    ],
+    root,
+    `gltf-transform ${args[0]}`,
+  );
 
 function blender(root, script, args) {
   const exe = process.env.BLENDER_PATH || blenderPath(root);
@@ -192,6 +232,7 @@ function blender(root, script, args) {
       ...args,
     ],
     root,
+    "Blender",
   );
 }
 function blenderPath(root) {
@@ -318,6 +359,13 @@ const rotateAbout = (point, quaternion) =>
     .multiply(new T.Matrix4().makeRotationFromQuaternion(quaternion))
     .multiply(new T.Matrix4().makeTranslation(point.clone().negate()));
 const degrees = (a, b) => T.MathUtils.radToDeg(a.angleTo(b));
+const median = (values) => {
+  const sorted = Float64Array.from(values).sort();
+  const middle = sorted.length >> 1;
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+};
 
 /** Meshy's rest pose stands with the knees bent and the legs apart (knees
  * 9–34°, hips to ankles 5–10° off vertical). The studio grounds a character
@@ -500,10 +548,174 @@ function renameSpine(json, slug) {
   chain[3].name = "Spine2";
 }
 
+/** The BIN chunk with `data` appended in a new buffer view; returns the
+ * chunk and the view's index. */
+function appendBinary(json, rest, data) {
+  const length = rest.readUInt32LE(0);
+  const offset = Math.ceil(length / 4) * 4;
+  const body = Buffer.concat([
+    rest.subarray(8, 8 + length),
+    Buffer.alloc(offset - length),
+    data,
+    Buffer.alloc((4 - (data.length % 4)) % 4),
+  ]);
+  const header = Buffer.alloc(8);
+  header.writeUInt32LE(body.length, 0);
+  header.writeUInt32LE(0x004e4942, 4); // "BIN"
+  json.buffers[0].byteLength = offset + data.length;
+  json.bufferViews.push({
+    buffer: 0,
+    byteOffset: offset,
+    byteLength: data.length,
+  });
+  return {
+    rest: Buffer.concat([header, body]),
+    view: json.bufferViews.length - 1,
+  };
+}
+
+/** Meshy's hands have no finger joints, and the studio straightens a wrist
+ * for its anatomical neutral only from the joints under the hand. These hands
+ * hang bent 15–25° at the wrist in the rest pose, so that bend stayed in the
+ * neutral and every recording added it to the captured wrist: in Wave hello
+ * the raised hand folded sideways. One unweighted joint at the centre of the
+ * knuckles gives the studio its reference without touching the mesh. The
+ * centre is measured from the skin: the median of the hand's vertices across
+ * the first finger segments (a median, so the thumb lying beside them does
+ * not pull it), found by iterating along its own direction from the wrist.
+ * On the Rocketbox and Samurai hands, whose finger joints are known, that
+ * direction lies within 6° of the real knuckles'. A lone joint names no
+ * thumb, so the forearm keeps the roll of its rest pose (palms toward the
+ * thighs). Returns the BIN chunk, which grows by the new inverse bind
+ * matrices. */
+function markKnuckles(json, rest, slug) {
+  const byName = new Map(json.nodes.map((node, i) => [node.name, i]));
+  const skin = json.skins[0];
+  const { global } = nodeMatrices(json);
+  const ibm = accessorView(json, rest, skin.inverseBindMatrices);
+  const bind = skin.joints.map((_, k) =>
+    new T.Matrix4().fromArray(
+      Array.from({ length: 16 }, (_, e) => ibm.read(k, e)),
+    ),
+  );
+  // The bind pose is the rest pose (checked when the legs were straightened).
+  const shown = global[skin.joints[0]].clone().multiply(bind[0]);
+  const hands = ["Left", "Right"]
+    .map((side) => ({
+      side,
+      hand: byName.get(side + "Hand"),
+      forearm: byName.get(side + "ForeArm"),
+    }))
+    .filter(({ side, hand, forearm }) => {
+      if (hand === undefined || forearm === undefined)
+        throw Error(`${slug}: no ${side.toLowerCase()} hand`);
+      // Finger joints give the studio its reference already.
+      return !json.nodes[hand].children?.some((c) => skin.joints.includes(c));
+    });
+  if (!hands.length) return rest;
+  // Rest-pose vertices carried mostly by each hand.
+  const points = new Map(hands.map(({ hand }) => [hand, []]));
+  const slot = new Map(
+    hands.map(({ hand }) => [skin.joints.indexOf(hand), hand]),
+  );
+  const seen = new Set();
+  for (const mesh of json.meshes)
+    for (const primitive of mesh.primitives) {
+      const a = primitive.attributes;
+      if (a.JOINTS_0 === undefined || seen.has(a.POSITION)) continue;
+      seen.add(a.POSITION);
+      const positions = accessorView(json, rest, a.POSITION);
+      const joints = accessorView(json, rest, a.JOINTS_0);
+      const weights = accessorView(json, rest, a.WEIGHTS_0);
+      for (let i = 0; i < positions.count; i++)
+        for (const [k, hand] of slot) {
+          let weight = 0;
+          for (let j = 0; j < 4; j++)
+            if (joints.read(i, j) === k) weight += weights.read(i, j);
+          if (weight >= 0.5)
+            points
+              .get(hand)
+              .push(
+                new T.Vector3(
+                  positions.read(i, 0),
+                  positions.read(i, 1),
+                  positions.read(i, 2),
+                ).applyMatrix4(shown),
+              );
+        }
+    }
+  const added = hands.map(({ side, hand, forearm }) => {
+    const cloud = points.get(hand);
+    if (cloud.length < 100)
+      throw Error(`${slug}: ${side.toLowerCase()} hand has no skin`);
+    const wrist = position(global[hand]);
+    let axis = wrist.clone().sub(position(global[forearm])).normalize();
+    let reach = 0;
+    for (let i = 0; i < 8; i++) {
+      const along = cloud.map((p) => p.clone().sub(wrist).dot(axis));
+      reach = Math.max(...along);
+      const slab = cloud
+        .filter((_, j) => along[j] > 0.55 * reach && along[j] < 0.75 * reach)
+        .map((p) => p.clone().sub(wrist));
+      if (!slab.length)
+        throw Error(`${slug}: ${side.toLowerCase()} hand has no fingers`);
+      const across = new T.Vector3(1, 0, 0);
+      if (Math.abs(across.dot(axis)) > 0.9) across.set(0, 1, 0);
+      across.addScaledVector(axis, -across.dot(axis)).normalize();
+      const frame = [axis, across, new T.Vector3().crossVectors(axis, across)];
+      axis = frame
+        .reduce(
+          (centre, direction) =>
+            centre.addScaledVector(
+              direction,
+              median(slab.map((p) => p.dot(direction))),
+            ),
+          new T.Vector3(),
+        )
+        .normalize();
+    }
+    // The knuckles sit about half way from the wrist to the fingertips.
+    const local = wrist
+      .clone()
+      .addScaledVector(axis, 0.5 * reach)
+      .applyMatrix4(global[hand].clone().invert());
+    const node =
+      json.nodes.push({
+        name: side + "HandKnuckles",
+        translation: local.toArray(),
+      }) - 1;
+    (json.nodes[hand].children ??= []).push(node);
+    const inverseBind = global[hand]
+      .clone()
+      .multiply(new T.Matrix4().makeTranslation(local))
+      .invert()
+      .multiply(shown);
+    return { node, inverseBind };
+  });
+  // The new joints go last, so the skin's joint indices stay as they are.
+  skin.joints.push(...added.map(({ node }) => node));
+  const matrices = [...bind, ...added.map(({ inverseBind }) => inverseBind)];
+  const data = Buffer.alloc(matrices.length * 64);
+  matrices.forEach((matrix, k) =>
+    matrix.elements.forEach((value, e) =>
+      data.writeFloatLE(value, (k * 16 + e) * 4),
+    ),
+  );
+  const appended = appendBinary(json, rest, data);
+  skin.inverseBindMatrices =
+    json.accessors.push({
+      bufferView: appended.view,
+      componentType: 5126,
+      count: matrices.length,
+      type: "MAT4",
+    }) - 1;
+  return appended.rest;
+}
+
 /** Drop the bundled clips, name the spine the Mixamo way, stand the rest
- * pose on straight legs and settle the material: one textured, double-sided
- * material per character whose metal mask is kept only where the outfit has
- * metal. */
+ * pose on straight legs, mark the knuckles of hands without fingers and
+ * settle the material: one textured, double-sided material per character
+ * whose metal mask is kept only where the outfit has metal. */
 function correctGlb(file, character) {
   const { json, rest } = readGlb(file);
   const name = path.basename(file);
@@ -525,7 +737,7 @@ function correctGlb(file, character) {
   delete json.animations;
   renameSpine(json, character.slug);
   straightenLegs(json, rest, character.slug);
-  writeGlb(file, json, rest);
+  writeGlb(file, json, markKnuckles(json, rest, character.slug));
 }
 
 // Blender renders the card: the converted character in its rest pose, framed
@@ -569,7 +781,9 @@ scene.world = bpy.data.worlds.new('World')
 scene.world.use_nodes = True
 scene.world.node_tree.nodes['Background'].inputs[0].default_value = (0.75, 0.8, 0.9, 1)
 scene.world.node_tree.nodes['Background'].inputs[1].default_value = 0.4
-scene.render.engine = 'BLENDER_EEVEE_NEXT'
+# EEVEE is BLENDER_EEVEE_NEXT in Blender 4.2-4.5 and BLENDER_EEVEE again from 5.0.
+engines = {e.identifier for e in bpy.types.RenderSettings.bl_rna.properties['engine'].enum_items}
+scene.render.engine = 'BLENDER_EEVEE_NEXT' if 'BLENDER_EEVEE_NEXT' in engines else 'BLENDER_EEVEE'
 scene.eevee.taa_render_samples = 64
 scene.render.film_transparent = True
 scene.render.resolution_x = scene.render.resolution_y = 384
@@ -663,21 +877,30 @@ export async function build({ out, cache, root, log }) {
   const dir = path.join(cache, "grab3d");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "thumbnail.py"), THUMBNAIL_PY);
+  // A character that fails (a changed package, the network, Blender) is
+  // reported and only that character is left out.
+  const failed = (character) => (error) =>
+    log(`could not build ${character.name}: ${error.message}`);
   const sources = new Map();
-  await pool(characters, 4, async (character) => {
-    sources.set(
-      character,
-      await fetchPackage(character, path.join(dir, character.slug), log),
-    );
-  });
-  // The renders share the GPU: a few side by side is enough.
-  await pool(characters, 3, (character) =>
-    convert(character, sources.get(character), { out, cache, root, log }),
+  await pool(characters, 4, (character) =>
+    fetchPackage(character, path.join(dir, character.slug), log).then(
+      (file) => sources.set(character, file),
+      failed(character),
+    ),
   );
+  // The renders share the GPU: a few side by side is enough.
+  await pool([...sources.keys()], 3, (character) =>
+    convert(character, sources.get(character), {
+      out,
+      cache,
+      root,
+      log,
+    }).catch(failed(character)),
+  );
+  const built = (c, extension) =>
+    fs.existsSync(path.join(out, "characters", idOf(c) + extension));
   return cast
-    .filter((c) =>
-      fs.existsSync(path.join(out, "characters", idOf(c) + ".glb")),
-    )
+    .filter((c) => built(c, ".glb") && built(c, ".png"))
     .map((c) => ({
       id: idOf(c),
       name: c.name,

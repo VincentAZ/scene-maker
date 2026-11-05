@@ -16,6 +16,7 @@ import { cast, imageSize } from "../scripts/content/characters/grab3d.mjs";
 import { snapshotCollider } from "../src/collision";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning } from "../src/rig";
+import { normalizeArmRest } from "../src/restNeutral";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
 import { recordedSources, withRecordedSources } from "./recordedSources";
 
@@ -26,6 +27,10 @@ const entries = characters.filter((c) => c.id.startsWith("grab3d-"));
 const built =
   entries.length > 0 && entries.every((c) => fs.existsSync(file(c.url)));
 const assets = contentAssets.filter((a) => a.id.startsWith("grab3d-"));
+// A Rocketbox character with finger joints: the hand a Grab3D hand should
+// match.
+const reference = contentAssets.find((a) => a.id === "rocketbox-male-adult-03");
+const referenceBuilt = !!reference && fs.existsSync(file(reference.url!));
 const metal = new Set(
   (cast as { slug: string; metal?: boolean }[])
     .filter((c) => c.metal)
@@ -121,6 +126,67 @@ function withoutTextures(data: Buffer) {
   header.write("JSON", 16, "ascii");
   const glb = Buffer.concat([header, text, rest]);
   return glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength);
+}
+
+async function loadCharacter(
+  asset: (typeof contentAssets)[number],
+  sources: Map<string, T.Group>,
+) {
+  const { data } = readGlb(asset.url!);
+  const gltf = await new GLTFLoader().parseAsync(withoutTextures(data), "");
+  return withRecordedSources(
+    prepareImportedAsset(asset as Asset, gltf),
+    sources,
+  );
+}
+
+const isUnder = (bone: T.Object3D, root: T.Object3D) => {
+  for (let node: T.Object3D | null = bone; node; node = node.parent)
+    if (node === root) return true;
+  return false;
+};
+/** The skin carried wholly by a hand (its fingers included). */
+function handSkin(group: T.Group, hand: T.Bone) {
+  const parts: { mesh: T.SkinnedMesh; vertices: number[] }[] = [];
+  group.traverse((mesh) => {
+    if (!(mesh instanceof T.SkinnedMesh)) return;
+    const { skinIndex, skinWeight } = mesh.geometry.attributes;
+    const inside = mesh.skeleton.bones.map((bone) => isUnder(bone, hand));
+    const vertices: number[] = [];
+    for (let i = 0; i < skinIndex.count; i++) {
+      let weight = 0;
+      for (let k = 0; k < skinIndex.itemSize; k++)
+        if (inside[skinIndex.getComponent(i, k)])
+          weight += skinWeight.getComponent(i, k);
+      if (weight > 0.999) vertices.push(i);
+    }
+    if (vertices.length) parts.push({ mesh, vertices });
+  });
+  return parts;
+}
+/** Direction from the wrist to the middle of the hand's skin, in the
+ * character's own frame. */
+function handDirection(
+  group: T.Group,
+  hand: T.Bone,
+  skin: ReturnType<typeof handSkin>,
+) {
+  group.updateMatrixWorld(true);
+  const centre = new T.Vector3();
+  const vertex = new T.Vector3();
+  let count = 0;
+  for (const { mesh, vertices } of skin)
+    for (const i of vertices) {
+      centre.add(
+        mesh.getVertexPosition(i, vertex).applyMatrix4(mesh.matrixWorld),
+      );
+      count++;
+    }
+  return centre
+    .divideScalar(count)
+    .sub(hand.getWorldPosition(new T.Vector3()))
+    .applyQuaternion(group.getWorldQuaternion(new T.Quaternion()).invert())
+    .normalize();
 }
 
 describe("Grab3D character catalogue", () => {
@@ -221,15 +287,7 @@ describe.skipIf(!built)("built Grab3D characters", () => {
     async () => {
       const sources = await recordedSources();
       for (const asset of assets) {
-        const { data } = readGlb(asset.url!);
-        const gltf = await new GLTFLoader().parseAsync(
-          withoutTextures(data),
-          "",
-        );
-        const group = withRecordedSources(
-          prepareImportedAsset(asset as Asset, gltf),
-          sources,
-        );
+        const group = await loadCharacter(asset, sources);
         expect(humanoidWarning(group, asset.name, false), asset.id).toBe("");
         // All 15 body roles, hands and feet included.
         const bones = group.userData.bones as Record<string, T.Bone>;
@@ -287,6 +345,84 @@ describe.skipIf(!built)("built Grab3D characters", () => {
           expect(Math.min(...feet), `${asset.id} ${time}`).toBeGreaterThan(
             -0.05,
           );
+        }
+        disposeObject(group);
+      }
+    },
+  );
+
+  it.skipIf(!referenceBuilt)(
+    "straighten their wrists at the knuckles and wave like a Rocketbox hand",
+    { timeout: 300_000 },
+    async () => {
+      const sources = await recordedSources();
+      // The raised hand through Wave hello, stretched to two seconds.
+      const times = [0.3, 0.5, 0.7, 0.9, 1.1];
+      const wave = (group: T.Group, asset: (typeof assets)[number]) => {
+        const scene = applyCommands(starterScene(), [
+          { type: "clear" },
+          { type: "add", assetId: asset.id, position: [0, 0, 0] },
+        ]);
+        const entity = scene.entities[0];
+        entity.clips = [{ id: "wave", motionId: "wave", duration: 2 }];
+        const hand = (group.userData.bones as Record<string, T.Bone>).rightHand;
+        const skin = handSkin(group, hand);
+        return times.map((time) => {
+          applyAnimatedEntityPose(group, entity, scene, time);
+          return handDirection(group, hand, skin);
+        });
+      };
+      const rocketbox = await loadCharacter(reference!, sources);
+      const expected = wave(rocketbox, reference!);
+      disposeObject(rocketbox);
+      for (const asset of assets) {
+        const group = await loadCharacter(asset, sources);
+        const bones = group.userData.bones as Record<string, T.Bone>;
+        const weighted = new Set<T.Bone>();
+        group.traverse((mesh) => {
+          if (!(mesh instanceof T.SkinnedMesh)) return;
+          const { skinIndex, skinWeight } = mesh.geometry.attributes;
+          for (let i = 0; i < skinIndex.count; i++)
+            for (let k = 0; k < skinIndex.itemSize; k++)
+              if (skinWeight.getComponent(i, k) > 0)
+                weighted.add(mesh.skeleton.bones[skinIndex.getComponent(i, k)]);
+        });
+        // Raised and waving, the hand points where a Rocketbox hand points.
+        // A rest-pose wrist bend kept in the neutral put the Man in a
+        // T-shirt's hand 25° off, folded sideways at the wrist.
+        wave(group, asset).forEach((direction, i) =>
+          expect(
+            T.MathUtils.radToDeg(direction.angleTo(expected[i])),
+            `${asset.id} at ${times[i]} s`,
+          ).toBeLessThan(15),
+        );
+        // Meshy's hands have no fingers: one unweighted joint marks the
+        // knuckles, and the studio's anatomical rest straightens the wrist on
+        // it as it does on finger joints (here along the forearm as it is).
+        for (const side of ["left", "right"]) {
+          const hand = bones[side + "Hand"];
+          const knuckles = hand.children.filter((c) => c instanceof T.Bone);
+          expect(knuckles.length, `${asset.id} ${side}`).toBe(1);
+          expect(weighted.has(knuckles[0] as T.Bone), asset.id).toBe(false);
+          const at = (bone: T.Object3D) =>
+            bone.getWorldPosition(new T.Vector3());
+          const forearm = at(hand)
+            .sub(at(bones[side + "Forearm"]))
+            .normalize();
+          normalizeArmRest(
+            bones[side + "Arm"],
+            bones[side + "Forearm"],
+            hand,
+            { hinge: new T.Vector3(1, 0, 0), bend: 0 },
+            forearm,
+            new T.Vector3(0, 0, 1),
+          );
+          expect(
+            T.MathUtils.radToDeg(
+              at(knuckles[0]).sub(at(hand)).angleTo(forearm),
+            ),
+            `${asset.id} ${side} wrist`,
+          ).toBeLessThan(0.5);
         }
         disposeObject(group);
       }

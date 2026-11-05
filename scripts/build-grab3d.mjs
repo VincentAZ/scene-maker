@@ -2,9 +2,11 @@
 // Builds the Grab3D characters on their own and merges their catalogue
 // entries into shared/content/characters.json, replacing earlier Grab3D
 // entries and keeping every other source's. scripts/build-content.mjs builds
-// the whole characters category; this is for work on this one source.
+// the characters category from scripts/content/characters.mjs, which does not
+// run this module yet: until a characters dispatcher runs every module in
+// scripts/content/characters/, it writes the catalogue without these entries.
 //   node scripts/build-grab3d.mjs
-//   CHARACTERS_ONLY=grab3d-soldier node scripts/build-grab3d.mjs
+//   CHARACTERS_ONLY=grab3d-pirate node scripts/build-grab3d.mjs
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

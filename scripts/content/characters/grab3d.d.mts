@@ -7,6 +7,7 @@ export const cast: {
   style: string;
   metal?: boolean;
   description: string;
+  sha256: { glb: string; license: string };
 }[];
 export function imageSize(bytes: Buffer): { width: number; height: number };
 export function build(options: {
