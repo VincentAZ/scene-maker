@@ -20,7 +20,9 @@ import { FLOOR_TOP } from "../shared/sets";
 /** A standing body's reach from its centre and its height, for placing new
  * cast members clear of a set's furniture. */
 const BODY_HALF_WIDTH = 0.28,
-  BODY_HEIGHT = 1.7;
+  BODY_HEIGHT = 1.7,
+  /** How far above a hit point a furniture top still holds a prop. */
+  RESTING_REACH = 0.06;
 
 export const environmentAsset = (scene: Scene) =>
   allAssets(scene).find((asset) => asset.id === scene.environmentAssetId);
@@ -103,6 +105,25 @@ export class EnvironmentModel {
       new T.Vector3(x + BODY_HALF_WIDTH, BODY_HEIGHT, z + BODY_HALF_WIDTH),
     );
     return this.furniture.some((box) => box.intersectsBox(body));
+  };
+
+  /** The height a prop put down on the set's furniture at this point rests
+   * at: the highest furniture top there within a few centimetres above where
+   * the pointer met it, so a soft or uneven top (a duvet, a cushion, a
+   * bevelled edge) holds the prop instead of swallowing it. */
+  restingHeight = (x: number, z: number, y: number) => {
+    let top = y;
+    for (const box of this.furniture)
+      if (
+        box.max.y > top &&
+        box.max.y <= y + RESTING_REACH &&
+        x >= box.min.x &&
+        x <= box.max.x &&
+        z >= box.min.z &&
+        z <= box.max.z
+      )
+        top = box.max.y;
+    return top;
   };
 
   update(

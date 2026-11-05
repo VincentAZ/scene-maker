@@ -360,6 +360,8 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         status,
         environment: () => context.current?.environment.root ?? null,
         surfaces: () => context.current?.environment.surfaces ?? [],
+        restingHeight: (x, z, y) =>
+          context.current?.environment.restingHeight(x, z, y) ?? y,
       });
       let sessionScene: Scene | null = null,
         sessions: HoldSession[] = [],

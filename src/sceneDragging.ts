@@ -69,6 +69,8 @@ export function sceneDragging(options: {
   environment?: () => T.Object3D | null;
   /** A 3D set's furniture meshes: a dragged prop can be put on them too. */
   surfaces?: () => T.Object3D[];
+  /** The height a prop put on the set's furniture at x, z rests at. */
+  restingHeight?: (x: number, z: number, y: number) => number;
 }) {
   const { canvas, camera, world, objects, current, orbit, gizmo, status } =
     options;
@@ -311,7 +313,11 @@ export function sceneDragging(options: {
       const nearest = [surface, furniture && facesUp(furniture) && furniture]
         .filter((hit): hit is T.Intersection => !!hit)
         .sort((a, b) => a.distance - b.distance)[0];
-      if (nearest) p = nearest.point;
+      if (nearest) {
+        p = nearest.point.clone();
+        if (nearest === furniture && options.restingHeight)
+          p.y = options.restingHeight(p.x, p.z, p.y);
+      }
     }
     if (!p) g.valid = false;
     if (g.valid && p) {
