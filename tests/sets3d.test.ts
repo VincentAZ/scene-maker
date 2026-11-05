@@ -40,7 +40,7 @@ import {
 import { extractSun } from "../src/hdriBackdrop";
 import { disposeObject } from "../src/world";
 
-const classroom: SetBlock = {
+const staging: SetBlock = {
   camera: { position: [0, 1.6, 5], target: [0, 1, 0], maxDistance: 12 },
   bounds: { min: [-5, -0.1, -4], max: [5, 3.2, 6] },
   spawn: [0, 0, 0],
@@ -54,19 +54,20 @@ const classroom: SetBlock = {
   collision: "furniture",
   lighting: { exposure: 1.1, sun: [1, 2, 1], sunIntensity: 3, sky: true },
 };
+// A fixture id no catalogue entry can take (catalogue sets are "set-…").
 const set: Asset = {
-  id: "set-classroom",
-  name: "Classroom",
+  id: "test-set-room",
+  name: "Test room",
   category: "environments",
   style: "Indoor",
   color: "#9aa58f",
   skin: "#c99a7c",
   body: "masculine",
-  description: "A classroom, 10 × 10 m.",
-  url: "/content/sets/set-classroom.glb",
-  thumbnail: "/content/sets/set-classroom.png",
-  hdri: "/content/sets/set-classroom.hdr",
-  set: classroom,
+  description: "A test room, 10 × 10 m.",
+  url: "/content/sets/test-set-room.glb",
+  thumbnail: "/content/sets/test-set-room.png",
+  hdri: "/content/sets/test-set-room.hdr",
+  set: staging,
 };
 const withSet = (asset = set): Scene =>
   applyCommands(blankScene(), [
@@ -118,8 +119,9 @@ const light = (sun?: T.Vector3) => {
 describe("3D set catalogue schema", () => {
   it("accepts a set with a model, its HDR light and a staging block", () => {
     expect(() => assetSchema.parse(set)).not.toThrow();
-    expect(() => setSchema.parse({ ...classroom, collision: undefined })).not
-      .toThrow;
+    expect(() =>
+      setSchema.parse({ ...staging, collision: undefined }),
+    ).not.toThrow();
     const scene = withSet();
     expect(scene.environment).toBe("studio");
     expect(scene.environmentAssetId).toBe(set.id);
@@ -130,7 +132,7 @@ describe("3D set catalogue schema", () => {
 
   it("rejects malformed staging", () => {
     const bad = (changes: object) =>
-      expect(() => setSchema.parse({ ...classroom, ...changes })).toThrow();
+      expect(() => setSchema.parse({ ...staging, ...changes })).toThrow();
     bad({ bounds: { min: [0, 0, 0], max: [0, 3, 4] } });
     bad({ bounds: { min: [5, 0, 0], max: [-5, 3, 4] } });
     bad({
@@ -185,7 +187,7 @@ describe("a 3D set in the environment model", () => {
     expect(reported.at(-1)).toBeNull();
     const shown = show.mock.lastCall?.[0] as ModelSet;
     expect(shown).toBeInstanceOf(ModelSet);
-    expect(shown.set).toEqual(classroom);
+    expect(shown.set).toEqual(staging);
     expect(shown.light).toBe(loaded);
     expect(environment.view).toBe(shown);
     const home = setHome(shown.set);
@@ -248,7 +250,7 @@ describe("lighting a 3D set", () => {
     const world = lights(),
       gpu = renderer();
     const loaded = light(new T.Vector3(1, 1, 0));
-    const view = new ModelSet(set, classroom, loaded);
+    const view = new ModelSet(set, staging, loaded);
     applyStageLighting(world, gpu, "daylight", view);
     expect(world.environment).toBe(loaded.map);
     expect(world.background).toBe(loaded.map);
@@ -271,7 +273,7 @@ describe("lighting a 3D set", () => {
     expect(sun.shadow.camera.right).toBe(9);
     const hall = new ModelSet(
       set,
-      { ...classroom, bounds: { min: [-20, 0, -15], max: [20, 6, 15] } },
+      { ...staging, bounds: { min: [-20, 0, -15], max: [20, 6, 15] } },
       loaded,
     );
     applyStageLighting(world, gpu, "daylight", hall);
@@ -285,7 +287,7 @@ describe("lighting a 3D set", () => {
     const world = lights(),
       gpu = renderer();
     const notes = {
-      ...classroom,
+      ...staging,
       lighting: { hemisphere: 1.2, sunIntensity: 2 },
     };
     applyStageLighting(world, gpu, "moonlight", new ModelSet(set, notes, null));
@@ -305,7 +307,7 @@ describe("lighting a 3D set", () => {
       world,
       gpu,
       "daylight",
-      new ModelSet(set, { ...classroom, lighting: { fog: true } }, null),
+      new ModelSet(set, { ...staging, lighting: { fog: true } }, null),
     );
     expect(world.fog).toBeInstanceOf(T.Fog);
     expect(sun.intensity).toBe(4);
@@ -351,7 +353,7 @@ describe("shell and furniture in a 3D set", () => {
 
   it("marks what blocks so collisions, warnings and routes skip the shell", () => {
     const model = room();
-    markSetCollision(model, classroom);
+    markSetCollision(model, staging);
     expect(names(model)).toEqual(["wall", "chair", "table"]);
     const scene = withSet();
     const actor = new T.Group();
@@ -376,7 +378,7 @@ describe("shell and furniture in a 3D set", () => {
     expect(
       sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
     ).toContain("the backdrop");
-    markSetCollision(model, { ...classroom, collision: "none" });
+    markSetCollision(model, { ...staging, collision: "none" });
     expect(names(model)).toEqual([]);
     expect(
       sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
@@ -401,7 +403,7 @@ describe("spawn and drops on a set's floor", () => {
         insidePolygon(
           entity.position[0],
           entity.position[2],
-          classroom.walkable!,
+          staging.walkable!,
         ),
       ).toBe(true);
     expect(spawnPosition(undefined, 0)).toEqual([-1.5, 0, 0]);
@@ -415,12 +417,12 @@ describe("spawn and drops on a set's floor", () => {
     const [x, , z] = dropped.entities[0].position;
     expect(x).toBeCloseTo(4, 1);
     expect(z).toBeCloseTo(-3, 1);
-    expect(insidePolygon(x, z, classroom.walkable!)).toBe(true);
-    expect(onWalkableFloor(1, 1, classroom.walkable!)).toEqual([1, 1]);
-    const [ex, ez] = onWalkableFloor(0, 9, classroom.walkable!);
+    expect(insidePolygon(x, z, staging.walkable!)).toBe(true);
+    expect(onWalkableFloor(1, 1, staging.walkable!)).toEqual([1, 1]);
+    const [ex, ez] = onWalkableFloor(0, 9, staging.walkable!);
     expect(ex).toBeCloseTo(0);
     expect(ez).toBeCloseTo(5, 1);
-    expect(insidePolygon(ex, ez, classroom.walkable!)).toBe(true);
+    expect(insidePolygon(ex, ez, staging.walkable!)).toBe(true);
     // A concave floor plan: the nudge stays on the inside of the edge.
     const l: [number, number][] = [
       [0, 0],
@@ -488,16 +490,15 @@ describe("packaging a 3D set", () => {
     const { readFile } = await import("node:fs/promises");
     const JSZip = (await import("jszip")).default;
     const { contentAssets } = await import("../shared/contentLibrary");
-    // Stand in for a catalogue set until the first batch lands.
-    const library = contentAssets.find((asset) => asset.id === set.id);
-    if (!library) {
-      contentAssets.push(set);
-      contentCredits.set(set.id, {
-        author: "Christophe Seux",
-        license: "CC0",
-        source: "https://www.blender.org/download/demo-files/",
-      });
-    }
+    // The fixture joins the library for this test only; its id is one no
+    // catalogue entry can take.
+    expect(contentAssets.some((asset) => asset.id === set.id)).toBe(false);
+    contentAssets.push(set);
+    contentCredits.set(set.id, {
+      author: "Christophe Seux",
+      license: "CC0",
+      source: "https://www.blender.org/download/demo-files/",
+    });
     try {
       const read: typeof fetch = async (input) => {
         const url = String(input);
@@ -511,17 +512,15 @@ describe("packaging a 3D set", () => {
         await productionPackage(scene, new ArrayBuffer(8), read),
       );
       expect(
-        await zip.file("assets/sets/set-classroom.glb")!.async("string"),
+        await zip.file("assets/sets/test-set-room.glb")!.async("string"),
       ).toBe("set bytes");
-      expect(zip.file("assets/sets/set-classroom.hdr")).not.toBeNull();
+      expect(zip.file("assets/sets/test-set-room.hdr")).not.toBeNull();
       expect(
         await zip.file("assets/sets/CREDITS.txt")!.async("string"),
       ).toContain("Christophe Seux");
     } finally {
-      if (!library) {
-        contentAssets.splice(contentAssets.indexOf(set), 1);
-        contentCredits.delete(set.id);
-      }
+      contentAssets.splice(contentAssets.indexOf(set), 1);
+      contentCredits.delete(set.id);
     }
   });
 });
@@ -529,8 +528,8 @@ describe("packaging a 3D set", () => {
 it("disposes a set's light with the set", () => {
   const loaded = light();
   const dispose = vi.spyOn(loaded.map, "dispose");
-  new ModelSet(set, classroom, loaded).dispose();
+  new ModelSet(set, staging, loaded).dispose();
   expect(dispose).toHaveBeenCalledOnce();
   disposeObject(room());
-  expect(setBlockFor(set, room())).toBe(classroom);
+  expect(setBlockFor(set, room())).toBe(staging);
 });
