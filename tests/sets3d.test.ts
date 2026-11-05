@@ -533,3 +533,18 @@ it("disposes a set's light with the set", () => {
   disposeObject(room());
   expect(setBlockFor(set, room())).toBe(staging);
 });
+
+describe("compressed model decoders", () => {
+  it("come from the installed three.js release, not copies in the repository", async () => {
+    const { existsSync } = await import("node:fs");
+    const { decoders } = await import("../shared/decoders");
+    for (const decoder of Object.values(decoders))
+      for (const file of decoder.files)
+        expect(
+          existsSync(
+            `node_modules/three/examples/jsm/libs/${decoder.folder}/${file}`,
+          ),
+        ).toBe(true);
+    expect(existsSync("public/engine")).toBe(false);
+  });
+});

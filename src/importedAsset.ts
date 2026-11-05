@@ -3,6 +3,7 @@ import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { decoders } from "../shared/decoders";
 import {
   resolveMotionSource,
   allMotions,
@@ -23,12 +24,12 @@ const DOWNLOAD_CACHE_LIMIT = 24;
 let loader: GLTFLoader | undefined;
 let textures: KTX2Loader | undefined;
 /** One loader for every import, able to read compressed files: Draco and
- * meshopt geometry, KTX2 textures. The decoders are served under /engine. */
-function gltfLoader() {
+ * meshopt geometry, KTX2 textures (decoders in shared/decoders.ts). */
+export function gltfLoader() {
   if (!loader) {
     loader = new GLTFLoader();
-    loader.setDRACOLoader(new DRACOLoader().setDecoderPath("/engine/draco/"));
-    textures = new KTX2Loader().setTranscoderPath("/engine/basis/");
+    loader.setDRACOLoader(new DRACOLoader().setDecoderPath(decoders.draco.url));
+    textures = new KTX2Loader().setTranscoderPath(decoders.basis.url);
     loader.setKTX2Loader(textures);
     loader.setMeshoptDecoder(MeshoptDecoder);
   }

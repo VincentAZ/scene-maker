@@ -1,4 +1,5 @@
 import { thinkingLevels, thinkingChoices } from "../shared/thinking";
+import { decoders } from "../shared/decoders";
 import { untitledAnimationName } from "../shared/animation";
 import { blenderFailure, unsupportedFbxMessage } from "./fbxImport";
 import { createCodingService, codingRouter, repositoryRoot } from "./coding";
@@ -120,9 +121,17 @@ app.use(
     setHeaders: (r) => r.setHeader("X-Content-Type-Options", "nosniff"),
   }),
 );
-// Decoders for compressed models (public/engine/README.md) sit beside the
-// production adapters; the dev server proxies /engine here too.
-app.use("/engine", express.static(path.resolve("public/engine")));
+// Decoders for compressed models come from the installed three.js package
+// (shared/decoders.ts). They sit beside the production adapters; the dev
+// server proxies /engine here too.
+for (const decoder of Object.values(decoders))
+  app.use(
+    decoder.url,
+    express.static(
+      path.resolve("node_modules/three/examples/jsm/libs", decoder.folder),
+      { fallthrough: false },
+    ),
+  );
 app.use(
   "/engine",
   express.static(path.resolve("engine"), { fallthrough: false }),
