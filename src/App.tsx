@@ -1451,8 +1451,9 @@ export default function App() {
       setBusy(false);
     }
   }
-  /** Every Mixamo result becomes a character with its takes as actions; a
-   * batch lands in one step so it can be undone as one. */
+  /** Every Mixamo result becomes a character with its takes as actions, in
+   * one step so a batch is undone as one. Only the first is placed: a batch
+   * of dozens would pile up in the scene, so the rest wait in My assets. */
   function placeImportedModels(
     models: ImportedModel[],
     category: "characters" | "props",
@@ -1471,8 +1472,8 @@ export default function App() {
       };
       return { model, asset };
     });
-    execute(
-      placed.flatMap(({ model, asset }) => [
+    execute([
+      ...placed.flatMap(({ model, asset }) => [
         { type: "createAsset" as const, asset },
         ...model.animations
           .map((a, index, all) => ({
@@ -1493,16 +1494,20 @@ export default function App() {
               animationName: a.name,
             },
           })),
-        { type: "add" as const, assetId: asset.id },
       ]),
-    );
+      { type: "add", assetId: placed[0].asset.id },
+    ]);
     setSelected(sceneRef.current.entities.at(-1)!.id);
     setModal(null);
-    toast(
-      placed.length === 1
-        ? `${placed[0].asset.name} is ready`
-        : `${placed.length} characters are ready`,
-    );
+    if (placed.length === 1) toast(`${placed[0].asset.name} is ready`);
+    else {
+      setTab(category);
+      setFilter("My assets");
+      setSearch("");
+      toast(
+        `${placed.length} characters are ready: ${placed[0].asset.name} is in the scene, the others are in My assets.`,
+      );
+    }
   }
   function placeGeneratedAsset(asset: Asset) {
     const exists = sceneRef.current.customAssets.some((a) => a.id === asset.id);

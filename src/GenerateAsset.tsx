@@ -203,7 +203,13 @@ export function GenerateAsset({
     try {
       const data = new FormData();
       data.append("mode", mode);
-      for (const f of Array.from(list)) data.append("files", f);
+      // A file dialog hands files over in its own (usually alphabetical)
+      // order, and a Mixamo animation file does not name its character, so
+      // the order the creator downloaded them in decides which goes where.
+      for (const f of Array.from(list).sort(
+        (a, b) => a.lastModified - b.lastModified,
+      ))
+        data.append("files", f);
       const r = await api<ImportResult>("/api/mixamo/upload", {
         method: "POST",
         body: data,
@@ -488,7 +494,9 @@ export function GenerateAsset({
               <small className="muted">
                 {mode === "one"
                   ? "The character file and every animation are combined into one rigged character."
-                  : "Every file downloaded With Skin becomes a character of its own; the animations downloaded Without Skin after it belong to it. Up to 40 files at once."}
+                  : "Every file downloaded With Skin becomes a character of its own; the animations downloaded Without Skin after it belong to it. Up to 40 files at once: the first character is placed in the scene, the others are added to My assets."}{" "}
+                Files you choose from disk are taken in the order you downloaded
+                them.
               </small>
               {watching ? (
                 <>
