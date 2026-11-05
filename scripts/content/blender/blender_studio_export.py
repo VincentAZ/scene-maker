@@ -856,14 +856,6 @@ def skin(obj, seen=()):
     pairs = [(deform_for(c), w) for c, w in (controls[obj] if obj in controls else control_weights(obj))]
     pairs = [(name, w) for name, w in pairs if name]
     if pairs:
-        centre = centres.get(obj) or obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
-        reach = min(segment_distance(centre, rig.matrix_world @ rig.data.bones[n].head_local,
-                                     rig.matrix_world @ rig.data.bones[n].tail_local) for n, _ in pairs)
-        if reach > 0.3 * figure_height:
-            # Only the film's pose brings it to its bone (Einar's robot
-            # finger plates); at rest it would lie on the floor.
-            reasons[obj] = "only the film's pose brings it to its bone"
-            return False
         bind(obj, pairs)
         log("skinned", obj.name, "to", ", ".join(sorted({n for n, _ in pairs})))
         return True
@@ -893,13 +885,9 @@ def skin(obj, seen=()):
     return True
 
 
-reasons = {}
-feet = [rig.matrix_world @ rig.data.bones[role_names[s]].head_local for s in ("foot.L", "foot.R") if s in role_names]
-top = rig.matrix_world @ rig.data.bones[role_names["head"]].tail_local
-figure_height = top.z - min((f.z for f in feet), default=0.0)
 unplaced = [obj for obj in meshes if not skin(obj)]
 for obj in unplaced:
-    log("left out", obj.name, f"({reasons.get(obj, 'nothing moves it; it sits at the scene origin')})")
+    log("left out", obj.name, "(nothing moves it; it sits at the scene origin)")
     meshes.remove(obj)
     bpy.data.objects.remove(obj)
 
@@ -928,6 +916,40 @@ def fill_unweighted(obj):
 
 for obj in meshes:
     fill_unweighted(obj)
+
+
+def carrying_bone(obj):
+    """The deform bone that carries most of a part's vertices."""
+    groups = deform_groups(obj)
+    tally = {}
+    for v in obj.data.vertices:
+        best = max((g for g in v.groups if g.group in groups), key=lambda g: g.weight, default=None)
+        if best is not None:
+            tally[groups[best.group]] = tally.get(groups[best.group], 0) + 1
+    return max(tally, key=tally.get) if tally else None
+
+
+# Some parts reach their place only through the film's pose (helpers that
+# carry Einar's pockets, zip and arm hoses into position); at rest they
+# lie in a heap by the feet, far from the bone that carries them. Hair,
+# backpacks and arms stay within 30% of the figure's height of theirs.
+corners = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box]
+floor = min(c.z for c in corners)
+tall = max(c.z for c in corners) - floor
+out_of_place = []
+for obj in meshes:
+    name = carrying_bone(obj)
+    if name is None:
+        continue
+    middle = obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
+    bone = rig.data.bones[name]
+    gap = segment_distance(middle, rig.matrix_world @ bone.head_local, rig.matrix_world @ bone.tail_local) / tall
+    if gap > 0.35 or (gap > 0.3 and middle.z - floor < 0.3 * tall):
+        out_of_place.append(obj)
+for obj in out_of_place:
+    log("left out", obj.name, "(only the film's pose puts it in place)")
+    meshes.remove(obj)
+    bpy.data.objects.remove(obj)
 
 
 # Deform bones that carry no weight and hold none that does are dropped.
