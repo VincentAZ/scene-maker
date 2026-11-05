@@ -297,6 +297,11 @@ export function depthInside(
 const BODY_RADIUS = 0.25,
   CAST_SPACING = 0.75;
 
+/** Does a body standing here keep its radius from the edge of the set's
+ * open floor? A library set's walkable outline leaves out its furniture. */
+export const standsOnFloor = (set: SetBlock, x: number, z: number) =>
+  depthInside(x, z, floorPlan(set)) >= BODY_RADIUS;
+
 /** Is this floor point taken by the set's furniture? Known only once the
  * set's model has loaded (src/environmentModel.ts). */
 export type FloorBlocked = (x: number, z: number) => boolean;

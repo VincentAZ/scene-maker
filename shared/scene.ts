@@ -17,13 +17,12 @@ import {
 import { setAssets, setLayout } from "./setLayouts";
 import { contentAssets, contentURL } from "./contentLibrary";
 import {
-  floorPlan,
   FLOOR_TOP,
   freeSpot,
-  insidePolygon,
   keepOnSetFloor,
   setSchema,
   spawnPosition,
+  standsOnFloor,
   type FloorBlocked,
 } from "./sets";
 import { thinkingLevels } from "./thinking";
@@ -723,19 +722,19 @@ export function applyCommands(
   // command changes the set, nothing is known about the new one's.
   let floorBlocked = options.floorBlocked;
   // A 3D set replaces the stage: cast members left off its floor plan (at
-  // their studio spots, inside its walls) step onto free floor near its spawn
-  // point, facing its heading. Its furniture is not known until it loads, so
-  // only the plan and the rest of the cast are avoided.
+  // their studio spots, inside its walls or its furniture) step onto free
+  // floor near its spawn point, facing its heading. Its furniture is known
+  // only from the plan until the model loads, so a set without a walkable
+  // outline can still leave someone in a piece of furniture.
   const stepOntoSet = () => {
     floorBlocked = undefined;
     const set = environmentSet(s);
     if (!set) return;
-    const plan = floorPlan(set);
     const stays = (entity: Entity) =>
       allAssets(s).find((asset) => asset.id === entity.assetId)?.category !==
         "characters" ||
       Math.abs(entity.position[1]) > FLOOR_TOP ||
-      insidePolygon(entity.position[0], entity.position[2], plan);
+      standsOnFloor(set, entity.position[0], entity.position[2]);
     const taken = s.entities.filter(stays).map((entity) => entity.position);
     for (const entity of s.entities.filter((entity) => !stays(entity))) {
       entity.position = freeSpot(set, taken);

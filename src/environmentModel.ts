@@ -21,8 +21,9 @@ import { FLOOR_TOP } from "../shared/sets";
  * cast members clear of a set's furniture. */
 const BODY_HALF_WIDTH = 0.28,
   BODY_HEIGHT = 1.7,
-  /** How far above a hit point a furniture top still holds a prop. */
-  RESTING_REACH = 0.06;
+  /** How far above a hit point a furniture top still holds a prop: a
+   * duvet draped over a bed's edge is met 15 cm below the bed's top. */
+  RESTING_REACH = 0.2;
 
 export const environmentAsset = (scene: Scene) =>
   allAssets(scene).find((asset) => asset.id === scene.environmentAssetId);
@@ -108,9 +109,9 @@ export class EnvironmentModel {
   };
 
   /** The height a prop put down on the set's furniture at this point rests
-   * at: the highest furniture top there within a few centimetres above where
-   * the pointer met it, so a soft or uneven top (a duvet, a cushion, a
-   * bevelled edge) holds the prop instead of swallowing it. */
+   * at: the highest furniture top there a little above where the pointer met
+   * it, so a soft or uneven top (a duvet, a cushion, a bevelled edge) holds
+   * the prop instead of swallowing it. */
   restingHeight = (x: number, z: number, y: number) => {
     let top = y;
     for (const box of this.furniture)

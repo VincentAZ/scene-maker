@@ -269,7 +269,7 @@ describe("a 3D set in the environment model", () => {
     // A prop put on the table rests on its top, even where the pointer met it
     // a little lower (a soft or bevelled top); higher furniture is ignored.
     expect(environment.restingHeight(2.5, -2, 0.77)).toBeCloseTo(0.8);
-    expect(environment.restingHeight(2.5, -2, 0.6)).toBe(0.6);
+    expect(environment.restingHeight(2.5, -2, 0.5)).toBe(0.5);
     expect(environment.restingHeight(0, 0, 0.77)).toBe(0.77);
     environment.update(starterScene(), settled, () => {});
     expect(environment.floorBlocked(1.5, -1)).toBe(false);
@@ -840,9 +840,12 @@ describe("spawn and drops on a set's floor", () => {
       { type: "add", assetId: "mila", position: [9, 0, 9] },
       { type: "add", assetId: "leo", position: [0.5, 0, 0.5] },
       { type: "add", assetId: "ph-dining-chair-leather", position: [9, 0, -9] },
+      // At the edge of the floor plan, half in whatever bounds it.
+      { type: "add", assetId: "mila", position: [3.95, 0, 1] },
     ]);
     const staged = applyCommands(studio, [{ type: "add", assetId: set.id }]);
-    const [mila, leo, chair] = staged.entities;
+    const [mila, leo, chair, edge] = staged.entities;
+    expect(edge.position[0]).toBeLessThan(3.7);
     expect(
       insidePolygon(mila.position[0], mila.position[2], staging.walkable!),
     ).toBe(true);
