@@ -2,7 +2,7 @@
 // (the library was built with it); BLENDER_PATH or SCENE_MAKER_BLENDER name
 // another binary. Every run starts from factory settings with auto-run
 // scripts disabled, because the files it opens are downloads.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -23,47 +23,67 @@ export function findBlender(root) {
 }
 
 /** Runs `script` with `args` after "--". Lines of stdout starting with
- * `prefix` are passed to `log` as they come; the rest is kept quiet. Throws
- * with the tail of stderr when Blender fails or exceeds `timeout` (ms). */
+ * `prefix` are passed to `log` as they come, so a long bake shows progress;
+ * the rest is kept quiet. Resolves when Blender exits cleanly; rejects with
+ * the tail of its output when it fails or exceeds `timeout` (ms). */
 export function runBlender(
   blender,
   script,
   args,
   { log, prefix = "SET ", timeout = 60 * 60 * 1000, env } = {},
 ) {
-  const run = spawnSync(
-    blender,
-    [
-      "--background",
-      "--factory-startup",
-      "--disable-autoexec",
-      "--python-exit-code",
-      "1",
-      "--python",
-      script,
-      "--",
-      ...args,
-    ],
-    {
-      encoding: "utf8",
-      maxBuffer: 256 * 1024 * 1024,
-      timeout,
-      env: { ...process.env, ...env },
-    },
-  );
-  for (const line of (run.stdout || "").split("\n"))
-    if (line.startsWith(prefix)) log?.(line.slice(prefix.length));
-  if (run.error?.code === "ETIMEDOUT")
-    throw Error(`Blender ran out of time after ${timeout / 60000} minutes.`);
-  if (run.status !== 0) {
-    const tail = `${run.stdout || ""}\n${run.stderr || ""}`
-      .split("\n")
-      .filter(
-        (line) => line.trim() && !/^(Blender|Read |Info:|WARN|Fra:)/.test(line),
-      )
-      .slice(-30)
-      .join("\n");
-    throw Error(`Blender exited with ${run.status}:\n${tail}`);
-  }
-  return run;
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      blender,
+      [
+        "--background",
+        "--factory-startup",
+        "--disable-autoexec",
+        "--python-exit-code",
+        "1",
+        "--python",
+        script,
+        "--",
+        ...args,
+      ],
+      { env: { ...process.env, ...env } },
+    );
+    const tail = [];
+    const keep = (line) => {
+      if (line.trim() && !/^(Blender|Read |Info:|WARN|Fra:)/.test(line))
+        tail.push(line);
+      if (tail.length > 30) tail.shift();
+    };
+    let pending = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      const lines = (pending + chunk).split("\n");
+      pending = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith(prefix)) log?.(line.slice(prefix.length));
+        keep(line);
+      }
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => chunk.split("\n").forEach(keep));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeout);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut)
+        reject(
+          Error(`Blender ran out of time after ${timeout / 60000} minutes.`),
+        );
+      else if (code !== 0)
+        reject(Error(`Blender exited with ${code}:\n${tail.join("\n")}`));
+      else resolve();
+    });
+  });
 }

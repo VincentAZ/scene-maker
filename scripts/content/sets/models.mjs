@@ -2,9 +2,11 @@
 // ORCA, Benedikt Bitterli's rendering resources and the McGuire archive,
 // converted by Blender (sets/blender_set.py) into one self-contained GLB each:
 // metres, Y-up, the walkable floor at y = 0, the origin on open floor where
-// the cast appears, facing +Z toward the home camera. The converter measures
-// the bounds, chooses the home camera, traces the open floor and renders the
-// thumbnail; this module records all of it in the catalogue's `set` block.
+// the cast appears, with the home camera toward +Z (within 45°: the set keeps
+// its own axes and the cast's heading faces the camera). The converter
+// measures the bounds, chooses the home camera, traces the open floor, tags
+// floor and shell meshes, and renders the thumbnail lit by the set's HDR;
+// this module records all of it in the catalogue's `set` block.
 // Idempotent: sources are cached in content/.cache/sets-models/<slug>/ and a
 // set is converted again only when its GLB, thumbnail or measurement is
 // missing or was made by an older converter.
@@ -17,7 +19,7 @@ import { download, fetchJSON, mb } from "../lib/download.mjs";
 import { blenderLib } from "../lib/thumbnail.mjs";
 
 // Bump to convert every set again after changing the converter.
-const CONVERTER_VERSION = 2;
+const CONVERTER_VERSION = 4;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // NVIDIA's stable download URL bounces to a signed, short-lived link; the zip
@@ -30,8 +32,10 @@ const bistro = {
 
 // `licence` is the text that must appear in the licence file shipped inside
 // the archive (or beside a bare file); a set whose archive says something
-// else is skipped and reported, never shipped. `hdri` names a sky shipped in
-// the archive, `sky` a Poly Haven CC0 sky for an outdoor set without one.
+// else is skipped and reported, never shipped. Every set is lit by an HDR:
+// `hdri` names one shipped in the archive, `sky` a Poly Haven CC0 sky for an
+// outdoor set without one; indoor sets default to a Poly Haven CC0 room lit
+// by its windows (`light`), because the studio's sun cannot reach inside.
 // `convert` holds per-set hints for blender_set.py: `floorLevel` (the source
 // height of the floor the cast lives on, when the largest floor is the wrong
 // one), `extent` (metres from the cast beyond which a landscape is cut off),
@@ -143,15 +147,22 @@ export const sets = [
     licence: { file: "LICENSE.txt", text: "Attribution 4.0 International" },
     main: /^BistroExterior\.fbx$/,
     format: "fbx",
-    // 2.8 million triangles as published; the budget keeps the file under
-    // 100 MB.
+    // 2.8 million triangles over a 180 m block as published: the budget and
+    // the cut at 55 m from the terrace keep the file near 100 MB.
     convert: {
       materials: "bistro",
       maxTexture: 1024,
       shellNames: false,
       maxTriangles: 1900000,
+      extent: 55,
     },
     hdri: /^san_giuseppe_bridge_4k\.hdr$/,
+    // The archive's sky is Poly Haven's San Giuseppe Bridge.
+    hdriCredit: {
+      author: "Greg Zaal",
+      license: "CC0",
+      source: "https://polyhaven.com/a/san_giuseppe_bridge",
+    },
     credit: {
       author: "Amazon Lumberyard",
       license: "CC BY 4.0",
@@ -293,6 +304,30 @@ export const sets = [
       source: "https://casual-effects.com/data",
     },
   },
+  {
+    id: "set-barbershop",
+    slug: "barbershop",
+    name: "Barbershop",
+    style: "Indoor",
+    description:
+      "The barbershop from Agent 327: barber's chairs in front of long mirrors, shelves of bottles and a tiled floor.",
+    files: [
+      {
+        url: "https://svn.blender.org/svnroot/bf-blender/trunk/lib/benchmarks/cycles/barbershop_interior/barbershop_interior.blend",
+        file: "barbershop_interior.blend",
+      },
+    ],
+    main: /^barbershop_interior\.blend$/,
+    format: "blend",
+    // A fog volume box around the room and rig widgets are not scenery; 6.9
+    // million triangles as published, halved to keep the file near 100 MB.
+    convert: { drop: "^(ENV-|WGT-)", maxTriangles: 3000000 },
+    credit: {
+      author: "Blender Studio (Agent 327)",
+      license: "CC BY",
+      source: "https://www.blender.org/download/demo-files/",
+    },
+  },
 ];
 
 // Not shipped: San Miguel (McGuire archive, San_Miguel.zip) is listed as
@@ -314,14 +349,30 @@ function checkLicence(set, dir, log) {
   return false;
 }
 
-// Poly Haven CC0 skies light the outdoor sets that ship no sky of their own.
-async function sky(name, file, cache, log) {
-  if (fs.existsSync(file)) return;
-  const files = await fetchJSON(
-    `https://api.polyhaven.com/files/${name}`,
-    path.join(cache, `sky-${name}.json`),
-  );
+// The light of a room by day, from Poly Haven (CC0): soft window light with no
+// compact sun, so it lights an interior evenly through the studio's
+// image-based lighting.
+const ROOM_LIGHT = "lebombo";
+
+// Downloads a Poly Haven HDR (1k is plenty for lighting) to `file` and
+// returns its credit.
+async function polyHaven(name, file, cache, log) {
+  const [info, files] = await Promise.all([
+    fetchJSON(
+      `https://api.polyhaven.com/info/${name}`,
+      path.join(cache, `hdri-${name}-info.json`),
+    ),
+    fetchJSON(
+      `https://api.polyhaven.com/files/${name}`,
+      path.join(cache, `hdri-${name}.json`),
+    ),
+  ]);
   await download(files.hdri["1k"].hdr.url, file, { log });
+  return {
+    author: Object.keys(info.authors ?? {}).join(", ") || "Poly Haven",
+    license: "CC0",
+    source: `https://polyhaven.com/a/${name}`,
+  };
 }
 
 export async function build({ out, cache, root, log, only }) {
@@ -329,6 +380,7 @@ export async function build({ out, cache, root, log, only }) {
   const sources = path.join(cache, "sets-models");
   fs.mkdirSync(dir, { recursive: true });
   const entries = [];
+  const lights = new Map();
   for (const set of sets) {
     const base = path.join(sources, set.slug);
     const measureFile = path.join(base, `${set.id}.json`);
@@ -341,6 +393,17 @@ export async function build({ out, cache, root, log, only }) {
         log(`${set.id}: not built yet (SETS_ONLY left it out)`);
         continue;
       }
+      // The light's credit comes from the cached Poly Haven details.
+      if (!set.hdri && fs.existsSync(hdr))
+        lights.set(
+          set.id,
+          await polyHaven(
+            set.sky ?? set.light ?? ROOM_LIGHT,
+            hdr,
+            sources,
+            log,
+          ),
+        );
     } else {
       const say = (m) => log(`${set.id}: ${m}`);
       for (const source of set.files) {
@@ -349,19 +412,32 @@ export async function build({ out, cache, root, log, only }) {
         if (source.extract) extract(file, path.join(base, "src"), { log: say });
       }
       if (!checkLicence(set, base, log)) continue;
-      if (set.sky) await sky(set.sky, hdr, cache, say);
-      if (set.hdri && !fs.existsSync(hdr)) {
-        const shipped = findFile(base, set.hdri);
-        if (!shipped)
-          throw Error(`${set.id}: ${set.hdri} not found in ${base}`);
-        fs.copyFileSync(shipped, hdr);
-      }
+      if (set.hdri) {
+        if (!fs.existsSync(hdr)) {
+          const shipped = findFile(base, set.hdri);
+          if (!shipped)
+            throw Error(`${set.id}: ${set.hdri} not found in ${base}`);
+          fs.copyFileSync(shipped, hdr);
+        }
+      } else
+        lights.set(
+          set.id,
+          await polyHaven(
+            set.sky ?? set.light ?? ROOM_LIGHT,
+            hdr,
+            sources,
+            say,
+          ),
+        );
+      const measured = fs.existsSync(measureFile)
+        ? JSON.parse(fs.readFileSync(measureFile, "utf8"))
+        : {};
+      // A failed conversion is tried again on the next build.
       const current =
         fs.existsSync(glb) &&
         fs.existsSync(png) &&
-        fs.existsSync(measureFile) &&
-        JSON.parse(fs.readFileSync(measureFile, "utf8")).version ===
-          CONVERTER_VERSION;
+        measured.version === CONVERTER_VERSION &&
+        !measured.error;
       if (!current) {
         const main = findFile(base, set.main);
         if (!main) throw Error(`${set.id}: ${set.main} not found in ${base}`);
@@ -380,6 +456,8 @@ export async function build({ out, cache, root, log, only }) {
               measure: measureFile,
               work: path.join(base, `work-${set.id}`),
               lib: blenderLib,
+              hdri: hdr,
+              sky: set.style === "Outdoor",
               ...set.convert,
             },
             null,
@@ -388,20 +466,26 @@ export async function build({ out, cache, root, log, only }) {
         );
         say("converting with Blender");
         const started = Date.now();
-        runBlender(
-          findBlender(root),
-          path.join(here, "blender_set.py"),
-          [job],
-          {
-            log: say,
-            timeout: 90 * 60 * 1000,
-          },
-        );
+        try {
+          await runBlender(
+            findBlender(root),
+            path.join(here, "blender_set.py"),
+            [job],
+            { log: say, timeout: 90 * 60 * 1000 },
+          );
+        } catch (error) {
+          // One broken source must not take the whole library down.
+          say(`left out, its conversion failed: ${error.message}`);
+          continue;
+        }
         say(`converted in ${Math.round((Date.now() - started) / 1000)} s`);
       }
     }
     const m = JSON.parse(fs.readFileSync(measureFile, "utf8"));
-    if (m.error) throw Error(`${set.id}: ${m.error}`);
+    if (m.error) {
+      log(`${set.id}: left out, its conversion failed: ${m.error}`);
+      continue;
+    }
     const [w, h, d] = [0, 1, 2].map((i) => m.bounds.max[i] - m.bounds.min[i]);
     log(
       `${set.id}: ${round(w, 1)} × ${round(d, 1)} m, ${m.triangles} triangles, ${mb(fs.statSync(glb).size)}`,
@@ -423,18 +507,24 @@ export async function build({ out, cache, root, log, only }) {
         },
         bounds: { min: roundAll(m.bounds.min), max: roundAll(m.bounds.max) },
         spawn: [0, 0, 0],
-        heading: 0,
+        heading: round(m.heading ?? 0, 3),
         ...(m.walkable?.length >= 3
           ? { walkable: m.walkable.map((p) => roundAll(p)) }
           : {}),
         collision: "furniture",
-        ...(set.sky || set.hdri
-          ? {
-              lighting: { exposure: 1, hemisphere: 1.2, fog: false, sky: true },
-            }
-          : {}),
+        // The HDR is the whole light: outdoors it is also the sky, indoors
+        // the windows show the studio's backdrop instead of another room.
+        lighting: {
+          ...(m.exposure ? { exposure: round(m.exposure) } : {}),
+          fog: false,
+          sky: set.style === "Outdoor",
+        },
       },
       credit: set.credit,
+      // Who made the HDR that lights the set (not part of the model).
+      ...(fs.existsSync(hdr)
+        ? { lightCredit: set.hdriCredit ?? lights.get(set.id) }
+        : {}),
     };
     entries.push(entry);
   }

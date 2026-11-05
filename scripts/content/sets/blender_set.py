@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
 sys.path.insert(0, job["lib"])
@@ -500,6 +501,30 @@ def plain(spec):
             "alpha": ("const", 1.0), "normal": None, "emission": None, **spec}
 
 
+# Light Path outputs as seen by a ray from the camera.
+CAMERA_RAY = {"Is Camera Ray": 1.0, "Is Shadow Ray": 0.0, "Is Diffuse Ray": 0.0, "Is Glossy Ray": 0.0,
+              "Is Singular Ray": 0.0, "Is Reflection Ray": 0.0, "Is Transmission Ray": 0.0,
+              "Is Volume Scatter Ray": 0.0, "Ray Depth": 0.0, "Diffuse Depth": 0.0, "Glossy Depth": 0.0,
+              "Transparent Depth": 0.0, "Transmission Depth": 0.0}
+
+
+def glass_like(material):
+    """True when the shader lets light through like glass: a baked texture
+    would come out black, so such a material becomes plain clear glass."""
+    for node in material.node_tree.nodes:
+        if node.type in ("BSDF_GLASS", "BSDF_REFRACTION") and node.outputs[0].is_linked:
+            return True
+        if node.type == "BSDF_PRINCIPLED" and node.outputs[0].is_linked:
+            weight = node.inputs["Transmission Weight"]
+            if not weight.is_linked and weight.default_value > 0.5:
+                return True
+    return False
+
+
+GLASS = {"color": ("const", (0.92, 0.94, 0.95, 1.0)), "roughness": ("const", 0.05),
+         "alpha": ("const", 0.25), "transparent": True}
+
+
 class Simplifier:
     """Reads a shader tree into Principled parameters when it is made of
     constants, image textures and the simple Diffuse/Glossy/Glass/Mix shaders
@@ -568,6 +593,10 @@ class Simplifier:
         if node.type in ("FRESNEL", "LAYER_WEIGHT"):
             # A dielectric's specular layer: Principled has it built in.
             return 0.08
+        if node.type == "LIGHT_PATH" and out.name in CAMERA_RAY:
+            # Path tricks (a lamp shade lit only for the camera, a window
+            # that hides from it) resolve to what the camera sees.
+            return CAMERA_RAY[out.name]
         raise Unsupported("factor from " + node.type)
 
     def factor_or_image(self, socket, group=None):
@@ -805,20 +834,15 @@ def read_pixels(image):
     return px.reshape(image.size[1], image.size[0], 4)
 
 
-def write_image(name, pixels, path, srgb):
-    """Saves float pixels (already display-encoded when `srgb`) as a PNG and
-    loads it back as a file-backed image for the exporter."""
+def write_image(name, pixels, path):
+    """Saves float pixels (already display-encoded for colour) as a PNG."""
     h, w = pixels.shape[:2]
     image = bpy.data.images.new(name, w, h, alpha=False, float_buffer=False)
-    image.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
     image.pixels.foreach_set(np.clip(pixels, 0, 1).astype(np.float32).reshape(-1))
     image.filepath_raw = path
     image.file_format = "PNG"
     image.save()
     bpy.data.images.remove(image)
-    image = bpy.data.images.load(path, check_existing=False)
-    image.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
-    return image
 
 
 def use_gpu(scene):
@@ -879,33 +903,97 @@ def single_uv_layer(o):
     layers.active_index = 0
 
 
+def fold_uvs(mesh):
+    """Shifts each face's UVs by whole tiles so it lies in the unit square
+    the bake paints: a texture tiled across a wall (UVs from 0 to 10) bakes
+    one tile, which the exported material repeats like the original."""
+    if not mesh.uv_layers or not len(mesh.polygons):
+        return
+    layer = mesh.uv_layers[0].data
+    uv = np.empty(len(layer) * 2, dtype=np.float64)
+    layer.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2)
+    starts = np.empty(len(mesh.polygons), dtype=np.int64)
+    totals = np.empty(len(mesh.polygons), dtype=np.int64)
+    mesh.polygons.foreach_get("loop_start", starts)
+    mesh.polygons.foreach_get("loop_total", totals)
+    # Every loop's index, face by face, and the face it belongs to.
+    face = np.repeat(np.arange(len(starts)), totals)
+    loops = starts[face] + np.arange(len(face)) - np.repeat(np.cumsum(totals) - totals, totals)
+    centre = np.zeros((len(starts), 2))
+    np.add.at(centre, face, uv[loops])
+    centre /= totals[:, None]
+    uv[loops] -= np.floor(centre)[face]
+    layer.foreach_set("uv", uv.reshape(-1).astype(np.float32))
+
+
 def compose_baked(material, results, work):
     """Textures from the three bake passes: diffuse + glossy colour is the
     base colour (metal shows up as glossy colour without diffuse colour),
-    roughness stays a texture only when it varies."""
+    roughness stays a texture only when it varies. Only the pixels the bake
+    reached count; the rest take the average so distant mip levels do not
+    darken. Returns the material's entry for the bake cache."""
     diffuse, glossy, rough = results["DIFFUSE"], results["GLOSSY"], results["ROUGHNESS"]
+    reached = (rough[..., 0] > 0) | (diffuse[..., :3].max(-1) > 0) | (glossy[..., :3].max(-1) > 0)
+    if not reached.any():
+        # The bake never landed on this material: its viewport colour stands in.
+        return {"color": [float(c) for c in material.diffuse_color[:3]], "metallic": 0.0, "roughness": 0.6}
     total = luminance(diffuse) + luminance(glossy)
     share = np.where(total > 1e-4, luminance(glossy) / np.maximum(total, 1e-4), 0.0)
-    metal = float(share.mean()) > 0.5
+    metal = float(share[reached].mean()) > 0.5
     color = (diffuse + glossy if metal else diffuse).copy()
+    color[~reached] = color[reached].mean(0)
     color[..., :3] = to_srgb(color[..., :3])
     color[..., 3] = 1.0
     os.makedirs(work, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", material.name)
-    spec = plain({
-        "color": ("image", ImageRef(write_image("baked-color-" + material.name, color,
-                                                 os.path.join(work, safe + "-color.png"), srgb=True))),
-        "metallic": ("const", 1.0 if metal else 0.0),
-    })
-    values = rough[..., 0]
+    entry = {"color": safe + "-color.png", "metallic": 1.0 if metal else 0.0}
+    write_image(entry["color"], color, os.path.join(work, entry["color"]))
+    values = rough[..., 0][reached]
     if float(values.max() - values.min()) > 0.08:
         rough = rough.copy()
+        rough[~reached] = float(values.mean())
         rough[..., 3] = 1.0
-        spec["roughness"] = ("image", ImageRef(write_image("baked-rough-" + material.name, rough,
-                                                           os.path.join(work, safe + "-rough.png"), srgb=False)))
+        entry["roughness"] = safe + "-rough.png"
+        write_image(entry["roughness"], rough, os.path.join(work, entry["roughness"]))
     else:
-        spec["roughness"] = ("const", float(values.mean()))
-    rebuild_material(material, spec)
+        entry["roughness"] = float(values.mean())
+    return entry
+
+
+def apply_baked(material, entry, work):
+    """Rebuilds a material from its baked textures (or the plain colour that
+    stood in for a bake that missed it)."""
+    def texture(name, srgb):
+        image = bpy.data.images.load(os.path.join(work, name), check_existing=True)
+        image.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
+        return ("image", ImageRef(image))
+
+    color, roughness = entry["color"], entry["roughness"]
+    rebuild_material(material, plain({
+        "color": texture(color, True) if isinstance(color, str) else ("const", (*color, 1.0)),
+        "metallic": ("const", entry["metallic"]),
+        "roughness": texture(roughness, False) if isinstance(roughness, str) else ("const", roughness),
+    }))
+
+
+# Bump when the bake itself changes; older cached bakes are then redone.
+BAKE_VERSION = 2
+
+
+def bake_cache(work):
+    """The baked materials of an earlier conversion of this set (name →
+    entry): a big set takes an hour to bake, and its sources never change."""
+    try:
+        with open(os.path.join(work, "manifest.json")) as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if manifest.get("version") != BAKE_VERSION:
+        return {}
+    return {name: entry for name, entry in manifest.get("materials", {}).items()
+            if all(os.path.exists(os.path.join(work, entry[key])) for key in ("color", "roughness")
+                   if isinstance(entry[key], str))}
 
 
 def bake_materials(scene, materials, objects, work):
@@ -916,7 +1004,7 @@ def bake_materials(scene, materials, objects, work):
     bake_set = set(materials)
     users = [o for o in objects if any(s.material in bake_set for s in o.material_slots)]
     if not users:
-        return 0
+        return {}
     ensure_uv(users)
     areas = {m: 0.0 for m in bake_set}
     for o in users:
@@ -938,24 +1026,20 @@ def bake_materials(scene, materials, objects, work):
             targets[m] = target
             added.append((m, node))
         # Every other material on those objects needs an active image too,
-        # or the bake refuses the object; a scratch image catches those.
-        for o in users:
-            for slot in o.material_slots:
-                m = slot.material
-                if m is None or m in bake_set:
-                    continue
-                if not m.use_nodes:
-                    m.use_nodes = True
-                active = m.node_tree.nodes.active
-                if active is None or active.type != "TEX_IMAGE" or active.image is None:
-                    n = m.node_tree.nodes.new("ShaderNodeTexImage")
-                    n.image = scratch
-                    m.node_tree.nodes.active = n
-                    added.append((m, n))
+        # or the bake refuses the object; a scratch image catches those, so
+        # the bake never paints over a material's own texture.
+        for m in {s.material for o in users for s in o.material_slots} - bake_set - {None}:
+            if not m.use_nodes:
+                m.use_nodes = True
+            n = m.node_tree.nodes.new("ShaderNodeTexImage")
+            n.image = scratch
+            m.node_tree.nodes.active = n
+            added.append((m, n))
         for o in users:
             c = o.copy()
             c.data = o.data.copy()
             single_uv_layer(c)
+            fold_uvs(c.data)
             scene.collection.objects.link(c)
             copies.append(c)
         with context_objects(copies):
@@ -986,9 +1070,7 @@ def bake_materials(scene, materials, objects, work):
             bpy.data.images.remove(target)
     if any(len(r) < 3 for r in results.values()):
         raise Exception("the bake did not finish")
-    for m in bake_set:
-        compose_baked(m, results[m], work)
-    return len(bake_set)
+    return {m.name: compose_baked(m, results[m], work) for m in bake_set}
 
 
 def gltf_occlusion_group():
@@ -1143,21 +1225,38 @@ def prepare_materials(scene, objects):
             if str(reason) in ("no shader", "no output"):
                 rebuild_material(material, plain({"color": ("const", (0.7, 0.7, 0.7, 1.0))}))
                 counts["simplified"] += 1
+            elif glass_like(material):
+                rebuild_material(material, plain(GLASS))
+                counts["simplified"] += 1
             else:
                 to_bake.append((material, str(reason)))
+    work = os.path.join(job["work"], "baked")
+    cached = bake_cache(work)
+    reused = [(m, why) for m, why in to_bake if m.name in cached]
+    for material, _ in reused:
+        apply_baked(material, cached[material.name], work)
+    to_bake = [(m, why) for m, why in to_bake if m.name not in cached]
+    if reused:
+        say("reused the earlier bake of %d procedural materials" % len(reused))
+        counts["baked"] += len(reused)
     if to_bake:
         device = use_gpu(scene)
         say("baking %d procedural materials on the %s: %s" % (
             len(to_bake), device, ", ".join("%s (%s)" % (m.name, why) for m, why in to_bake[:12])))
         try:
-            counts["baked"] = bake_materials(scene, [m for m, _ in to_bake], objects, os.path.join(job["work"], "baked"))
+            baked = bake_materials(scene, [m for m, _ in to_bake], objects, work)
         except Exception as error:
             traceback.print_exc()
             say("baking failed, those materials keep a plain colour: %s" % error)
             for material, _ in to_bake:
-                if material.node_tree.nodes.get("Principled BSDF") is None or len(material.node_tree.nodes) != 2:
-                    rebuild_material(material, plain({"color": ("const", (0.6, 0.6, 0.6, 1.0))}))
-                    counts["failed"] += 1
+                rebuild_material(material, plain({"color": ("const", (0.6, 0.6, 0.6, 1.0))}))
+                counts["failed"] += 1
+        else:
+            for material, _ in to_bake:
+                apply_baked(material, baked[material.name], work)
+            counts["baked"] += len(baked)
+            with open(os.path.join(work, "manifest.json"), "w") as f:
+                json.dump({"version": BAKE_VERSION, "materials": {**cached, **baked}}, f, indent=1)
     return counts
 
 
@@ -1254,28 +1353,34 @@ def floor_levels(tris):
     return levels
 
 
-def enclosed(scene, floor_z, cells, lo, step):
+def scene_bvh(tris):
+    """One BVH over every world-space triangle: scene.ray_cast walks each
+    object's tree per ray, far too slow for the thousands of probes below."""
+    vertices = [tuple(v) for v in tris.reshape(-1, 3)]
+    polygons = [(3 * i, 3 * i + 1, 3 * i + 2) for i in range(len(tris))]
+    return BVHTree.FromPolygons(vertices, polygons, all_triangles=True)
+
+
+def enclosed(bvh, floor_z, cells, lo, step):
     """The cells with walls around them: of eight level rays from chest
     height, at least six meet something within 15 m. A terrace under a
     balcony is covered but open on most sides; a room is not."""
-    depsgraph = bpy.context.evaluated_depsgraph_get()
     result = np.zeros(cells.shape, dtype=bool)
     directions = [Vector((math.cos(a), math.sin(a), 0)) for a in np.arange(8) * math.pi / 4]
     for i, j in np.argwhere(cells):
         origin = Vector((lo[0] + i * step, lo[1] + j * step, floor_z + 1.2))
-        hits = sum(1 for d in directions if scene.ray_cast(depsgraph, origin, d, distance=15.0)[0])
+        hits = sum(1 for d in directions if bvh.ray_cast(origin, d, 15.0)[0] is not None)
         result[i, j] = hits >= 6
     return result
 
 
-def floor_grid(scene, tris, floor_z, step):
+def floor_grid(bvh, tris, floor_z, step):
     """Walkable cells: a ray from head height straight down lands on the
     floor level with nothing in between."""
     lo = tris[:, :, :2].min((0, 1)) - step
     hi = tris[:, :, :2].max((0, 1)) + step
     nx = int((hi[0] - lo[0]) / step) + 1
     ny = int((hi[1] - lo[1]) / step) + 1
-    depsgraph = bpy.context.evaluated_depsgraph_get()
     grid = np.zeros((nx, ny), dtype=bool)
     covered = np.zeros((nx, ny), dtype=bool)
     head = floor_z + float(job.get("headroom", 1.9))
@@ -1284,11 +1389,11 @@ def floor_grid(scene, tris, floor_z, step):
         x = lo[0] + i * step
         for j in range(ny):
             origin = Vector((x, lo[1] + j * step, head))
-            hit, location, normal, *_ = scene.ray_cast(depsgraph, origin, down, distance=head - floor_z + 0.3)
+            location, normal, *_ = bvh.ray_cast(origin, down, head - floor_z + 0.3)
             # A rug or a threshold still counts; a terrace 4 cm lower does not.
-            if hit and -0.02 <= location.z - floor_z <= 0.03 and normal.z > 0.7:
+            if location is not None and -0.02 <= location.z - floor_z <= 0.03 and abs(normal.z) > 0.7:
                 grid[i, j] = True
-                covered[i, j] = scene.ray_cast(depsgraph, origin, up, distance=12.0)[0]
+                covered[i, j] = bvh.ray_cast(origin, up, 12.0)[0] is not None
     return grid, covered, lo
 
 
@@ -1394,7 +1499,7 @@ def simplify(points, tolerance):
     return [tuple(p) for p in first + second]
 
 
-def analyse_floor(scene, tris):
+def analyse_floor(scene, tris, owners):
     """The floor the cast lives on. Each candidate level is probed for open
     floor; an indoor set takes the level with the most floor walled in (a
     lawn outside the windows, or a terrace under the balcony, is larger but
@@ -1402,17 +1507,22 @@ def analyse_floor(scene, tris):
     comes close wins, so a ground floor beats the storey above it."""
     extent = tris[:, :, :2].max((0, 1)) - tris[:, :, :2].min((0, 1))
     step = 0.15 if max(extent) < 25 else (0.3 if max(extent) < 80 else 0.6)
-    # The six largest levels, lowest first, keep the probing affordable.
-    levels = sorted(sorted(floor_levels(tris), key=lambda level: -level[1])[:6])
+    # The five largest levels, lowest first, keep the probing affordable.
+    levels = sorted(sorted(floor_levels(tris), key=lambda level: -level[1])[:5])
     indoor = job.get("indoor")
+    bvh = scene_bvh(tris)
     candidates = []
     for z, _ in levels:
-        grid, covered, lo = floor_grid(scene, tris, z, step)
+        grid, covered, lo = floor_grid(bvh, tris, z, step)
         under = grid & covered
-        walled = enclosed(scene, z, under, lo, step) if indoor else under
+        walled = enclosed(bvh, z, under, lo, step) if indoor else under
         candidates.append((z, grid, covered, lo, int(grid.sum()), int(walled.sum())))
-    score = (lambda c: c[5]) if indoor else (lambda c: c[4])
-    best = max(score(c) for c in candidates)
+    # An indoor set without a walled-in level (a stage, a pergola) falls
+    # back to the most open floor.
+    for score in ([lambda c: c[5]] if indoor else []) + [lambda c: c[4]]:
+        best = max(score(c) for c in candidates)
+        if best > 0:
+            break
     if best <= 0:
         raise Exception("no open floor was found at any floor level")
     floor_z, grid, covered, lo, open_cells, under = next(c for c in candidates if score(c) >= 0.5 * best)
@@ -1428,7 +1538,8 @@ def analyse_floor(scene, tris):
     main = labels == int(np.argmax(sizes))
     say("floor at z=%.3f, %d open cells of %.2f m in %d regions%s" % (
         floor_z, main.sum(), step, len(sizes) - 1, ", under a ceiling" if indoor else ""))
-    return {"z": floor_z, "main": main, "lo": lo, "step": step, "clearance": clearance(main, step)}
+    return {"z": floor_z, "main": main, "lo": lo, "step": step, "clearance": clearance(main, step),
+            "bvh": bvh, "owners": owners, "indoor": bool(indoor)}
 
 
 def cell_center(floor, i, j):
@@ -1482,6 +1593,15 @@ def walkable_polygon(floor, cell, transform):
 
 
 # ------------------------------------------------------------------ camera
+# The studio's camera: 38° vertical field of view on a 16:10 frame. The home
+# view is judged, and the thumbnail rendered, with the same lens.
+VIEW_HEIGHT = math.radians(38.0)
+VIEW_ASPECT = 1.6
+EYE_HEIGHT = 1.6
+# Sixteen level directions around a point, for distances to walls.
+RING = [Vector((math.cos(a), math.sin(a), 0.0)) for a in np.arange(16) * (math.pi / 8)]
+
+
 def aim_point(position, forward, floor_z):
     """Where a camera looks: its line of sight meeting the floor, or 4 m
     ahead when it looks level."""
@@ -1497,159 +1617,390 @@ def camera_candidates(scene):
     return first + sorted((c for c in cams if c not in first), key=lambda c: c.name)
 
 
-def artist_camera(scene, floor):
-    """The first of the artist's cameras that works as a home view: about
-    eye height over the chosen floor, looking roughly level, standing on
-    open floor and aimed at some (a detail shot of a cushion, or a view in
-    through the windows from the lawn, is not one)."""
+def wall_distance(floor, point, reach=12.0):
+    """How far `point` is from the nearest wall, column or tall cupboard:
+    the shortest of sixteen level rays around it."""
+    nearest = reach
+    for direction in RING:
+        hit = floor["bvh"].ray_cast(point, direction, reach)
+        if hit[0] is not None:
+            nearest = min(nearest, hit[3])
+    return nearest
+
+
+def in_sight(floor, position, spot):
+    """Nothing stands between the camera and the cast's head and chest (a
+    glass on the table in front may still hide the knees)."""
+    for height in (1.55, 1.0):
+        line = spot + Vector((0, 0, height)) - position
+        if floor["bvh"].ray_cast(position, line.normalized(), line.length - 0.25)[0] is not None:
+            return False
+    return True
+
+
+def view_score(floor, position, target, shells, columns=14, rows=9):
+    """How much of the set a view shows: rays across the frame count the
+    distinct pieces of furniture in sight and how deep the view reaches. A
+    lens close to a surface, back faces (inside a wall, outside the room)
+    and, indoors, open sky count against it."""
+    bvh, owners = floor["bvh"], floor["owners"]
+    forward = (target - position).normalized()
+    right = forward.cross(Vector((0, 0, 1))).normalized()
+    up = right.cross(forward)
+    half_h = math.tan(VIEW_HEIGHT / 2)
+    half_w = half_h * VIEW_ASPECT
+    seen, depths = set(), []
+    near = backs = misses = 0
+    for a in range(columns):
+        x = ((a + 0.5) / columns * 2 - 1) * half_w
+        for b in range(rows):
+            y = ((b + 0.5) / rows * 2 - 1) * half_h
+            direction = (forward + right * x + up * y).normalized()
+            location, normal, index, distance = bvh.ray_cast(position, direction, 80.0)
+            if location is None:
+                misses += 1
+                continue
+            depths.append(distance)
+            near += distance < 1.2
+            backs += normal.dot(direction) > 0.1
+            owner = int(owners[index])
+            if owner not in shells:
+                seen.add(owner)
+    total = columns * rows
+    depth = float(np.median(np.log(np.clip(depths, 0.5, 40.0)))) if depths else 0.0
+    sky = misses / total if floor["indoor"] else 0.0
+    # Fewer rays see fewer pieces: scale the count to the full frame's 126.
+    pieces = len(seen) * 126.0 / total
+    return 1.5 * math.log1p(pieces) + 0.6 * depth - 8.0 * backs / total - 6.0 * near / total - 4.0 * sky
+
+
+def spread_cells(floor, ok, count, spacing):
+    """Up to `count` cells of `ok`, roomiest first, at least `spacing` metres
+    apart, so the search covers the whole floor."""
+    clear, step = floor["clearance"], floor["step"]
+    cells = np.argwhere(ok)
+    order = np.argsort(-clear[ok], kind="stable")
+    chosen = []
+    for k in order:
+        i, j = (int(v) for v in cells[k])
+        if all(math.hypot(i - a, j - b) * step >= spacing for a, b in chosen):
+            chosen.append((i, j))
+            if len(chosen) >= count:
+                break
+    return chosen
+
+
+def artist_views(scene, floor):
+    """The artist's cameras that can open the set: about eye height over the
+    chosen floor, looking roughly level, standing on open floor and aimed at
+    some. Yields (camera, position, spawn cell)."""
+    z = floor["z"]
     for cam in camera_candidates(scene):
         position = cam.matrix_world.translation.copy()
         forward = (cam.matrix_world.to_quaternion() @ Vector((0, 0, -1))).normalized()
-        height = position.z - floor["z"]
-        if not (0.9 <= height <= 3.2):
+        height = position.z - z
+        why = None
+        if not (1.0 <= height <= 2.2):
             why = "%.1f m above the floor" % height
-        elif abs(forward.z) > 0.6:
+        elif abs(forward.z) > 0.5:
             why = "it looks up or down"
         elif best_cell(floor, near=position, min_clear=0.0, radius=max(0.3, floor["step"] * 1.5),
                        fallback=False) is None:
-            why = "it stands off the floor"
-        elif best_cell(floor, near=aim_point(position, forward, floor["z"]), min_clear=0.45, radius=4.0,
-                       fallback=False) is None:
-            why = "it looks away from the open floor"
+            why = "it stands off the open floor"
         else:
-            return cam, position, forward
+            spot = best_cell(floor, near=aim_point(position, forward, z), min_clear=0.45, radius=4.0,
+                             fallback=False)
+            if spot is not None and (cell_center(floor, *spot) - position).xy.length < 2.0:
+                # The camera sits on the spot itself: step the cast forward.
+                spot = best_cell(floor, near=position + forward * 3.0, min_clear=0.45, radius=3.0,
+                                 fallback=False)
+            if spot is None:
+                why = "it looks away from the open floor"
+            else:
+                yield cam, position, spot
+                continue
         say("the artist's camera %s is not a home view: %s" % (cam.name.strip(), why))
-    return None
 
 
-def choose_view(scene, objects, floor):
-    """Spawn cell, camera position and view target in the source frame."""
-    artist = artist_camera(scene, floor)
-    if artist:
-        cam, position, forward = artist
-        aim = aim_point(position, forward, floor["z"])
-        i, j = best_cell(floor, near=aim, min_clear=0.45, radius=4.0)
-        spawn = cell_center(floor, i, j)
-        if (spawn - position).xy.length < 1.2:
-            # The camera sits on the spot itself: step the cast forward.
-            i, j = best_cell(floor, near=position + forward * 3.0, min_clear=0.45, radius=4.0)
-            spawn = cell_center(floor, i, j)
-        target = spawn + Vector((0, 0, 1.0))
-        say("home view from the artist's camera %s" % cam.name.strip())
-        return (i, j), spawn, position, target, cam
-    i, j = best_cell(floor, min_clear=0.6)
-    spawn = cell_center(floor, i, j)
-    main, step = floor["main"], floor["step"]
+def wall_penalty(wall, berth):
+    """What standing close to a wall costs a view: nothing from `berth` out,
+    growing steeply toward the 0.4 m a camera needs at the least."""
+    return 4.0 * (max(0.0, berth - wall) / berth) ** 1.5
+
+
+def choose_view(scene, floor, shells):
+    """Spawn cell, camera position and view target in the source frame.
+
+    The camera stands on the open floor at eye height, 1.5 m or more from
+    any wall where the room allows it, with the cast in clear sight, and
+    looks at the cast across the most furnished part of the set. A coarse
+    look at every candidate picks the 40 most promising for a full look.
+    The artist's own camera wins when it meets the same rules and shows
+    about as much."""
+    main, clear, step = floor["main"], floor["clearance"], floor["step"]
     nx, ny = main.shape
-    # Furniture in view makes the picture: score each direction by what the
-    # camera would see beyond the cast, standing back as far as the floor
-    # allows (up to 4.5 m, at least 2.2 m).
-    furniture = [Vector(o.matrix_world @ Vector(sum((Vector(c) for c in o.bound_box), Vector()) / 8))
-                 for o in objects if not o.get("sceneMaker") and max(o.dimensions) < 6.0]
+    indoor = floor["indoor"]
+    standing = main & (clear >= 0.6)
+    if standing.sum() < 4:
+        standing = main & (clear >= 0.4)
+    if not standing.any():
+        standing = main
+    # About 40 spawn points spread over the open floor, roomiest first.
+    area = float(standing.sum()) * step * step
+    spacing = max(1.0 if indoor else 3.0, math.sqrt(area / 40.0))
+    spawns = spread_cells(floor, standing, 40, spacing)
+    # Small rooms only allow a short step back; longer ones score better.
+    distances = (1.6, 2.2, 2.9, 3.6, 4.5) if indoor else (4.0, 5.5, 7.0, 9.0)
+    prefer = 3.5 if indoor else 6.0
+    eye = Vector((0, 0, EYE_HEIGHT))
+    walls = {}
+
+    def wall_at(cell):
+        if cell not in walls:
+            walls[cell] = wall_distance(floor, cell_center(floor, *cell) + eye)
+        return walls[cell]
+
+    options = []
+    for spawn in spawns:
+        spot = cell_center(floor, *spawn)
+        for k in range(16):
+            angle = 2 * math.pi * k / 16
+            for distance in distances:
+                ci = int(round(spawn[0] + math.cos(angle) * distance / step))
+                cj = int(round(spawn[1] + math.sin(angle) * distance / step))
+                if not (0 <= ci < nx and 0 <= cj < ny and main[ci, cj]):
+                    continue
+                wall = wall_at((ci, cj))
+                position = cell_center(floor, ci, cj) + eye
+                if wall >= 0.4 and in_sight(floor, position, spot):
+                    options.append((wall, distance, spawn, position))
+    # A small room cannot keep 1.5 m from every wall: the berth shrinks
+    # with the widest open space the floor offers.
+    berth = min(1.5, max(0.6, 0.6 * max(walls.values(), default=1.5)))
+    rough = []
+    for wall, distance, spawn, position in options:
+        target = cell_center(floor, *spawn) + Vector((0, 0, 1.0))
+        bonus = 0.4 * min(distance, prefer) - wall_penalty(wall, berth)
+        rough.append((view_score(floor, position, target, shells, 6, 4) + bonus, bonus, spawn, position))
+    rough.sort(key=lambda option: -option[0])
     best = None
-    for k in range(36):
-        angle = 2 * math.pi * k / 36
-        dx, dy = math.cos(angle), math.sin(angle)
-        run = 0.0
-        while run < 8.0:
-            ci, cj = int(round(i + dx * (run + step) / step)), int(round(j + dy * (run + step) / step))
-            if not (0 <= ci < nx and 0 <= cj < ny) or not main[ci, cj]:
-                break
-            run += step
-        distance = max(2.2, min(4.5, run - 0.4))
-        position = spawn + Vector((dx * distance, dy * distance, 1.6))
-        view = Vector((-dx, -dy, 0))
-        seen = 0.0
-        for centre in furniture:
-            offset = (centre - position).xy
-            reach = offset.length
-            if 0.5 < reach < 14.0 and offset.normalized().dot(view.xy) > math.cos(math.radians(32)):
-                seen += 1.0 / max(1.0, reach)
-        score = seen + 0.05 * min(run, 4.5)
+    for _, bonus, spawn, position in rough[:40]:
+        target = cell_center(floor, *spawn) + Vector((0, 0, 1.0))
+        score = view_score(floor, position, target, shells) + bonus
         if best is None or score > best[0]:
-            best = (score, position, distance)
-    score, position, distance = best
-    target = spawn + Vector((0, 0, 1.0))
-    say("home view fitted at eye height, %.1f m from the cast" % distance)
-    return (i, j), spawn, position, target, None
+            best = (score, spawn, position, None)
+    for cam, position, spawn in artist_views(scene, floor):
+        wall = wall_distance(floor, position)
+        spot = cell_center(floor, *spawn)
+        if wall < 0.4:
+            say("the artist's camera %s is not a home view: %.1f m from a wall" % (cam.name.strip(), wall))
+            continue
+        if not in_sight(floor, position, spot):
+            say("the artist's camera %s is not a home view: something hides the cast" % cam.name.strip())
+            continue
+        # The artist's composition is worth a little furniture.
+        score = (view_score(floor, position, spot + Vector((0, 0, 1.0)), shells) - wall_penalty(wall, berth)
+                 + 0.4 * min((position - spot).xy.length, prefer) + 1.0)
+        if best is None or score > best[0]:
+            best = (score, spawn, position, cam)
+    if best is None:
+        raise Exception("no spot on the open floor sees the cast")
+    score, spawn, position, cam = best
+    spot = cell_center(floor, *spawn)
+    say("home view %s, %.1f m from the cast and %.1f m from the nearest wall (berth %.1f m; "
+        "score %.2f, best of %d views)" % (
+            "from the artist's camera " + cam.name.strip() if cam else "fitted at eye height",
+            (position - spot).xy.length, wall_distance(floor, position), berth, score, len(rough)))
+    return spawn, spot, position, spot + Vector((0, 0, 1.0)), cam
 
 
 def place(scene, spawn, camera_position):
     """Moves the spawn to the origin with the floor at z = 0 and turns the
-    set so the home camera lies toward -Y (glTF +Z)."""
+    set by a right angle so the home camera lies toward -Y (glTF +Z, within
+    45°). Keeping the room's own axes keeps every bounding box tight; the
+    cast's heading turns it the rest of the way toward the camera."""
     to_camera = (camera_position - spawn).xy
     angle = math.atan2(to_camera.y, to_camera.x)
-    transform = Matrix.Rotation(-math.pi / 2 - angle, 4, "Z") @ Matrix.Translation(-spawn)
+    turn = round((-math.pi / 2 - angle) / (math.pi / 2)) * (math.pi / 2)
+    transform = Matrix.Rotation(turn, 4, "Z") @ Matrix.Translation(-spawn)
     for o in [o for o in scene.objects if o.parent is None]:
         o.matrix_world = transform @ o.matrix_world
     bpy.context.view_layer.update()
     return transform
 
 
-def tag_roles(objects, tris, owners, floor_z):
-    """Floor meshes (horizontal area at floor level) and shell meshes (by
-    name) get a role the engine reads from glTF extras."""
+# ------------------------------------------------------------------- roles
+# A face of the walkable floor: facing up, within this band of the floor level.
+FLOOR_BAND = (-0.015, 0.03)
+
+
+def classify_roles(objects, tris, owners, floor_z):
+    """The part each mesh plays, by object name: "floor" for meshes that
+    are the floor, "split" for meshes whose floor faces must become a floor
+    mesh of their own (a slab, a plinth, a whole street with its kerbs),
+    "shell" for walls, ceilings and the like by name."""
     area, up = triangle_areas(tris)
-    at_floor = (up > 0.95) & (np.abs(tris[:, :, 2].mean(1) - floor_z) < 0.03)
+    level = tris[:, :, 2] - floor_z
+    at_floor = (up > 0.95) & (level.min(1) >= FLOOR_BAND[0]) & (level.max(1) <= FLOOR_BAND[1])
     floor_area = np.bincount(owners[at_floor], weights=area[at_floor], minlength=len(objects))
     total_area = np.bincount(owners, weights=area, minlength=len(objects))
-    counts = {"floor": 0, "shell": 0}
+    lowest = np.full(len(objects), np.inf)
+    np.minimum.at(lowest, owners, level.min(1))
+    roles = {}
     for index, o in enumerate(objects):
-        role = None
-        if floor_area[index] >= 1.0 and floor_area[index] >= 0.3 * total_area[index]:
-            role = "floor"
+        if floor_area[index] >= 1.0:
+            whole = lowest[index] >= FLOOR_BAND[0] and floor_area[index] >= 0.3 * total_area[index]
+            roles[o.name] = "floor" if whole else "split"
         elif job.get("shellNames", True) and SHELL_NAMES.search(o.name) and max(o.dimensions) > 2.5:
+            roles[o.name] = "shell"
+    return roles
+
+
+def shell_indices(objects, roles):
+    """Objects that are the set's shell rather than furniture, by index:
+    tagged ones and anything spanning 5 m both ways."""
+    shells = set()
+    for index, o in enumerate(objects):
+        corners = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        xs, ys = [c.x for c in corners], [c.y for c in corners]
+        if o.name in roles or (max(xs) - min(xs) >= 5.0 and max(ys) - min(ys) >= 5.0):
+            shells.add(index)
+    return shells
+
+
+def split_floor(scene, o):
+    """Moves the floor faces of `o` (the floor now at z = 0) into a mesh of
+    their own. Returns the new object, or None when no face qualified."""
+    import bmesh
+
+    if o.data.users > 1:
+        o.data = o.data.copy()
+    matrix = o.matrix_world
+    normals = matrix.to_3x3().inverted_safe().transposed()
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.verts.index_update()
+    heights = [(matrix @ v.co).z for v in bm.verts]
+    # A face layer marks the floor faces; it survives the copy below.
+    mark = bm.faces.layers.int.new("sceneMakerFloor")
+    count = 0
+    for face in bm.faces:
+        face[mark] = int((normals @ face.normal).normalized().z > 0.95 and all(
+            FLOOR_BAND[0] <= heights[v.index] <= FLOOR_BAND[1] for v in face.verts))
+        count += face[mark]
+    if count == 0 or count == len(bm.faces):
+        bm.free()
+        return None
+    rest = bm.copy()
+    rest_mark = rest.faces.layers.int.get("sceneMakerFloor")
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if not f[mark]], context="FACES")
+    bmesh.ops.delete(rest, geom=[f for f in rest.faces if f[rest_mark]], context="FACES")
+    bm.faces.layers.int.remove(mark)
+    rest.faces.layers.int.remove(rest_mark)
+    piece = o.copy()
+    piece.data = o.data.copy()
+    piece.name = o.name + " floor"
+    for collection in o.users_collection:
+        collection.objects.link(piece)
+    bm.to_mesh(piece.data)
+    rest.to_mesh(o.data)
+    bm.free()
+    rest.free()
+    piece.data.update()
+    o.data.update()
+    return piece
+
+
+def apply_roles(scene, objects, roles):
+    """Writes each mesh's role as the glTF extra sceneMaker.role, splitting
+    the floor faces off meshes that reach below the floor; what remains of
+    those is shell (a slab never stops the cast)."""
+    counts = {"floor": 0, "shell": 0}
+    result = []
+    for o in objects:
+        role = roles.get(o.name)
+        if role == "split":
+            piece = split_floor(scene, o)
+            if piece is not None:
+                piece["sceneMaker"] = {"role": "floor"}
+                counts["floor"] += 1
+                result.append(piece)
             role = "shell"
         if role:
             o["sceneMaker"] = {"role": role}
             counts[role] += 1
-    return counts
+        result.append(o)
+    return result, counts
 
 
 # -------------------------------------------------------------- thumbnail
-def prepare_render(scene):
-    """A thumbnail needs light: the artist's lights and world when they
-    work, otherwise a plain sky and a sun."""
-    world = scene.world
-    broken = world is None
-    if world and world.use_nodes:
-        for n in world.node_tree.nodes:
-            if n.type == "TEX_ENVIRONMENT" and (n.image is None or n.image.size[0] == 0):
-                broken = True
-    lights = [o for o in scene.objects if o.type == "LIGHT"]
-    if broken or not lights:
-        world = bpy.data.worlds.new("thumbnail")
-        world.use_nodes = True
-        background = world.node_tree.nodes["Background"]
-        background.inputs[0].default_value = (0.9, 0.92, 1.0, 1)
-        background.inputs[1].default_value = 0.8 if not lights else 0.4
-        scene.world = world
-    if not lights:
-        data = bpy.data.lights.new("thumbnail-sun", "SUN")
-        data.energy = 4.0
-        data.color = (1.0, 0.95, 0.85)
-        data.angle = math.radians(2.0)
-        sun = bpy.data.objects.new("thumbnail-sun", data)
-        sun.rotation_euler = (math.radians(45), 0, math.radians(-30))
-        scene.collection.objects.link(sun)
-    # Bounced light keeps a lit-by-the-sky room from looking flat.
+# The studio's backdrop behind an indoor set: the daylight preset a new
+# scene starts with (#dce1dc, linear).
+STUDIO_BACKDROP = (0.716, 0.753, 0.716, 1.0)
+
+
+def hdri_exposure(image):
+    """The studio exposure for a set lit by this HDR: a floor of albedo 0.45
+    lit by its sky (sun included) shows at 60 % white through the studio's
+    ACES tone mapping, which needs 0.425 going in after its 1/0.6 scale, so
+    the exposure is 0.425 × 0.6 / 0.45 = 0.567 over the sky's mean radiance
+    (cosine-weighted over the upper half)."""
+    px = read_pixels(image)
+    rows, width = px.shape[:2]
+    # Rows run bottom to top; the upper half is the sky.
+    elevation = ((np.arange(rows) + 0.5) / rows - 0.5) * np.pi
+    weight = np.where(elevation > 0, np.sin(elevation) * np.cos(elevation), 0.0)[:, None]
+    radiance = float((luminance(px) * weight).sum() / (weight.sum() * width))
+    return min(3.0, max(0.15, 0.567 / max(radiance, 1e-4)))
+
+
+def light_like_studio(scene, path, sky):
+    """Lights the scene as the studio lights the set: the set's HDR is the
+    only light (its sun included, so the artist's lamps go), seen behind the
+    set when it is the sky and otherwise replaced there by the studio's
+    plain backdrop. Returns the HDR's studio exposure."""
+    for o in [o for o in scene.objects if o.type == "LIGHT"]:
+        bpy.data.objects.remove(o)
+    image = bpy.data.images.load(path, check_existing=True)
+    world = bpy.data.worlds.new("set light")
+    world.use_nodes = True
+    nodes, links = world.node_tree.nodes, world.node_tree.links
+    nodes.clear()
+    output = nodes.new("ShaderNodeOutputWorld")
+    texture = nodes.new("ShaderNodeTexEnvironment")
+    texture.image = image
+    light = nodes.new("ShaderNodeBackground")
+    links.new(texture.outputs["Color"], light.inputs["Color"])
+    if sky:
+        links.new(light.outputs["Background"], output.inputs["Surface"])
+    else:
+        backdrop = nodes.new("ShaderNodeBackground")
+        backdrop.inputs["Color"].default_value = STUDIO_BACKDROP
+        ray = nodes.new("ShaderNodeLightPath")
+        mix = nodes.new("ShaderNodeMixShader")
+        links.new(ray.outputs["Is Camera Ray"], mix.inputs["Fac"])
+        links.new(light.outputs["Background"], mix.inputs[1])
+        links.new(backdrop.outputs["Background"], mix.inputs[2])
+        links.new(mix.outputs["Shader"], output.inputs["Surface"])
+    scene.world = world
+    # Only a real sun (thousands of times the sky) becomes a light with
+    # shadows, as in the studio; a bright window stays part of the sky.
+    world.sun_threshold = 100.0
+    # Bounced light keeps a room lit by its windows from looking flat.
     try:
         scene.eevee.use_raytracing = True
         scene.eevee.fast_gi_method = "GLOBAL_ILLUMINATION"
     except (AttributeError, TypeError):
         pass
-    for o in scene.objects:
-        if o.type == "LIGHT" and o.data.type == "SUN":
-            o.data.energy = min(o.data.energy, 10.0)
+    return hdri_exposure(image)
 
 
-def home_camera(scene, position, target, artist):
+def home_camera(scene, position, target):
+    """The home view through the studio's lens."""
     data = bpy.data.cameras.new("home")
-    data.lens, data.sensor_width, data.sensor_fit = 28.0, 36.0, "HORIZONTAL"
+    data.sensor_fit = "VERTICAL"
+    data.angle_y = VIEW_HEIGHT
     data.clip_start, data.clip_end = 0.05, 500.0
-    if artist is not None:
-        data.lens, data.sensor_width, data.sensor_fit = artist.data.lens, artist.data.sensor_width, artist.data.sensor_fit
-        data.shift_x, data.shift_y = artist.data.shift_x, artist.data.shift_y
     cam = bpy.data.objects.new("home", data)
     scene.collection.objects.link(cam)
     cam.location = position
@@ -1687,7 +2038,9 @@ def main():
     objects = apply_modifiers(scene, objects)
     flatten(scene, objects)
     objects = [o for o in scene.objects if o.type == "MESH" and len(o.data.polygons)]
-    if job.get("maxTriangles"):
+    # A set cut to an extent spends its triangle budget on what is kept;
+    # otherwise decimating first makes the bake lighter.
+    if job.get("maxTriangles") and not job.get("extent"):
         reduce_triangles(objects, int(job["maxTriangles"]))
     say("%d meshes, %d triangles" % (len(objects), triangles(objects)))
     if job.get("materials") == "bistro":
@@ -1698,12 +2051,18 @@ def main():
     say("%d textures, %d downscaled, largest %d px" % (textures, scaled, largest))
     bpy.context.view_layer.update()
     tris, owners = world_triangles(objects)
-    floor = analyse_floor(scene, tris)
-    roles = tag_roles(objects, tris, owners, floor["z"])
-    cell, spawn, cam_position, cam_target, artist = choose_view(scene, objects, floor)
+    floor = analyse_floor(scene, tris, owners)
+    roles = classify_roles(objects, tris, owners, floor["z"])
+    say("floor analysed after %d s" % (time.time() - started))
+    cell, spawn, cam_position, cam_target, artist = choose_view(scene, floor, shell_indices(objects, roles))
+    say("home view chosen after %d s" % (time.time() - started))
     transform = place(scene, spawn, cam_position)
     if job.get("extent"):
         objects = clip_to_extent(scene, objects, float(job["extent"]))
+        if job.get("maxTriangles"):
+            reduce_triangles(objects, int(job["maxTriangles"]))
+    objects, role_counts = apply_roles(scene, objects, roles)
+    say("roles: %d floor and %d shell meshes" % (role_counts["floor"], role_counts["shell"]))
     tris, owners = world_triangles(objects)
     lo, hi = tris.min((0, 1)), tris.max((0, 1))
     position, target = transform @ cam_position, transform @ cam_target
@@ -1713,8 +2072,8 @@ def main():
         walkable = [[max(-reach, min(reach, x)), max(-reach, min(reach, z))] for x, z in walkable]
     export(job["glb"])
     say("exported %s (%.1f MB)" % (os.path.basename(job["glb"]), os.path.getsize(job["glb"]) / 1e6))
-    camera = home_camera(scene, position, target, artist)
-    prepare_render(scene)
+    camera = home_camera(scene, position, target)
+    exposure = light_like_studio(scene, job["hdri"], bool(job.get("sky")))
     render_thumbnail(scene, camera, job["png"], 640, 400)
     diagonal = math.hypot(hi[0] - lo[0], hi[1] - lo[1])
     return {
@@ -1722,12 +2081,15 @@ def main():
         "bounds": {"min": gl((lo[0], hi[1], lo[2])), "max": gl((hi[0], lo[1], hi[2]))},
         "camera": {"position": gl(position), "target": gl(target),
                    "maxDistance": max(6.0, min(25.0, diagonal * 0.5 + 3.0))},
+        # The cast faces the home camera (radians, 0 = glTF +Z).
+        "heading": math.atan2(position.x, -position.y),
         "walkable": walkable,
+        "exposure": exposure,
         "triangles": triangles(objects),
         "meshes": len(objects),
         "materials": counts,
         "textures": {"count": textures, "downscaled": scaled, "largest": largest},
-        "roles": roles,
+        "roles": role_counts,
         "seconds": round(time.time() - started),
         "log": messages,
     }
