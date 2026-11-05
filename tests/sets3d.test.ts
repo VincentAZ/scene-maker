@@ -11,12 +11,16 @@ import {
 } from "../shared/scene";
 import {
   defaultSetBlock,
+  floorPlan,
   insidePolygon,
+  keepOnSetFloor,
   onWalkableFloor,
   setSchema,
+  shellBox,
   spawnPosition,
   type SetBlock,
 } from "../shared/sets";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { creditGroups, contentCredits } from "../shared/contentLibrary";
 import {
   EnvironmentModel,
@@ -75,22 +79,26 @@ const withSet = (asset = set): Scene =>
     { type: "add", assetId: asset.id },
   ]);
 
-/** A room: a 10 × 8 m floor and ceiling, a thin wall, a chair and a table. */
+type Size = [number, number, number];
+const box = (name: string, size: Size, [x, y, z]: Size) => {
+  const m = new T.Mesh(
+    new T.BoxGeometry(...size),
+    new T.MeshStandardMaterial(),
+  );
+  m.name = name;
+  m.position.set(x, y, z);
+  return m;
+};
+/** A room: a 10 × 8 m floor and ceiling, a thin back wall, and a chair and a
+ * table beside the spawn point. */
 function room() {
-  const material = new T.MeshStandardMaterial();
-  const mesh = (name: string, size: [number, number, number], y: number) => {
-    const m = new T.Mesh(new T.BoxGeometry(...size), material);
-    m.name = name;
-    m.position.y = y;
-    return m;
-  };
   const root = new T.Group();
   root.add(
-    mesh("floor", [10, 0.1, 8], -0.05),
-    mesh("ceiling", [10, 0.1, 8], 3),
-    mesh("wall", [10, 3, 0.2], 1.5),
-    mesh("chair", [0.5, 1, 0.5], 0.5),
-    mesh("table", [1.8, 0.8, 0.9], 0.4),
+    box("floor", [10, 0.1, 8], [0, -0.05, 0]),
+    box("ceiling", [10, 0.1, 8], [0, 3, 0]),
+    box("wall", [10, 3, 0.2], [0, 1.5, -3.9]),
+    box("chair", [0.5, 1, 0.5], [1.5, 0.5, -1]),
+    box("table", [1.8, 0.8, 0.9], [2.5, 0.4, -2]),
   );
   return root;
 }
@@ -332,23 +340,77 @@ describe("shell and furniture in a 3D set", () => {
     const model = room();
     model.updateWorldMatrix(true, true);
     const [floor, ceiling, wall, chair, table] = model.children as T.Mesh[];
-    expect(setMeshRole(floor)).toBe("shell");
-    expect(setMeshRole(ceiling)).toBe("shell");
-    expect(setMeshRole(wall)).toBe("furniture");
-    expect(setMeshRole(chair)).toBe("furniture");
-    expect(setMeshRole(table)).toBe("furniture");
+    const role = (mesh: T.Mesh) => setMeshRole(mesh, staging);
+    expect(role(floor)).toBe("shell");
+    expect(role(ceiling)).toBe("shell");
+    expect(role(wall)).toBe("furniture");
+    expect(role(chair)).toBe("furniture");
+    expect(role(table)).toBe("furniture");
     wall.userData.sceneMaker = { role: "shell" };
-    expect(setMeshRole(wall)).toBe("shell");
+    expect(role(wall)).toBe("shell");
     // A tag on a parent group covers every mesh below it.
     const rug = new T.Group();
     rug.userData.sceneMaker = { role: "floor" };
     rug.add(chair);
     model.add(rug);
-    expect(setMeshRole(chair)).toBe("shell");
+    expect(role(chair)).toBe("shell");
     table.userData.sceneMaker = { role: "furniture" };
     table.scale.set(10, 1, 10);
     model.updateWorldMatrix(true, true);
-    expect(setMeshRole(table)).toBe("furniture");
+    expect(role(table)).toBe("furniture");
+  });
+
+  it("walks through a small room built as one mesh and over rugs, but not into a counter", () => {
+    const small = defaultSetBlock({
+      min: [-2.05, 0, -2.05],
+      max: [2.05, 2.6, 2.05],
+    });
+    // Four walls under 5 m long merged into one mesh: its box is the room.
+    const walls = new T.Mesh(
+      mergeGeometries(
+        (
+          [
+            [
+              [4, 2.6, 0.1],
+              [0, 1.3, -2],
+            ],
+            [
+              [4, 2.6, 0.1],
+              [0, 1.3, 2],
+            ],
+            [
+              [0.1, 2.6, 4],
+              [-2, 1.3, 0],
+            ],
+            [
+              [0.1, 2.6, 4],
+              [2, 1.3, 0],
+            ],
+          ] as [Size, Size][]
+        ).map(([size, [x, y, z]]) =>
+          new T.BoxGeometry(...size).translate(x, y, z),
+        ),
+      ),
+    );
+    const root = new T.Group();
+    root.add(
+      walls,
+      box("rug", [1.4, 0.04, 2.2], [0.8, 0.02, 0.5]),
+      box("counter", [0.6, 0.9, 3.6], [1.6, 0.45, 0]),
+      box("stool", [0.4, 0.7, 0.4], [-0.6, 0.35, 0.3]),
+    );
+    root.updateWorldMatrix(true, true);
+    const [, rug, counter, stool] = root.children as T.Mesh[];
+    expect(setMeshRole(walls, small)).toBe("shell");
+    expect(setMeshRole(rug, small)).toBe("shell");
+    expect(setMeshRole(counter, small)).toBe("furniture");
+    expect(setMeshRole(stool, small)).toBe("furniture");
+    // The same walls in a hall twice as big are one wall among many rooms.
+    const hall = defaultSetBlock({ min: [-8, 0, -8], max: [8, 3, 8] });
+    walls.position.set(5, 0, 5);
+    root.updateWorldMatrix(true, true);
+    expect(setMeshRole(walls, hall)).toBe("furniture");
+    expect(shellBox([-3, 0, -3], [3, 0.03, 3], hall)).toBe(true);
   });
 
   it("marks what blocks so collisions, warnings and routes skip the shell", () => {
@@ -374,7 +436,7 @@ describe("shell and furniture in a 3D set", () => {
     expect(
       sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
     ).toBe("");
-    actor.position.set(0, 0, 0);
+    actor.position.set(1.5, 0, -1);
     expect(
       sceneCollisionWarning(sceneObstacles(scene, objects, undefined, model)),
     ).toContain("the backdrop");
@@ -408,6 +470,18 @@ describe("spawn and drops on a set's floor", () => {
       ).toBe(true);
     expect(spawnPosition(undefined, 0)).toEqual([-1.5, 0, 0]);
     expect(spawnPosition(undefined, 5)).toEqual([-0.5, 0, 1]);
+  });
+
+  it("leaves a placement resting on furniture where it was put", () => {
+    expect(keepOnSetFloor(staging, [9, 0.74, -7])).toEqual([9, 0.74, -7]);
+    const [x, y, z] = keepOnSetFloor(staging, [9, 0.02, -7]);
+    expect([x, y, z].map((n) => Math.round(n * 10) / 10)).toEqual([4, 0, -3]);
+    // A set without a floor plan keeps drops inside its walls.
+    const own = { ...staging, walkable: undefined };
+    const [ox, , oz] = keepOnSetFloor(own, [9, 0, -7]);
+    expect(ox).toBeCloseTo(4.75, 1);
+    expect(oz).toBeCloseTo(-3.75, 1);
+    expect(floorPlan(own)).toHaveLength(4);
   });
 
   it("keeps a chosen spot inside the walkable floor", () => {

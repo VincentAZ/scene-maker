@@ -1,7 +1,7 @@
 import * as T from "three";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import type { Asset } from "../shared/scene";
-import { defaultSetBlock, SHELL_SPAN, type SetBlock } from "../shared/sets";
+import { defaultSetBlock, shellBox, type SetBlock } from "../shared/sets";
 import { extractSun, type PhotoLight } from "./hdriBackdrop";
 
 /** A 3D set's image-based light: its HDR with the sun moved to a light. */
@@ -69,9 +69,13 @@ export async function loadSetLight(url: string): Promise<SetLight> {
 }
 
 /** A mesh's part in the set, from the glTF extras its author tagged on it or
- * on a parent (`sceneMaker.role`), otherwise from its footprint: anything
- * spanning 5 m both ways on the floor is shell. */
-export function setMeshRole(mesh: T.Mesh): "shell" | "furniture" {
+ * on a parent (`sceneMaker.role`), otherwise from where its box lies in the
+ * set (`shellBox`): the floor, rugs, a ceiling and a room built as one mesh
+ * are shell; the rest is furniture. */
+export function setMeshRole(
+  mesh: T.Mesh,
+  set: SetBlock,
+): "shell" | "furniture" {
   for (let node: T.Object3D | null = mesh; node; node = node.parent) {
     const role = (node.userData.sceneMaker as { role?: unknown } | undefined)
       ?.role;
@@ -79,11 +83,10 @@ export function setMeshRole(mesh: T.Mesh): "shell" | "furniture" {
     if (role === "furniture") return "furniture";
   }
   if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-  const size = mesh.geometry
-    .boundingBox!.clone()
-    .applyMatrix4(mesh.matrixWorld)
-    .getSize(new T.Vector3());
-  return size.x >= SHELL_SPAN && size.z >= SHELL_SPAN ? "shell" : "furniture";
+  const box = mesh.geometry.boundingBox!.clone().applyMatrix4(mesh.matrixWorld);
+  return shellBox(box.min.toArray(), box.max.toArray(), set)
+    ? "shell"
+    : "furniture";
 }
 
 /** Marks which of a loaded set's meshes stop the cast (`userData.passable`
@@ -93,7 +96,7 @@ export function markSetCollision(model: T.Object3D, set: SetBlock) {
   model.traverse((node) => {
     if (!(node instanceof T.Mesh)) return;
     node.userData.passable =
-      set.collision === "none" || setMeshRole(node) === "shell";
+      set.collision === "none" || setMeshRole(node, set) === "shell";
   });
 }
 

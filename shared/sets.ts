@@ -12,6 +12,9 @@ export type FloorPoint = z.infer<typeof floorPoint>;
 /** Meshes at least this wide along both floor axes are part of a set's shell
  * (floor, ceiling, a merged room) rather than furniture the cast walks around. */
 export const SHELL_SPAN = 5;
+/** Meshes whose top is no higher than this above the floor (y = 0) are walked
+ * over: the floor itself, rugs, mats and thresholds. */
+export const FLOOR_TOP = 0.05;
 
 /**
  * How a real 3D set is staged (`set` in shared/content/sets.json, or derived
@@ -40,8 +43,9 @@ export const setSchema = z
     /** Open floor as a polygon of (x, z) corners: drops and spawn stay inside. */
     walkable: z.array(floorPoint).min(3).max(256).optional(),
     /** What stops the cast: furniture-scale meshes (the default) or nothing.
-     * The shell — floor, walls, ceiling, anything spanning 5 m both ways, or
-     * tagged `sceneMaker.role` "shell"/"floor" — never blocks. */
+     * The shell never blocks: anything tagged `sceneMaker.role` "shell" or
+     * "floor", anything no higher than 5 cm (floor, rugs), anything spanning
+     * 5 m both ways, and a mesh built around the room (see `shellBox`). */
     collision: z.enum(["furniture", "none"]).optional(),
     lighting: z
       .object({
@@ -133,13 +137,66 @@ export function onWalkableFloor(
   return best;
 }
 
-/** A floor position kept on a set's open floor, when the set declares one. */
+/** A set's open floor as a polygon of (x, z) corners: its walkable outline,
+ * or for a set without one (a creator's own model) its bounds less a margin
+ * for the walls. */
+export function floorPlan(set: SetBlock): FloorPoint[] {
+  if (set.walkable) return set.walkable;
+  const { min, max } = set.bounds;
+  const x = Math.min(0.25, (max[0] - min[0]) / 4),
+    z = Math.min(0.25, (max[2] - min[2]) / 4);
+  return [
+    [min[0] + x, min[2] + z],
+    [max[0] - x, min[2] + z],
+    [max[0] - x, max[2] - z],
+    [min[0] + x, max[2] - z],
+  ];
+}
+
+/** The extent of a set's open floor along X and Z. */
+function floorExtent(set: SetBlock) {
+  const plan = floorPlan(set);
+  const xs = plan.map((point) => point[0]),
+    zs = plan.map((point) => point[1]);
+  return [Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)];
+}
+
+/**
+ * Whether an untagged mesh with this world box is part of the set's shell
+ * rather than furniture. Besides the floor and anything spanning 5 m both
+ * ways, a mesh built around the room — its walls, a ceiling, pipes along
+ * them — has a box that holds the spawn point on open floor and spans at
+ * least half the floor one way or the other: as an obstacle it would fill
+ * the room, so it is walked through like the floor.
+ */
+export function shellBox(
+  min: readonly number[],
+  max: readonly number[],
+  set: SetBlock,
+) {
+  if (max[1] <= FLOOR_TOP) return true;
+  const width = max[0] - min[0],
+    depth = max[2] - min[2];
+  if (width >= SHELL_SPAN && depth >= SHELL_SPAN) return true;
+  const [x, , z] = set.spawn,
+    margin = 0.05;
+  const holdsSpawn =
+    min[0] < x - margin &&
+    max[0] > x + margin &&
+    min[2] < z - margin &&
+    max[2] > z + margin;
+  const [floorWidth, floorDepth] = floorExtent(set);
+  return holdsSpawn && (width >= floorWidth / 2 || depth >= floorDepth / 2);
+}
+
+/** A position kept on a set's open floor. Only what stands on the floor is
+ * moved; a placement resting higher up, like a cup on a table, stays put. */
 export function keepOnSetFloor(
   set: SetBlock | undefined,
   position: Vec3,
 ): Vec3 {
-  if (!set?.walkable) return position;
-  const [x, z] = onWalkableFloor(position[0], position[2], set.walkable);
+  if (!set || Math.abs(position[1]) > FLOOR_TOP) return position;
+  const [x, z] = onWalkableFloor(position[0], position[2], floorPlan(set));
   return [x, position[1], z];
 }
 
