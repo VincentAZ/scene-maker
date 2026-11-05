@@ -30,6 +30,8 @@ type CatalogueEntry = (typeof capturedCatalogue)[number] & {
   category?: string;
   timing?: number[];
   travels?: boolean;
+  // "seated": performed sitting from the first frame to the last.
+  posture?: string;
 };
 const catalogueEntries = capturedCatalogue as CatalogueEntry[];
 /** A recording serving a role (Walk, Sit down, Take a sip…) keeps that
@@ -92,6 +94,20 @@ export function seatTiming(motion: Motion): [number, number] | undefined {
   return entry?.timing?.length === 2
     ? [entry.timing[0], entry.timing[1]]
     : undefined;
+}
+/** A recording performed seated from start to finish (Talk while seated,
+ * Chin in hand…), measured from its hips. With a seat chosen it is held on
+ * that seat like the hold after a targeted Sit down; takes that sit down or
+ * get up inside the take are not seated recordings. */
+export function seatedRecording(motion: Motion | undefined) {
+  if (!motion || motion.kind !== "imported" || motion.path) return false;
+  return catalogueEntries.some(
+    (entry) =>
+      entry.posture === "seated" &&
+      entry.trial === motion.animationName &&
+      `cmu-capture-${entry.trial.replaceAll("_", "-")}` ===
+        motion.sourceAssetId,
+  );
 }
 /** A library recording performed in place (it does not travel). */
 export const recordedInPlace = (motion: Motion) => {

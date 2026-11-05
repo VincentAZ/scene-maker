@@ -1,15 +1,18 @@
 import { allMotions, type Entity, type Scene } from "./scene";
+import { seatedRecording } from "./motionLibrary";
 
 /** Seats and ladders own the body's placement, so the body does not blend
  * into or out of them. Prop actions blend like any recording: the hand is
  * placed on the prop after blending. */
 export function contactAction(scene: Scene, clip: Entity["clips"][number]) {
-  const kind = allMotions(scene).find(
+  const motion = allMotions(scene).find(
     (motion) => motion.id === clip.motionId,
-  )?.role;
+  );
+  const kind = motion?.role;
   return (
     kind === "stand" ||
-    (!!clip.targetId && ["climb", "sit"].includes(kind || ""))
+    (!!clip.targetId &&
+      (["climb", "sit"].includes(kind || "") || seatedRecording(motion)))
   );
 }
 

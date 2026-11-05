@@ -3254,6 +3254,7 @@
     "name": "Talk while seated",
     "description": "Sits on a high seat and talks with expressive hand gestures.",
     "category": "Sitting",
+    "posture": "seated",
     "rigMapping": {
       "hips": [0, 0, 0],
       "spine": [0, 0, 0, 2],
@@ -3304,6 +3305,7 @@
     "name": "Chin in hand",
     "description": "Sits on a low stool thinking, chin resting in one hand.",
     "category": "Sitting",
+    "posture": "seated",
     "rigMapping": {
       "hips": [0, 0, 0],
       "spine": [0, 0, 0, 2],
@@ -3350,6 +3352,7 @@
     "name": "Head in hands",
     "description": "Sits slumped on a seat with the face buried in both hands.",
     "category": "Sitting",
+    "posture": "seated",
     "rigMapping": {
       "hips": [0, 0],
       "spine": [0, 0, 2],

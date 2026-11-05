@@ -114,6 +114,10 @@ export function applySeatSupport(rig: T.Group, actor: Entity) {
     rig.userData.motionWarning = sample.plan.warning;
     return;
   }
+  if (sample.notice)
+    rig.userData.motionNotice = [rig.userData.motionNotice, sample.notice]
+      .filter(Boolean)
+      .join(" ");
   if (sample.amount <= 0) return;
   const bones = rig.userData.bones as Record<string, T.Bone>;
   const contacts =

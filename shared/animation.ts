@@ -24,7 +24,7 @@ import {
   type SeatBody,
 } from "./seating";
 import { samplePath } from "./path";
-import { seatTiming } from "./motionLibrary";
+import { seatTiming, seatedRecording } from "./motionLibrary";
 export type Pose = {
   root: [number, number, number];
   rotations: Record<string, [number, number, number]>;
@@ -182,6 +182,51 @@ export function entityPose(
         return p;
       }
       p.heading = sample.heading;
+      start = end;
+      continue;
+    }
+    if (
+      target &&
+      asset &&
+      seatProfile(asset) &&
+      seatedRecording(m) &&
+      seated?.targetId !== target.id
+    ) {
+      // A take performed seated from start to finish is held on its seat the
+      // way the hold after a targeted Sit down is (sitting down on this seat
+      // earlier carries straight into it, below). Without that Sit down the
+      // body snaps onto the seat, and the notice asks for one.
+      seated = planSeat(
+        p.root,
+        p.heading!,
+        e,
+        target,
+        asset,
+        options.canSit !== false,
+        options.seatBody,
+        true,
+      );
+      const native = recorded();
+      p.root = [...(seated.warning ? seated.from : seated.centre)];
+      p.seat = {
+        plan: seated,
+        amount: seated.warning ? 0 : 1,
+        progress: 1,
+        standing: false,
+        ...(seated.warning
+          ? {}
+          : {
+              notice: `${e.name} sits on ${target.name} without sitting down first. Add Sit down before it.`,
+            }),
+      };
+      p.climb = undefined;
+      p.rotations = neutralRotations();
+      const facing = seated.warning ? seated.heading : seated.facing;
+      if (time < end) {
+        p.heading = facing - (native?.startHeading ?? 0);
+        return p;
+      }
+      p.heading = facing + (native?.heading ?? 0);
       start = end;
       continue;
     }

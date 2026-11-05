@@ -13,6 +13,7 @@ import {
   capturedRoleAliases,
   capturedRouteGaits,
   motionSources,
+  seatedRecording,
 } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
 import { contentAssets, contentURL } from "./contentLibrary";
@@ -670,12 +671,13 @@ export function applyCommands(
     for (const entity of s.entities) {
       let removedSeat = false;
       for (const clip of entity.clips) {
-        const kind = allMotions(s).find((m) => m.id === clip.motionId)?.role;
+        const motion = allMotions(s).find((m) => m.id === clip.motionId);
+        const kind = motion?.role;
         if (clip.targetId && ids.has(clip.targetId)) {
-          if (kind === "sit") {
-            clip.motionId = "idle";
-            removedSeat = true;
-          }
+          if (kind === "sit") clip.motionId = "idle";
+          // A seated take plays on without its seat; the Stand up that
+          // followed has nothing to rise from either way.
+          if (kind === "sit" || seatedRecording(motion)) removedSeat = true;
           delete clip.targetId;
         }
         if (kind === "stand" && removedSeat) {
@@ -1384,7 +1386,7 @@ export function validateScene(
       }
       if (c.targetId && !s.entities.some((t) => t.id === c.targetId))
         throw Error("Missing action target.");
-      if (c.targetId && motion.role === "sit") {
+      if (c.targetId && (motion.role === "sit" || seatedRecording(motion))) {
         const target = s.entities.find((t) => t.id === c.targetId)!;
         const targetAsset = allAssets(s).find((a) => a.id === target.assetId)!;
         if (

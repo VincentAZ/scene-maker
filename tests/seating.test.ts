@@ -10,7 +10,13 @@ import {
   validateScene,
   type Scene,
 } from "../shared/scene";
-import { planSeat, seatProfile, validateSeating } from "../shared/seating";
+import {
+  planSeat,
+  reseat,
+  seatProfile,
+  seatedAddPlan,
+  validateSeating,
+} from "../shared/seating";
 import {
   createCharacter,
   createProp,
@@ -21,10 +27,29 @@ import { prepareImportedAsset } from "../src/importedAsset";
 import { applyInteractions } from "../src/interactions";
 import { offlineCommands } from "../server/ai";
 import { libraryCharacters } from "../shared/characterLibrary";
+import { capturedMotionSources } from "../shared/motionLibrary";
 import { appendSpeech } from "../shared/conversation";
 import { actionPreview } from "../shared/actionPreview";
+import { contactAction } from "../shared/transitions";
+import { setMotionSources } from "../src/rig";
 import { recordedSources, withRecordedSources } from "./recordedSources";
 const recordedSourceMap = await recordedSources();
+// Talk while seated (86_15), a take performed seated from start to finish.
+const seatedTake = "captured-86-15";
+const withSeatedTake = await (async () => {
+  const asset = capturedMotionSources.find(
+    (a) => a.id === "cmu-capture-86-15",
+  )!;
+  const data = await fs.readFile("public" + asset.url);
+  const gltf = await new GLTFLoader().parseAsync(
+    data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+    "",
+  );
+  return new Map([
+    ...recordedSourceMap,
+    [asset.id, prepareImportedAsset(asset, gltf)],
+  ]);
+})();
 
 function fixture(assetId = "mila", seatId = "chair") {
   return applyCommands(starterScene(), [
@@ -402,4 +427,267 @@ it("keeps two characters seated through sequential dialogue and waiting", async 
     "other",
   ]);
   [rig, other].forEach((group) => disposeObject(group));
+});
+
+it("holds a targeted seated recording on its seat from the first action, hips on the seat and soles on the floor, for every library character", async () => {
+  for (const id of ["mila", ...libraryCharacters.map((a) => a.id)]) {
+    let scene = fixture(id, id === "mila" ? "chair" : "bench");
+    scene.entities[0].clips = [];
+    scene = applyCommands(scene, [
+      {
+        type: "chain",
+        id: "actor",
+        motionId: seatedTake,
+        targetId: "seat",
+        duration: 4,
+      },
+      { type: "chain", id: "actor", motionId: "wave", duration: 2 },
+    ]);
+    const actor = scene.entities[0],
+      seat = scene.entities[1],
+      rig = await rigFor(scene);
+    setMotionSources(rig, withSeatedTake);
+    // The seat is measured for this body even though nobody sits down.
+    applyAnimatedEntityPose(rig, actor, scene, 0);
+    const body = rig.userData.seatBody;
+    expect(body, id).toBeDefined();
+    seat.scale = Math.min(1, body.lowerLength / 0.38);
+    const seatAsset = allAssets(scene).find(
+      (asset) => asset.id === seat.assetId,
+    )!;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const plan = planSeat(
+        actor.position,
+        actor.rotation,
+        actor,
+        seat,
+        seatAsset,
+        true,
+        body,
+        true,
+      );
+      if (!plan.warning?.includes("feet can reach")) break;
+      seat.scale *= 0.9;
+    }
+    for (const t of [0.5, 3, 5, 0.5]) {
+      applyAnimatedEntityPose(rig, actor, scene, t);
+      rig.updateMatrixWorld(true);
+      expect(rig.userData.motionWarning, id + " " + t).toBeFalsy();
+      // Sitting without a Sit down is staged, with advice.
+      expect(rig.userData.motionNotice, id + " " + t).toMatch(
+        /without sitting down first/,
+      );
+      expect(world(rig.userData.bones.hips).y, id + " " + t).toBeCloseTo(
+        0.54 * seat.scale + body.padding * actor.scale,
+        5,
+      );
+      expect(
+        Math.abs(new T.Box3().setFromObject(rig, true).min.y),
+        id + " shoe sole " + t,
+      ).toBeLessThan(0.02);
+      // The body sits where the seat is, facing the way it faces.
+      expect(
+        Math.hypot(
+          rig.position.x - seat.position[0],
+          rig.position.z - seat.position[2],
+        ),
+        id,
+      ).toBeLessThan(0.05);
+    }
+    disposeObject(rig);
+  }
+});
+
+it("plays a targeted seated recording after Sit down exactly as it plays untargeted, without the Sit down advice", async () => {
+  const plain = fixture();
+  plain.entities[0].clips[1] = {
+    ...plain.entities[0].clips[1],
+    motionId: seatedTake,
+  };
+  const chained = structuredClone(plain);
+  chained.entities[0].clips[1].targetId = "seat";
+  expect(() => validateScene(plain)).not.toThrow();
+  expect(() => validateScene(chained)).not.toThrow();
+  const rig = await rigFor(plain);
+  setMotionSources(rig, withSeatedTake);
+  for (const t of [3.2, 4, 5.9, 6.7]) {
+    applyAnimatedEntityPose(rig, plain.entities[0], plain, t);
+    const hip = world(rig.userData.bones.hips),
+      heading = rig.rotation.y;
+    applyAnimatedEntityPose(rig, chained.entities[0], chained, t);
+    expect(rig.userData.motionWarning, String(t)).toBeFalsy();
+    expect(rig.userData.motionNotice ?? "", String(t)).not.toMatch(
+      /sitting down first/,
+    );
+    expect(world(rig.userData.bones.hips).distanceTo(hip)).toBeLessThan(1e-5);
+    expect(Math.abs(rig.rotation.y - heading)).toBeLessThan(1e-6);
+  }
+  disposeObject(rig);
+});
+
+it("lets a targeted seated recording open or continue a seat's occupation, keeps Stand up required, and loses only its seat when the seat goes", () => {
+  const scene = fixture();
+  scene.entities[0].clips = [];
+  const seated = applyCommands(scene, [
+    {
+      type: "chain",
+      id: "actor",
+      motionId: seatedTake,
+      targetId: "seat",
+      duration: 4,
+    },
+  ]);
+  expect(validateSeating(seated, allMotions(seated))).toHaveLength(1);
+  expect(contactAction(seated, seated.entities[0].clips[0])).toBe(true);
+  expect(() =>
+    applyCommands(seated, [
+      { type: "add", assetId: "leo", id: "other" },
+      { type: "chain", id: "other", motionId: "sit", targetId: "seat" },
+    ]),
+  ).toThrow("occupied");
+  expect(() =>
+    applyCommands(seated, [{ type: "chain", id: "actor", motionId: "walk" }]),
+  ).toThrow("Stand up");
+  const whole = applyCommands(scene, [
+    { type: "chain", id: "actor", motionId: "sit", targetId: "seat" },
+    { type: "chain", id: "actor", motionId: seatedTake, targetId: "seat" },
+    { type: "chain", id: "actor", motionId: "wave" },
+    { type: "chain", id: "actor", motionId: "stand" },
+    { type: "chain", id: "actor", motionId: "walk" },
+  ]);
+  expect(validateSeating(whole, allMotions(whole))).toHaveLength(1);
+  expect(() =>
+    applyCommands(scene, [
+      { type: "add", assetId: "chair", id: "other-seat", position: [2, 0, 0] },
+      { type: "chain", id: "actor", motionId: "sit", targetId: "seat" },
+      {
+        type: "chain",
+        id: "actor",
+        motionId: seatedTake,
+        targetId: "other-seat",
+      },
+    ]),
+  ).toThrow("already seated");
+  expect(() =>
+    applyCommands(scene, [
+      { type: "add", assetId: "cup", id: "cup" },
+      { type: "chain", id: "actor", motionId: seatedTake, targetId: "cup" },
+    ]),
+  ).toThrow("known sitting surface");
+  const untargeted = applyCommands(seated, [
+    {
+      type: "update",
+      id: "actor",
+      changes: {
+        clips: [{ ...seated.entities[0].clips[0], targetId: undefined }],
+      },
+    },
+  ]);
+  expect(contactAction(untargeted, untargeted.entities[0].clips[0])).toBe(
+    false,
+  );
+  const removed = applyCommands(
+    applyCommands(seated, [{ type: "chain", id: "actor", motionId: "stand" }]),
+    [{ type: "remove", id: "seat" }],
+  );
+  expect(
+    removed.entities[0].clips.map((c) => [c.motionId, c.targetId]),
+  ).toEqual([
+    [seatedTake, undefined],
+    ["idle", undefined],
+  ]);
+});
+
+it("moves a whole seated stretch when one of its actions gets another seat", () => {
+  const scene = applyCommands(fixture(), [
+    { type: "add", assetId: "chair", id: "other-seat", position: [2, 0, 0] },
+  ]);
+  scene.entities[0].clips[1] = {
+    ...scene.entities[0].clips[1],
+    motionId: seatedTake,
+    targetId: "seat",
+  };
+  const motions = allMotions(scene),
+    clips = scene.entities[0].clips;
+  const targets = (list: typeof clips) => list.map((c) => c.targetId);
+  // sit, seated take, wave, stand, walk: the seat changes for the stretch
+  // whichever of its seat actions is chosen, the gestures stay as they are.
+  const moved = reseat(clips, motions, clips[1].id, "other-seat");
+  expect(targets(moved)).toEqual([
+    "other-seat",
+    "other-seat",
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  expect(targets(reseat(clips, motions, clips[0].id, "other-seat"))).toEqual(
+    targets(moved),
+  );
+  expect(() =>
+    validateScene({
+      ...scene,
+      entities: [
+        { ...scene.entities[0], clips: moved },
+        ...scene.entities.slice(1),
+      ],
+    }),
+  ).not.toThrow();
+  // Clearing a seat, or seating an action that had none, is that action alone.
+  expect(targets(reseat(clips, motions, clips[1].id, undefined))).toEqual([
+    "seat",
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  const untargeted = clips.map((c, i) =>
+    i === 1 ? { ...c, targetId: undefined } : c,
+  );
+  expect(targets(reseat(untargeted, motions, clips[1].id, "seat"))).toEqual(
+    targets(clips),
+  );
+  // A stretch ends at Stand up: a later sit is not moved along.
+  const twice = [
+    ...clips,
+    { ...clips[0], id: "sit-again" },
+    { ...clips[1], id: "seated-again" },
+  ];
+  expect(targets(reseat(twice, motions, clips[1].id, "other-seat"))).toEqual([
+    "other-seat",
+    "other-seat",
+    undefined,
+    undefined,
+    undefined,
+    "seat",
+    "seat",
+  ]);
+});
+
+it("plans where an added seated recording sits: the nearest seat after Sit down, nowhere new while seated, nowhere without a seat", () => {
+  const scene = fixture();
+  scene.entities[0].clips = [];
+  const motions = allMotions(scene),
+    assets = allAssets(scene);
+  expect(seatedAddPlan(scene, assets, motions, "actor", seatedTake)).toEqual({
+    targetId: "seat",
+    leadIn: true,
+    notice: `Sit down on ${scene.entities[1].name} comes first.`,
+  });
+  expect(seatedAddPlan(scene, assets, motions, "actor", "talk")).toEqual({});
+  const seated = applyCommands(scene, [
+    { type: "chain", id: "actor", motionId: "sit", targetId: "seat" },
+  ]);
+  expect(seatedAddPlan(seated, assets, motions, "actor", seatedTake)).toEqual(
+    {},
+  );
+  const stood = applyCommands(seated, [
+    { type: "chain", id: "actor", motionId: "stand" },
+  ]);
+  expect(
+    seatedAddPlan(stood, assets, motions, "actor", seatedTake),
+  ).toMatchObject({ targetId: "seat", leadIn: true });
+  const bare = applyCommands(scene, [{ type: "remove", id: "seat" }]);
+  expect(seatedAddPlan(bare, assets, motions, "actor", seatedTake)).toEqual({
+    notice: "Add a chair, then choose it in Details.",
+  });
 });
