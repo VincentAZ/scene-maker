@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 4;
+const CONVERTER_VERSION = 5;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../blender",
@@ -336,6 +336,7 @@ async function convert(character, { out, cache, root, log }) {
       part,
       JSON.stringify(character.options ?? {}),
     ]);
+    fs.writeFileSync(path.join(src, "convert.log"), notes.join("\n") + "\n");
     for (const line of notes)
       if (/^(roles|joints|left out|missing|groom|unwrapped)\b/.test(line))
         log(`  ${character.name}: ${line}`);
@@ -357,10 +358,15 @@ export async function build({ out, cache, root, log }) {
   // CHARACTERS_ONLY=<id>,<id> rebuilds just those (for converter work).
   const only = process.env.CHARACTERS_ONLY?.split(",");
   const chosen = only ? cast.filter((c) => only.includes(idOf(c))) : cast;
-  // Each conversion bakes on the GPU; two side by side keep it busy.
-  await pool(chosen, 2, (character) =>
-    convert(character, { out, cache, root, log }),
-  );
+  // Each conversion bakes on the GPU; two side by side keep it busy. A
+  // character that fails is reported and left out of the catalogue.
+  await pool(chosen, 2, async (character) => {
+    try {
+      await convert(character, { out, cache, root, log });
+    } catch (error) {
+      log(`${character.name} failed: ${error.message.slice(-2000)}`);
+    }
+  });
   return cast
     .filter((c) =>
       fs.existsSync(path.join(out, "characters", idOf(c) + ".glb")),

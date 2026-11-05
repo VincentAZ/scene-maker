@@ -747,6 +747,9 @@ def skin(obj, seen=()):
             log("skinned", obj.name, "like", source.name)
             return True
     centre = centres.get(obj) or obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
+    if centre.length < 0.05:
+        # Nothing places it: a leftover at the scene origin, between the feet.
+        return False
     nearest = min((rig.data.bones[n] for slot, n in role_names.items() if not slot.startswith("eye")),
                   key=lambda b: ((rig.matrix_world @ b.head_local) - centre).length).name
     bind(obj, [(nearest, 1.0)])
@@ -754,8 +757,11 @@ def skin(obj, seen=()):
     return True
 
 
-for obj in meshes:
-    skin(obj)
+unplaced = [obj for obj in meshes if not skin(obj)]
+for obj in unplaced:
+    log("left out", obj.name, "(nothing moves it; it sits at the scene origin)")
+    meshes.remove(obj)
+    bpy.data.objects.remove(obj)
 
 
 # Deform bones that carry no weight and hold none that does are dropped.
@@ -922,9 +928,11 @@ def albedo_view():
                 opaque.outputs[0].default_value = 1.0
                 for output, replacement in ((node.outputs["Color"], constant.outputs[0]),
                                             (node.outputs["Alpha"], opaque.outputs[0])):
+                    sockets = [link.to_socket for link in output.links]
                     for link in list(output.links):
-                        tree.links.new(replacement, link.to_socket)
                         tree.links.remove(link)
+                    for socket in sockets:
+                        tree.links.new(replacement, socket)
 
 
 EYE = re.compile(r"(^|[^a-z])eye(s|ball)?([^a-z]|$)(?!.*(brow|lash|lid|dot))", re.I)

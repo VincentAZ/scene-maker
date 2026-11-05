@@ -20,7 +20,7 @@ import { recordedSources, withRecordedSources } from "./recordedSources";
 const content = path.resolve(process.env.SCENE_MAKER_CONTENT || "content");
 const file = (url: string) => path.join(content, url.slice("/content/".length));
 const entries = characters.filter((c) => c.id.startsWith("blender-"));
-// The files are built by scripts/content/characters/merge-blender-studio.mjs.
+// The files are built by scripts/merge-blender-studio.mjs.
 const built =
   entries.length > 0 && entries.every((c) => fs.existsSync(file(c.url)));
 const assets = contentAssets.filter((a) => a.id.startsWith("blender-"));

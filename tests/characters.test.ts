@@ -19,11 +19,10 @@ import { recordedSources, withRecordedSources } from "./recordedSources";
 
 const content = path.resolve(process.env.SCENE_MAKER_CONTENT || "content");
 const file = (url: string) => path.join(content, url.slice("/content/".length));
-// The files are downloaded by `node scripts/build-content.mjs characters`.
-const built =
-  characters.length > 0 && characters.every((c) => fs.existsSync(file(c.url)));
 // Other sources (Blender Studio) have their own tests; this one covers the
-// Rocketbox cast.
+// Rocketbox cast, downloaded by `node scripts/build-content.mjs characters`.
+const cast = characters.filter((c) => c.id.startsWith("rocketbox-"));
+const built = cast.length > 0 && cast.every((c) => fs.existsSync(file(c.url)));
 const assets = contentAssets.filter((a) => a.id.startsWith("rocketbox-"));
 
 function readGlb(url: string) {
