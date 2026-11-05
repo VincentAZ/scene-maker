@@ -2669,7 +2669,7 @@ label > span {
 .path-map .path-arrow {
   fill: none;
   stroke: #f7faef;
-  stroke-width: 2;
+  stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
   pointer-events: none;

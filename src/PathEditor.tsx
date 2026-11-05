@@ -962,7 +962,7 @@ export function PathEditor({
             <path
               key={index}
               className="path-arrow"
-              d="M -5 -4 L 2 0 L -5 4"
+              d="M -6 -5 L 3 0 L -6 5"
               transform={`translate(${arrow.x} ${arrow.y}) rotate(${arrow.angle})`}
             />
           ))}
