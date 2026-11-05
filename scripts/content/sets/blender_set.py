@@ -1790,6 +1790,29 @@ def view_score(floor, position, target, shells, columns=14, rows=9):
             - 6.0 * blocked / total - 4.0 * sky)
 
 
+def free_spot(floor, cell, step=0.15):
+    """True when the floor around `cell` is open at a fine pitch: on a
+    coarse grid one ray per cell can slip between the slats of a café chair.
+    Outdoors the cast keeps a metre from the furniture, indoors 0.6 m (the
+    fine grid of a room has already checked that)."""
+    if floor["step"] <= step:
+        return True
+    radius = 0.6 if floor["indoor"] else 1.0
+    centre = cell_center(floor, *cell)
+    top = floor["z"] + float(job.get("headroom", 1.9))
+    down = Vector((0, 0, -1))
+    reach = int(radius / step)
+    for a in range(-reach, reach + 1):
+        for b in range(-reach, reach + 1):
+            if math.hypot(a, b) * step > radius:
+                continue
+            origin = Vector((centre.x + a * step, centre.y + b * step, top))
+            hit = floor["bvh"].ray_cast(origin, down, top - floor["z"] + 0.3)
+            if hit[0] is None or not (FLOOR_BAND[0] - 0.005 <= hit[0].z - floor["z"] <= FLOOR_BAND[1]):
+                return False
+    return True
+
+
 def spread_cells(floor, ok, count, spacing):
     """Up to `count` cells of `ok`, roomiest first, at least `spacing` metres
     apart, so the search covers the whole floor."""
@@ -1799,7 +1822,7 @@ def spread_cells(floor, ok, count, spacing):
     chosen = []
     for k in order:
         i, j = (int(v) for v in cells[k])
-        if all(math.hypot(i - a, j - b) * step >= spacing for a, b in chosen):
+        if all(math.hypot(i - a, j - b) * step >= spacing for a, b in chosen) and free_spot(floor, (i, j)):
             chosen.append((i, j))
             if len(chosen) >= count:
                 break
