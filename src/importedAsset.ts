@@ -113,9 +113,90 @@ export async function loadImportedAsset(
   return prepareImportedAsset(asset, gltf);
 }
 
+/** Largest value of each normalized integer component type (glTF). */
+const normalizedRange: Record<number, number> = {
+  5120: 127,
+  5121: 255,
+  5122: 32767,
+  5123: 65535,
+};
+
+/**
+ * The extent of a GLB file, in its own metres, from the bounds every glTF
+ * file records for its vertex positions and the transforms of its nodes:
+ * nothing is decoded, so a large set is measured at once. Empty when the
+ * file records none.
+ */
+export function glbBounds(bytes: ArrayBuffer): T.Box3 {
+  const box = new T.Box3();
+  const view = new DataView(bytes);
+  if (
+    bytes.byteLength < 20 ||
+    view.getUint32(0, true) !== 0x46546c67 ||
+    view.getUint32(16, true) !== 0x4e4f534a
+  )
+    return box;
+  type Node = {
+    mesh?: number;
+    children?: number[];
+    matrix?: number[];
+    translation?: number[];
+    rotation?: number[];
+    scale?: number[];
+  };
+  const json = JSON.parse(
+    new TextDecoder().decode(
+      new Uint8Array(bytes, 20, view.getUint32(12, true)),
+    ),
+  ) as {
+    scene?: number;
+    scenes?: { nodes?: number[] }[];
+    nodes?: Node[];
+    meshes?: { primitives: { attributes: Record<string, number> }[] }[];
+    accessors?: {
+      min?: number[];
+      max?: number[];
+      normalized?: boolean;
+      componentType?: number;
+    }[];
+  };
+  const visit = (index: number, parent: T.Matrix4) => {
+    const node = json.nodes?.[index];
+    if (!node) return;
+    const local = node.matrix
+      ? new T.Matrix4().fromArray(node.matrix)
+      : new T.Matrix4().compose(
+          new T.Vector3().fromArray(node.translation ?? [0, 0, 0]),
+          new T.Quaternion().fromArray(node.rotation ?? [0, 0, 0, 1]),
+          new T.Vector3().fromArray(node.scale ?? [1, 1, 1]),
+        );
+    const world = parent.clone().multiply(local);
+    for (const primitive of json.meshes?.[node.mesh ?? -1]?.primitives ?? []) {
+      const accessor = json.accessors?.[primitive.attributes.POSITION];
+      if (!accessor?.min || !accessor.max) continue;
+      const range = accessor.normalized
+        ? (normalizedRange[accessor.componentType ?? 0] ?? 1)
+        : 1;
+      box.union(
+        new T.Box3(
+          new T.Vector3().fromArray(accessor.min).divideScalar(range),
+          new T.Vector3().fromArray(accessor.max).divideScalar(range),
+        ).applyMatrix4(world),
+      );
+    }
+    for (const child of node.children ?? []) visit(child, world);
+  };
+  const scene = json.scenes?.[json.scene ?? 0];
+  for (const index of scene?.nodes ?? []) visit(index, new T.Matrix4());
+  return box;
+}
+
 /** The extent of a model file about to be imported as a set, in its own
- * metres, so the import can be staged before the studio shows it. */
+ * metres, so the import can be staged before the studio shows it: from its
+ * recorded bounds, or by loading it when the file records none. */
 export async function measureModelBounds(bytes: ArrayBuffer): Promise<T.Box3> {
+  const recorded = glbBounds(bytes);
+  if (!recorded.isEmpty()) return recorded;
   const gltf = await gltfLoader().parseAsync(bytes, "");
   gltf.scene.updateWorldMatrix(true, true);
   return new T.Box3().setFromObject(gltf.scene, true);

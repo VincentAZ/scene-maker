@@ -306,8 +306,10 @@ export type FloorBlocked = (x: number, z: number) => boolean;
  * is free, otherwise the nearest free spot searched outward from it in the
  * set's own frame — across the view first, then behind, then in front. A free
  * spot is on the open floor at least a body's radius from its edge, clear of
- * the set's furniture and CAST_SPACING from everyone already placed. A full
- * floor gives up the spacing, and then the furniture, before the spawn.
+ * the set's furniture and CAST_SPACING from everyone already placed, and not
+ * straight behind one of them as seen from the home camera. A crowded floor
+ * gives up being seen, then the spacing, and then the furniture, before the
+ * spawn.
  */
 export function freeSpot(
   set: SetBlock,
@@ -345,7 +347,19 @@ export function freeSpot(
       (other) =>
         Math.hypot(other[0] - spot[0], other[2] - spot[2]) >= CAST_SPACING,
     );
+  // The home camera looks along the heading's reverse: someone less than
+  // most of a shoulder's width across from a cast member and further back
+  // is hidden behind them.
+  const seen = (spot: Vec3) =>
+    taken.every((other) => {
+      const dx = spot[0] - other[0],
+        dz = spot[2] - other[2];
+      const across = dx * cos - dz * sin,
+        ahead = dx * sin + dz * cos;
+      return ahead >= -0.05 || Math.abs(across) >= 0.35;
+    });
   const found =
+    spots.find((spot) => open(spot) && apart(spot) && seen(spot)) ??
     spots.find((spot) => open(spot) && apart(spot)) ??
     spots.find(open) ??
     spots.find(

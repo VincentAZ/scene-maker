@@ -33,7 +33,9 @@ import {
 } from "../src/environmentModel";
 import {
   cameraRoom,
+  clearHomeView,
   fitSunShadow,
+  hasFloor,
   floorIrradiance,
   markSetCollision,
   measureCeiling,
@@ -54,6 +56,7 @@ import {
   sceneObstacles,
 } from "../src/assetManipulation";
 import { aces, extractSun, texelDirection } from "../src/hdriBackdrop";
+import { glbBounds } from "../src/importedAsset";
 import { disposeObject } from "../src/world";
 
 const staging: SetBlock = {
@@ -354,6 +357,40 @@ describe("a 3D set in the environment model", () => {
       () => {},
     );
     expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("keeps the studio floor under a model without one, and turns a creator's camera from a wall", async () => {
+    expect(hasFloor(room(), staging)).toBe(true);
+    // A facade: a wall and a bench, no floor.
+    const facade = new T.Group();
+    facade.add(
+      box("wall", [8, 4, 0.3], [0, 2, -2]),
+      box("bench", [2, 0.5, 0.5], [0, 0.25, -1.5]),
+    );
+    expect(hasFloor(facade, staging)).toBe(false);
+    const own: Asset = { ...set, id: "own", url: "/uploads/own.glb" };
+    delete own.hdri;
+    const environment = new EnvironmentModel(
+      new T.Group(),
+      () => Promise.resolve(facade),
+      { load: () => Promise.reject(Error("not a photo")), show: () => {} },
+    );
+    environment.update(
+      withSet(own),
+      () => {},
+      () => {},
+    );
+    await new Promise((done) => setTimeout(done));
+    expect(environment.root?.children).toHaveLength(2);
+    // A wall across the room between the fitted camera and the cast.
+    const walled = room();
+    walled.add(box("partition", [10, 3, 0.2], [0, 1.5, 3]));
+    walled.updateWorldMatrix(true, true);
+    const view = clearHomeView(walled, staging);
+    expect(view.camera.position[1]).toBe(staging.camera.position[1]);
+    expect(view.camera.position[2]).toBeLessThan(3);
+    expect(view.camera.position[2]).toBeGreaterThanOrEqual(1.5);
+    expect(clearHomeView(room(), staging)).toBe(staging);
   });
 
   it("puts the cast at the floor's centre when the origin is off the plan", () => {
@@ -747,6 +784,20 @@ describe("spawn and drops on a set's floor", () => {
       expect(
         Math.hypot(next[0] - other[0], next[2] - other[2]),
       ).toBeGreaterThanOrEqual(0.75);
+    // In a narrow room the next member stands behind and to the side, where
+    // the home camera still sees them.
+    const corridor: SetBlock = {
+      ...facing,
+      walkable: [
+        [-0.8, -3],
+        [0.8, -3],
+        [0.8, 3],
+        [-0.8, 3],
+      ],
+    };
+    const [hx, , hz] = freeSpot(corridor, [[0, 0, 0]]);
+    expect(hz).toBeLessThan(0);
+    expect(Math.abs(hx)).toBeGreaterThanOrEqual(0.35);
     // The loaded set's furniture reaches new cast members through applyCommands.
     const scene = applyCommands(
       withSet({ ...set, set: facing }),
@@ -981,6 +1032,55 @@ it("disposes a set's light with the set", () => {
   expect(dispose).toHaveBeenCalledOnce();
   disposeObject(room());
   expect(setBlockFor(set, room())).toBe(staging);
+});
+
+describe("measuring a creator's set before it loads", () => {
+  /** A GLB holding only its JSON: the bounds are read from it alone. */
+  const glb = (document: object) => {
+    let text = JSON.stringify(document);
+    while (text.length % 4) text += " ";
+    const json = new TextEncoder().encode(text);
+    const bytes = new Uint8Array(20 + json.length);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(0, 0x46546c67, true);
+    view.setUint32(4, 2, true);
+    view.setUint32(8, bytes.length, true);
+    view.setUint32(12, json.length, true);
+    view.setUint32(16, 0x4e4f534a, true);
+    bytes.set(json, 20);
+    return bytes.buffer;
+  };
+  it("reads the extent from the file's recorded bounds and node transforms", () => {
+    const quarter = Math.SQRT1_2;
+    const bounds = glbBounds(
+      glb({
+        scene: 0,
+        scenes: [{ nodes: [0] }],
+        nodes: [
+          { translation: [1, 0, 2], scale: [2, 2, 2], children: [1, 2] },
+          { mesh: 0, rotation: [0, quarter, 0, quarter] },
+          // Quantized positions (normalized shorts) scaled back to metres.
+          { mesh: 1, translation: [0, 0.5, 0] },
+        ],
+        meshes: [
+          { primitives: [{ attributes: { POSITION: 0 } }] },
+          { primitives: [{ attributes: { POSITION: 1 } }] },
+        ],
+        accessors: [
+          { min: [-0.5, 0, -0.25], max: [0.5, 1, 0.25] },
+          {
+            min: [-32767, 0, 0],
+            max: [32767, 32767, 0],
+            normalized: true,
+            componentType: 5122,
+          },
+        ],
+      }),
+    );
+    expect(bounds.min.toArray().map((n) => +n.toFixed(6))).toEqual([-1, 0, 1]);
+    expect(bounds.max.toArray().map((n) => +n.toFixed(6))).toEqual([3, 3, 3]);
+    expect(glbBounds(new ArrayBuffer(8)).isEmpty()).toBe(true);
+  });
 });
 
 describe("compressed model decoders", () => {

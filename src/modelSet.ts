@@ -1,7 +1,12 @@
 import * as T from "three";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import type { Asset } from "../shared/scene";
-import { defaultSetBlock, shellBox, type SetBlock } from "../shared/sets";
+import {
+  defaultSetBlock,
+  FLOOR_TOP,
+  shellBox,
+  type SetBlock,
+} from "../shared/sets";
 import { extractSun, type PhotoLight } from "./hdriBackdrop";
 
 /** A 3D set's image-based light: its HDR with the sun moved to a light, and
@@ -32,6 +37,92 @@ export class ModelSet {
   dispose() {
     this.light?.map.dispose();
   }
+}
+
+/** Is there a floor under the cast: a mesh tagged "floor", or one whose top
+ * is level with y = 0 and that spans the spawn point? A facade or a prop
+ * used as a backdrop has none and keeps the studio's floor. */
+export function hasFloor(model: T.Object3D, set: SetBlock) {
+  model.updateWorldMatrix(true, true);
+  const [x, , z] = set.spawn;
+  let found = false;
+  model.traverse((node) => {
+    if (found || !(node instanceof T.Mesh)) return;
+    for (let up: T.Object3D | null = node; up; up = up.parent)
+      if (
+        (up.userData.sceneMaker as { role?: unknown } | undefined)?.role ===
+        "floor"
+      ) {
+        found = true;
+        return;
+      }
+    if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+    const box = node.geometry
+      .boundingBox!.clone()
+      .applyMatrix4(node.matrixWorld);
+    found =
+      Math.abs(box.max.y) <= FLOOR_TOP &&
+      box.min.x <= x &&
+      box.max.x >= x &&
+      box.min.z <= z &&
+      box.max.z >= z;
+  });
+  return found;
+}
+
+/**
+ * A creator's set opens on a clear view of the cast. When something stands
+ * between the derived home camera and its target (the camera fitted behind
+ * a wall), the camera moves to the first spot that sees the target: nearer
+ * in the same direction, then around the target at the same height, always
+ * inside the set and at least 1.5 m away.
+ */
+export function clearHomeView(model: T.Object3D, set: SetBlock): SetBlock {
+  model.updateWorldMatrix(true, true);
+  const target = new T.Vector3(...set.camera.target);
+  const home = new T.Vector3(...set.camera.position).sub(target);
+  const room = new T.Box3(
+    new T.Vector3(...set.bounds.min),
+    new T.Vector3(...set.bounds.max),
+  ).expandByScalar(-WALL_GAP);
+  const ray = new T.Raycaster();
+  const clear = (offset: T.Vector3) => {
+    const position = target.clone().add(offset);
+    if (!room.containsPoint(position)) return false;
+    ray.set(target, offset.clone().normalize());
+    ray.far = offset.length();
+    return !ray
+      .intersectObject(model, true)
+      .some((hit) => hit.point.y > FLOOR_TOP);
+  };
+  if (clear(home)) return set;
+  const level = Math.hypot(home.x, home.z);
+  // Nearer or around, the camera keeps its height.
+  const spot = (turn: number, scale: number) =>
+    home
+      .clone()
+      .applyAxisAngle(new T.Vector3(0, 1, 0), (turn * Math.PI) / 4)
+      .multiply(new T.Vector3(scale, 1, scale));
+  const candidates = [0.75, 0.5, 0.35].map((scale) => spot(0, scale));
+  for (const turn of [1, -1, 2, -2, 3, -3, 4])
+    for (const scale of [1, 0.75, 0.5]) candidates.push(spot(turn, scale));
+  const found = candidates.find(
+    (offset) =>
+      Math.hypot(offset.x, offset.z) >= Math.min(1.5, level) && clear(offset),
+  );
+  if (!found) return set;
+  const position = target.clone().add(found);
+  return {
+    ...set,
+    camera: {
+      ...set.camera,
+      position: position.toArray().map((v) => Math.round(v * 1000) / 1000) as [
+        number,
+        number,
+        number,
+      ],
+    },
+  };
 }
 
 /** How close the camera may come to an interior's walls and ceiling. */

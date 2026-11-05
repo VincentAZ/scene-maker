@@ -4,7 +4,8 @@ import type { PhotoSet } from "./hdriBackdrop";
 import { loadImportedAsset, type DownloadProgress } from "./importedAsset";
 import {
   cameraRoom,
-  loadSetLight,
+  clearHomeView,
+  hasFloor,
   markSetCollision,
   measureCeiling,
   ModelSet,
@@ -72,6 +73,8 @@ export class EnvironmentModel {
   modelSet: ModelSet | null = null;
   /** The loaded 3D set's furniture within a standing body's height. */
   private furniture: T.Box3[] = [];
+  /** The loaded 3D set's furniture meshes, which props can be put on. */
+  surfaces: T.Mesh[] = [];
   private pending: AbortController | null = null;
 
   constructor(
@@ -165,6 +168,7 @@ export class EnvironmentModel {
       failed(Error("The imported environment model is missing."));
       return;
     }
+    const library = asset.url.startsWith("/content/");
     // The HDR that lights the set loads beside the model; the set settles as
     // soon as both are in, and a model without a light settles at once.
     const light =
@@ -206,11 +210,26 @@ export class EnvironmentModel {
         }
       });
       root.add(object);
-      const set = setBlockFor(asset, object);
-      markSetCollision(object, set);
+      const staged = setBlockFor(asset, object);
+      markSetCollision(object, staged);
+      // A library set's home view is authored; a creator's is fitted to the
+      // model's extent and may need moving to see the cast.
+      const set = library ? staged : clearHomeView(object, staged);
+      // An environment model without a floor (a facade, a prop used as a
+      // backdrop) keeps the studio's floor under the cast.
+      if (!hasFloor(object, set)) {
+        const floor = createEnvironment("studio");
+        floor.position.set(set.spawn[0], 0, set.spawn[2]);
+        root.add(floor);
+      }
       this.furniture = snapshotCollider(object, obstacleMesh).boxes.filter(
         (box) => box.max.y > FLOOR_TOP && box.min.y < BODY_HEIGHT,
       );
+      this.surfaces = [];
+      object.traverse((node) => {
+        if (node instanceof T.Mesh && !node.userData.passable)
+          this.surfaces.push(node);
+      });
       // An interior keeps the camera inside its walls and under its ceiling;
       // a creator's own set counts as one when it has a ceiling over the cast.
       const ceiling =
@@ -243,6 +262,7 @@ export class EnvironmentModel {
       photo.dispose();
     }
     this.furniture = [];
+    this.surfaces = [];
     if (this.modelSet) {
       const shown = this.modelSet;
       this.modelSet = null;

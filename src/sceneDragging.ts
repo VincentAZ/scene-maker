@@ -67,6 +67,8 @@ export function sceneDragging(options: {
   gizmo: { dragging: boolean; axis: string | null; enabled: boolean };
   status: HTMLElement;
   environment?: () => T.Object3D | null;
+  /** A 3D set's furniture meshes: a dragged prop can be put on them too. */
+  surfaces?: () => T.Object3D[];
 }) {
   const { canvas, camera, world, objects, current, orbit, gizmo, status } =
     options;
@@ -284,6 +286,10 @@ export function sceneDragging(options: {
     if (g.asset?.category === "props" && g.valid) {
       world.updateMatrixWorld(true);
       const scene = current().scene;
+      const facesUp = (hit: T.Intersection) =>
+        !!hit.face &&
+        hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y >
+          0.7;
       const surface = pointer
         .intersectObjects([...objects.values()], true)
         .find((hit) => {
@@ -294,14 +300,18 @@ export function sceneDragging(options: {
           const asset =
             entity &&
             allAssets(scene).find((item) => item.id === entity.assetId);
-          return (
-            asset?.category === "props" &&
-            hit.face &&
-            hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
-              .y > 0.7
-          );
+          return asset?.category === "props" && facesUp(hit);
         });
-      if (surface) p = surface.point;
+      // The set's own table, bed or counter takes a prop as well, when it is
+      // the first thing under the pointer.
+      const furniture = pointer.intersectObjects(
+        options.surfaces?.() ?? [],
+        false,
+      )[0];
+      const nearest = [surface, furniture && facesUp(furniture) && furniture]
+        .filter((hit): hit is T.Intersection => !!hit)
+        .sort((a, b) => a.distance - b.distance)[0];
+      if (nearest) p = nearest.point;
     }
     if (!p) g.valid = false;
     if (g.valid && p) {
