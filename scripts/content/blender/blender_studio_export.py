@@ -27,7 +27,7 @@ import sys
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Vector, kdtree
 
 args = sys.argv[sys.argv.index("--") + 1:]
 source, work, destination = args[:3]
@@ -695,11 +695,17 @@ def nearest_role(bone):
 for b in [b for b in deform if b not in placed]:
     parts = numbered(b.name)
     previous = [c for c in deform if parts and parts[1] > 1 and numbered(c.name) == (parts[0], parts[1] - 1, parts[2])]
-    if previous:
+    if previous and b not in ancestors(previous[0]):
         b.parent = previous[0]
         continue
     ancestor = anatomical_parent(b)
     b.parent = ancestor if ancestor is not None else (role_by_name(b) or nearest_role(b))
+# Blender refuses a parent that would close a loop, and the exporter would
+# make a bone still hanging from a control a root of its own that never
+# moves; such a bone joins the body.
+for b in deform:
+    if b != hips and (b.parent is None or not b.parent.use_deform):
+        b.parent = role_by_name(b) or nearest_role(b)
 
 
 role_names = {slot: chains[slot][0].name if slot in chains else b.name for slot, b in roles.items()}
@@ -740,8 +746,13 @@ def deform_for(control):
     return None
 
 
+def deform_groups(obj):
+    return {g.index: g.name for g in obj.vertex_groups if g.name in rig.data.bones and rig.data.bones[g.name].use_deform}
+
+
 def has_weights(obj):
-    return any(g.name in rig.data.bones and rig.data.bones[g.name].use_deform for g in obj.vertex_groups)
+    groups = deform_groups(obj)
+    return any(g.group in groups and g.weight > 1e-4 for v in obj.data.vertices for g in v.groups)
 
 
 def bind(obj, pairs):
@@ -807,6 +818,32 @@ for obj in unplaced:
     log("left out", obj.name, "(nothing moves it; it sits at the scene origin)")
     meshes.remove(obj)
     bpy.data.objects.remove(obj)
+
+
+def fill_unweighted(obj):
+    """Vertices no deform bone carries take the weights of the nearest one
+    that is carried; the exporter would pin them to a still "neutral" bone
+    (half a set of teeth left behind as the head turns)."""
+    groups = deform_groups(obj)
+    carried, loose = [], []
+    for v in obj.data.vertices:
+        (carried if any(g.group in groups and g.weight > 1e-4 for g in v.groups) else loose).append(v)
+    if not loose or not carried:
+        return
+    tree = kdtree.KDTree(len(carried))
+    for i, v in enumerate(carried):
+        tree.insert(v.co, i)
+    tree.balance()
+    for v in loose:
+        source = carried[tree.find(v.co)[1]]
+        for g in source.groups:
+            if g.group in groups:
+                obj.vertex_groups[g.group].add([v.index], g.weight, "REPLACE")
+    log("filled", obj.name, len(loose), "unweighted vertices")
+
+
+for obj in meshes:
+    fill_unweighted(obj)
 
 
 # Deform bones that carry no weight and hold none that does are dropped.

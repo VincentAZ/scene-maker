@@ -157,6 +157,19 @@ describe.skipIf(!built)("built Blender Studio characters", () => {
       expect(textured, asset.id).toBeGreaterThan(json.materials.length / 2);
       for (const image of json.images)
         expect(["image/jpeg", "image/png"]).toContain(image.mimeType);
+      // One skeleton hanging from the hips: a joint outside it, or the
+      // exporter's "neutral" bone for unweighted vertices, would stay put
+      // while the body moves.
+      const joints = new Set<number>(json.skins[0].joints);
+      const parent = new Map<number, number>();
+      json.nodes.forEach((node: { children?: number[] }, i: number) =>
+        node.children?.forEach((child) => parent.set(child, i)),
+      );
+      const roots = [...joints].filter((j) => !joints.has(parent.get(j)!));
+      expect(
+        roots.map((j) => json.nodes[j].name),
+        asset.id,
+      ).toEqual(["DEF-spine"]);
       // The deform skeleton carries Rigify's names, which the studio reads.
       const names = json.skins[0].joints.map((i: number) => json.nodes[i].name);
       for (const name of [
