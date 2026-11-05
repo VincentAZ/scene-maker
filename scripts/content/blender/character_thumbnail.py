@@ -48,7 +48,10 @@ scene.world.use_nodes = True
 scene.world.node_tree.nodes["Background"].inputs[0].default_value = (0.75, 0.8, 0.9, 1)
 scene.world.node_tree.nodes["Background"].inputs[1].default_value = 0.4
 
-scene.render.engine = "BLENDER_EEVEE_NEXT"
+# EEVEE's identifier is BLENDER_EEVEE_NEXT in Blender 4.2-4.5 and
+# BLENDER_EEVEE again from 5.0.
+engines = {e.identifier for e in type(scene.render).bl_rna.properties["engine"].enum_items}
+scene.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
 scene.eevee.taa_render_samples = 32
 scene.render.film_transparent = True
 scene.render.resolution_x = scene.render.resolution_y = 384

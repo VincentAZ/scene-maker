@@ -856,6 +856,14 @@ def skin(obj, seen=()):
     pairs = [(deform_for(c), w) for c, w in (controls[obj] if obj in controls else control_weights(obj))]
     pairs = [(name, w) for name, w in pairs if name]
     if pairs:
+        centre = centres.get(obj) or obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
+        reach = min(segment_distance(centre, rig.matrix_world @ rig.data.bones[n].head_local,
+                                     rig.matrix_world @ rig.data.bones[n].tail_local) for n, _ in pairs)
+        if reach > 0.3 * figure_height:
+            # Only the film's pose brings it to its bone (Einar's robot
+            # finger plates); at rest it would lie on the floor.
+            reasons[obj] = "only the film's pose brings it to its bone"
+            return False
         bind(obj, pairs)
         log("skinned", obj.name, "to", ", ".join(sorted({n for n, _ in pairs})))
         return True
@@ -885,9 +893,13 @@ def skin(obj, seen=()):
     return True
 
 
+reasons = {}
+feet = [rig.matrix_world @ rig.data.bones[role_names[s]].head_local for s in ("foot.L", "foot.R") if s in role_names]
+top = rig.matrix_world @ rig.data.bones[role_names["head"]].tail_local
+figure_height = top.z - min((f.z for f in feet), default=0.0)
 unplaced = [obj for obj in meshes if not skin(obj)]
 for obj in unplaced:
-    log("left out", obj.name, "(nothing moves it; it sits at the scene origin)")
+    log("left out", obj.name, f"({reasons.get(obj, 'nothing moves it; it sits at the scene origin')})")
     meshes.remove(obj)
     bpy.data.objects.remove(obj)
 
