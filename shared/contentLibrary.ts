@@ -3,8 +3,14 @@ import characters from "./content/characters.json";
 import props from "./content/props.json";
 import sets from "./content/sets.json";
 
-/** Who made a library item, under which licence, and where it came from. */
-export type Credit = { author: string; license: string; source: string };
+/** Who made a library item, under which licence, where it came from and,
+ * when the licensor asks for one, the exact credit line to include. */
+export type Credit = {
+  author: string;
+  license: string;
+  source: string;
+  notice?: string;
+};
 
 /** A realistic library item downloaded by scripts/build-content.mjs into
  * the git-ignored content/ folder and served under /content/. Each category's

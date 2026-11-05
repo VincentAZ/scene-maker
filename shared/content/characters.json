@@ -1845,6 +1845,7 @@
     "category": "characters",
     "style": "Everyday",
     "body": "masculine",
+    "height": 1.807,
     "url": "/content/characters/grab3d-man-base-character.glb",
     "thumbnail": "/content/characters/grab3d-man-base-character.png",
     "description": "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot. An AI-assisted model.",
@@ -1860,6 +1861,7 @@
     "category": "characters",
     "style": "Everyday",
     "body": "feminine",
+    "height": 1.685,
     "url": "/content/characters/grab3d-woman-base-character.glb",
     "thumbnail": "/content/characters/grab3d-woman-base-character.png",
     "description": "A woman with her dark hair in a bun, in a taupe sports top and fitted charcoal shorts, barefoot. An AI-assisted model.",
@@ -1875,6 +1877,7 @@
     "category": "characters",
     "style": "Historical",
     "body": "masculine",
+    "height": 1.847,
     "url": "/content/characters/grab3d-pirate.glb",
     "thumbnail": "/content/characters/grab3d-pirate.png",
     "description": "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots. An AI-assisted model.",
@@ -1890,6 +1893,7 @@
     "category": "characters",
     "style": "Historical",
     "body": "masculine",
+    "height": 1.765,
     "url": "/content/characters/grab3d-ninja.glb",
     "thumbnail": "/content/characters/grab3d-ninja.png",
     "description": "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back. An AI-assisted model.",
@@ -1897,6 +1901,142 @@
       "author": "Alexander Popov (Grab3D), AI-assisted",
       "license": "CC0",
       "source": "https://grab3d.com/models/characters/ninja/"
+    }
+  },
+  {
+    "id": "blender-rain",
+    "name": "Rain",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "feminine",
+    "height": 1.649,
+    "url": "/content/characters/blender-rain.glb",
+    "thumbnail": "/content/characters/blender-rain.png",
+    "description": "A young woman with an undercut and a swept-back ponytail, in a white tank top with a light-blue neckerchief, blue jeans and sneakers. Blender Studio's Rain, version 3, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/rain/v3/",
+      "notice": "Rain Rig (CC) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-snow",
+    "name": "Snow",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "height": 1.861,
+    "url": "/content/characters/blender-snow.glb",
+    "thumbnail": "/content/characters/blender-snow.png",
+    "description": "A young man with his dark hair tied in a top knot, in a grey V-neck T-shirt, jeans and trainers. Blender Studio's Snow, version 4, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/snow/v4/",
+      "notice": "Snow Rig (CC) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-einar",
+    "name": "Einar",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "height": 1.856,
+    "url": "/content/characters/blender-einar.glb",
+    "thumbnail": "/content/characters/blender-einar.png",
+    "description": "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/einar/v1/",
+      "notice": "Einar Rig (CC-BY) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-victoria",
+    "name": "Victoria",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "feminine",
+    "height": 1.655,
+    "url": "/content/characters/blender-victoria.glb",
+    "thumbnail": "/content/characters/blender-victoria.png",
+    "description": "A teenage girl with a huge mane of yellow and orange hair and bright eye make-up, in a pink dress, fishnet tights and teal boots, with bead necklaces, black bangles and big triangle earrings: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/victoria/v1/",
+      "notice": "Victoria Rig (CC) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-jay",
+    "name": "Jay",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "height": 1.257,
+    "url": "/content/characters/blender-jay.glb",
+    "thumbnail": "/content/characters/blender-jay.png",
+    "description": "A lanky teenager in a black bucket hat, red shutter shades, a white track jacket, a gold chain, red shorts and chunky trainers: the would-be eighties music star of the open movie Sprite Fright. Blender Studio's Jay, version 1, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/jay/v1/",
+      "notice": "Jay Rig (CC) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-phil",
+    "name": "Phil",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "height": 1.592,
+    "url": "/content/characters/blender-phil.glb",
+    "thumbnail": "/content/characters/blender-phil.png",
+    "description": "A big, round-faced, freckled teenager with curly red hair, in a navy Union Jack T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/phil/v1/",
+      "notice": "Phil Rig (CC) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-gabby",
+    "name": "Gabby",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "feminine",
+    "height": 1.129,
+    "url": "/content/characters/blender-gabby.glb",
+    "thumbnail": "/content/characters/blender-gabby.png",
+    "description": "A freckled girl whose teal hair curls up like a devil's horns, with goggles on her head, a white T-shirt, purple shorts and yellow boots: the only settler who is (probably) human, from Blender Studio's Settlers. Blender Studio's Gabby, version 3, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/gabby/v3/",
+      "notice": "Gabby Rig (CC) Blender Foundation | studio.blender.org"
+    }
+  },
+  {
+    "id": "blender-lunte",
+    "name": "Lunte",
+    "category": "characters",
+    "style": "Blender Studio",
+    "body": "masculine",
+    "height": 0.996,
+    "url": "/content/characters/blender-lunte.glb",
+    "thumbnail": "/content/characters/blender-lunte.png",
+    "description": "A settler with a shock of orange hair and a boxy metal mask that somehow still shows his glowing eyes and grin, in a dark suit with a backpack, from Blender Studio's Settlers. Blender Studio's Lunte, version 4, adapted for the studio.",
+    "credit": {
+      "author": "Blender Studio",
+      "license": "CC BY 4.0",
+      "source": "https://studio.blender.org/characters/lunte/v4/",
+      "notice": "Lunte Rig (CC) Blender Foundation | studio.blender.org"
     }
   }
 ]

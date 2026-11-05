@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { glbHeight } from "../lib.mjs";
 import * as T from "three";
 
 const SITE = "https://grab3d.com";
@@ -901,14 +902,20 @@ export async function build({ out, cache, root, log }) {
   );
   const built = (c, extension) =>
     fs.existsSync(path.join(out, "characters", idOf(c) + extension));
-  return cast
+  const entries = cast
     .filter((c) => built(c, ".glb") && built(c, ".png"))
-    .map((c) => ({
+    .map(async (c) => ({
       id: idOf(c),
       name: c.name,
       category: "characters",
       style: c.style,
       body: c.body,
+      // The studio shows a character at its own height (see rocketbox.mjs).
+      height: Number(
+        (
+          await glbHeight(path.join(out, "characters", idOf(c) + ".glb"))
+        ).toFixed(3),
+      ),
       url: `/content/characters/${idOf(c)}.glb`,
       thumbnail: `/content/characters/${idOf(c)}.png`,
       description: c.description,
@@ -918,4 +925,5 @@ export async function build({ out, cache, root, log }) {
         source: `${SITE}/models/characters/${c.slug}/`,
       },
     }));
+  return Promise.all(entries);
 }
