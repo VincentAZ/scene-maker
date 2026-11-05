@@ -72,8 +72,9 @@ export const cast = [
     options: {
       skip: [
         "blood",
-        "tire_knee$",
+        "tire_knee(_bolt\\d)?$",
         "jacket_pocket1$",
+        "jacket_zipper_connection$",
         "electrical_wires\\.001\\.mesh$",
       ],
     },
