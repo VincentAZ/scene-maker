@@ -94,7 +94,7 @@ export const cast = [
     notice: "Victoria Rig (CC) Blender Foundation | studio.blender.org",
     body: "feminine",
     description:
-      "A teenage girl with a huge mane of yellow and orange hair, in a pink dress, black tights and long black gloves, with bead necklaces and teal boots: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
+      "A teenage girl with a huge mane of yellow and orange hair and bright eye make-up, in a pink dress, fishnet tights and teal boots, with bead necklaces, black bangles and big triangle earrings: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
   },
   {
     id: "blender-jay",
@@ -120,7 +120,7 @@ export const cast = [
     notice: "Phil Rig (CC) Blender Foundation | studio.blender.org",
     body: "masculine",
     description:
-      "A big, round-faced teenager with curly red hair, in a dark T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
+      "A big, round-faced, freckled teenager with curly red hair, in a navy Union Jack T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
   },
   {
     id: "blender-gabby",
@@ -346,7 +346,11 @@ async function convert(character, { out, cache, root, log }) {
     ]);
     fs.writeFileSync(path.join(src, "convert.log"), notes.join("\n") + "\n");
     for (const line of notes)
-      if (/^(roles|joints|left out|missing|groom|unwrapped)\b/.test(line))
+      if (
+        /^(roles|joints|left out|missing|groom|hair|darker|unwrapped)\b/.test(
+          line,
+        )
+      )
         log(`  ${character.name}: ${line}`);
     const skinned = notes.filter((line) => line.startsWith("skinned ")).length;
     if (skinned)

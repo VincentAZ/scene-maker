@@ -169,6 +169,11 @@ def exportable(obj):
         return False
     viewport, render = obj.visible_get(), renderable(obj)
     if render and not viewport and (obj.particle_systems or EMITTER.search(obj.name)):
+        if any(p.settings.type == "HAIR" for p in obj.particle_systems):
+            # Strand hair only a film renderer draws: the meshes the
+            # animators see in its place ship instead (Phil's and Victoria's
+            # hair clumps), coloured as those are.
+            log("hair", obj.name, "is film-only particle hair; its viewport stand-in ships")
         return False
     if viewport and not render and STAND_IN.search(obj.name) and not re.search(r"hair", obj.name, re.I):
         return False
@@ -1566,9 +1571,14 @@ for obj in meshes:
     log("unwrapped", obj.name)
 
 
-def mesh_area(obj):
+def face_areas(obj):
+    """Each face's area in the world, and the material slot it uses."""
+    areas = np.empty(len(obj.data.polygons), np.float32)
+    obj.data.polygons.foreach_get("area", areas)
+    index = np.empty(len(obj.data.polygons), np.int32)
+    obj.data.polygons.foreach_get("material_index", index)
     s = obj.matrix_world.to_scale()
-    return sum(p.area for p in obj.data.polygons) * abs(s.x * s.y)
+    return areas * abs(s.x * s.y), np.minimum(index, max(0, len(obj.material_slots) - 1))
 
 
 def bake_size(area):
@@ -1616,7 +1626,7 @@ for obj in meshes:
     loops, polygon_of = triangles(obj)
     usable = [l.name for l in obj.data.uv_layers if uv_area(obj, l) >= 1e-8] or [l.name for l in obj.data.uv_layers]
     default_name = next((l.name for l in obj.data.uv_layers if l.active_render), usable[0])
-    size = bake_size(mesh_area(obj))
+    face_area = face_areas(obj)[0]
     index = np.empty(len(obj.data.polygons), dtype=np.int32)
     obj.data.polygons.foreach_get("material_index", index)
     index = np.minimum(index, len(obj.material_slots) - 1)
@@ -1666,6 +1676,9 @@ for obj in meshes:
     # eyes, which film shaders tend to place one by one) bake apart.
     for i, (slot, tile) in enumerate(combos):
         material = originals[slot]
+        # Each material bakes at the size its own faces warrant: a strap's
+        # buckle on a big garment needs no 2K image.
+        size = bake_size(float(face_area[new_index == i].sum()))
         texels = np.unique(keys[combo_of_key == i])
         apart = shaded_apart(material, layer_of[slot], default_name) or bool(EYE.search(obj.name))
         group = targets.setdefault((material.name, tile), [])
@@ -1804,6 +1817,13 @@ def rebuilt(target):
         rgb = np.where(opacity[..., None] > 0.02, np.clip(rgb / np.maximum(opacity, 0.02)[..., None], 0, 1), rgb)
         color = np.dstack([color[:, :, :3], opacity])
     used = np.clip(baked_texels(np.dstack([rgb, color[:, :, 3]]))[:, :3], 0, 1)
+    # Film files give most materials a solid-view colour: a bake far darker
+    # than one set by hand means the shader lost its inputs (a black jacket).
+    shown = srgb_to_linear(used).mean()
+    viewport = tuple(round(c, 3) for c in target.material.diffuse_color[:3])
+    expected = float(np.mean(viewport))
+    if viewport != (0.8, 0.8, 0.8) and expected > 0.1 and shown < expected / 8:
+        log("darker", target.copy.name, f"baked {shown:.3f} against its viewport colour {expected:.3f}")
     if not cut_out and np.ptp(used, axis=0).max() < 3 / 255:
         # One colour all over is a factor, not an image.
         bsdf.inputs["Base Color"].default_value = (*srgb_to_linear(used.mean(axis=0)), 1.0)
@@ -1855,26 +1875,37 @@ for obj in bake_objects:
             if slot.material == target.copy:
                 slot.material = target.result
 
-# Materials the exporter can read keep their images, shrunk to the bake size
-# (half of it for roughness and normal detail).
+# Materials the exporter can read keep their images, shrunk to the size the
+# faces using them warrant, like a bake (half of it for roughness and normal
+# detail); an image several materials share is written once.
+material_area = {}
 for obj in meshes:
     if obj in bake_objects:
         continue
-    for slot in obj.material_slots:
-        for node in slot.material.node_tree.nodes:
-            image = node.image if node.bl_idname == "ShaderNodeTexImage" else None
-            if image is None or image.name.startswith("studio-"):
-                continue
-            targets_detail = any(l.to_node.bl_idname == "ShaderNodeNormalMap"
-                                 or l.to_socket.name in ("Roughness", "Metallic", "Specular IOR Level")
-                                 for l in node.outputs["Color"].links)
-            limit = BAKE_SIZE // 2 if targets_detail else BAKE_SIZE
-            if max(image.size) > limit:
-                image.scale(min(limit, image.size[0]), min(limit, image.size[1]))
-            data = pixels(image)
-            non_color = image.colorspace_settings.name == "Non-Color"
-            has_alpha = bool(node.outputs["Alpha"].links) and bool((data[:, :, 3] < 0.99).any())
-            node.image = save("studio-" + re.sub(r"[^A-Za-z0-9]+", "-", image.name).lower(), data, non_color, has_alpha)
+    areas, index = face_areas(obj)
+    for i, slot in enumerate(obj.material_slots):
+        material_area[slot.material] = material_area.get(slot.material, 0.0) + float(areas[index == i].sum())
+limits, users = {}, {}
+for material, area in material_area.items():
+    for node in material.node_tree.nodes:
+        image = node.image if node.bl_idname == "ShaderNodeTexImage" else None
+        if image is None or image.name.startswith("studio-"):
+            continue
+        detail = any(l.to_node.bl_idname == "ShaderNodeNormalMap"
+                     or l.to_socket.name in ("Roughness", "Metallic", "Specular IOR Level")
+                     for l in node.outputs["Color"].links)
+        size = bake_size(area)
+        limits[image] = max(limits.get(image, 0), max(256, size // 2) if detail else size)
+        users.setdefault(image, []).append(node)
+for image, limit in limits.items():
+    if max(image.size) > limit:
+        image.scale(min(limit, image.size[0]), min(limit, image.size[1]))
+    data = pixels(image)
+    non_color = image.colorspace_settings.name == "Non-Color"
+    has_alpha = any(n.outputs["Alpha"].links for n in users[image]) and bool((data[:, :, 3] < 0.99).any())
+    kept = save("studio-" + re.sub(r"[^A-Za-z0-9]+", "-", image.name).lower(), data, non_color, has_alpha)
+    for node in users[image]:
+        node.image = kept
 
 # ------------------------------------------------------------------ export
 for obj in list(scene.objects):
