@@ -131,8 +131,9 @@ export const sets = [
     ],
     main: /^pavillon_barcelone.*\.blend$/,
     format: "blend",
-    // The plaza stands 1.06 m above a lawn that runs 140 m to the horizon.
-    convert: { floorLevel: 1.5, extent: 45 },
+    // The plaza stands 1.06 m above a lawn that runs 140 m to the horizon;
+    // the view takes in the pool.
+    convert: { floorLevel: 1.5, extent: 45, focus: "^water_plane_still" },
     sky: "kloofendal_48d_partly_cloudy_puresky",
     credit: {
       author: "Hamza Cheggour (eMirage)",
@@ -151,13 +152,13 @@ export const sets = [
     licence: { file: "LICENSE.txt", text: "Attribution 4.0 International" },
     main: /^BistroExterior\.fbx$/,
     format: "fbx",
-    // 2.8 million triangles over a 180 m block as published: the budget and
-    // the cut at 55 m from the terrace keep the file near 100 MB.
+    // 2.8 million triangles over a 180 m block as published: the cut at
+    // 55 m from the cast and the budget keep the file under 100 MB.
     convert: {
       materials: "bistro",
       maxTexture: 1024,
       shellNames: false,
-      maxTriangles: 1900000,
+      maxTriangles: 1700000,
       extent: 55,
       // The café terrace: its tables, chairs, awnings and menu boards.
       focus: "Paris_(Table_01|Chair_01|BistroAwning|MenuSign)",
@@ -233,6 +234,8 @@ export const sets = [
     licence: { file: "LICENSE.txt", text: "released under a CC0 license" },
     main: /^scene_v3\.xml$/,
     format: "mitsuba",
+    // The meshes are named by number; the bed is found by its bedding.
+    convert: { focus: "^(Bedsheets|Matress|Blankets)BSDF" },
     credit: {
       author: "SlykDrako",
       license: "CC0",
@@ -303,7 +306,7 @@ export const sets = [
     main: /^breakfast_room\.obj$/,
     format: "obj",
     // Modelled in feet: the table top sits 2.3 units up.
-    convert: { scale: 0.3048 },
+    convert: { scale: 0.3048, focus: "^(tabletop|Chair_seats)" },
     credit: {
       author: "Wig42",
       license: "CC BY 3.0",
@@ -326,8 +329,8 @@ export const sets = [
     main: /^barbershop_interior\.blend$/,
     format: "blend",
     // A fog volume box around the room and rig widgets are not scenery; 6.9
-    // million triangles as published, halved to keep the file near 100 MB.
-    convert: { drop: "^(ENV-|WGT-)", maxTriangles: 3000000 },
+    // million triangles as published, half of that keeps it under 100 MB.
+    convert: { drop: "^(ENV-|WGT-)", maxTriangles: 3500000 },
     credit: {
       author: "Blender Studio (Agent 327)",
       license: "CC BY",

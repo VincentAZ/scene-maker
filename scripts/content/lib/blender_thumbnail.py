@@ -8,12 +8,11 @@ import bpy
 import numpy as np
 
 
-def mean_luminance(image):
+def luminances(image):
     px = np.empty(len(image.pixels), dtype=np.float32)
     image.pixels.foreach_get(px)
     px = px.reshape(-1, 4)
-    lum = px[:, 0] * 0.2126 + px[:, 1] * 0.7152 + px[:, 2] * 0.0722
-    return float(lum.mean()) if lum.size else 0.0
+    return px[:, 0] * 0.2126 + px[:, 1] * 0.7152 + px[:, 2] * 0.0722
 
 
 def render_thumbnail(scene, camera, path, width=640, height=400):
@@ -29,19 +28,27 @@ def render_thumbnail(scene, camera, path, width=640, height=400):
     scene.eevee.use_shadows = True
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.look = "None"
+    # The artist's compositing (glare, lens distortion), grading curves and
+    # motion blur were made for their own renders, not a library card.
+    r.use_compositing = False
+    r.use_sequencer = False
+    r.use_motion_blur = False
+    scene.view_settings.use_curve_mapping = False
     # Two passes: the artist's exposure was tuned for another renderer, so
     # measure the first frame and correct the exposure toward a mid grey of
-    # 0.35 (display values) before the final frame.
+    # 0.35 (display values) before the final frame, without pushing the
+    # brightest 3 % past 90 % white (a sunlit wall beside a dark roof).
     for final in (False, True):
         bpy.ops.render.render(write_still=True)
         if final:
             break
         image = bpy.data.images.load(path)
-        mean = mean_luminance(image)
+        lum = luminances(image)
         bpy.data.images.remove(image)
-        if mean <= 1e-4:
+        if lum.size == 0 or lum.mean() <= 1e-4:
             break
-        stop = max(-4.0, min(4.0, math.log2(0.35 / mean)))
+        bright = max(float(np.percentile(lum, 97)), 1e-4)
+        stop = max(-4.0, min(4.0, math.log2(0.35 / float(lum.mean())), math.log2(0.9 / bright)))
         if abs(stop) < 0.25:
             break
         scene.view_settings.exposure += stop

@@ -692,10 +692,11 @@ def is_metal(spec):
 def mix_shaders(a, b, fac, fresnel):
     """Two simple shaders mixed. Diffuse + glossy behind a Fresnel is the
     classic dielectric: the glossy side only sets the roughness."""
+    # Whatever lets light through is glass, never metal.
     if a.get("transparent") and not b.get("transparent"):
-        return {**b, "alpha": ("const", fac), "transparent": True}
+        return {**b, "alpha": ("const", fac), "transparent": True, "metallic": ("const", 0.0)}
     if b.get("transparent") and not a.get("transparent"):
-        return {**a, "alpha": ("const", 1 - fac), "transparent": True}
+        return {**a, "alpha": ("const", 1 - fac), "transparent": True, "metallic": ("const", 0.0)}
     if fresnel or (is_metal(a) != is_metal(b) and 0.0 < fac < 1.0):
         glossy, diffuse = (a, b) if is_metal(a) else (b, a)
         weight = fac if glossy is b else 1 - fac
@@ -887,10 +888,10 @@ def polygon_areas_by_material(o):
     return {int(k): float(areas[slots == k].sum()) * scale for k in np.unique(slots)}
 
 
-def single_uv_layer(o):
-    """Keeps only the render UV layer, named alike on every object, so a
-    join lines the layers up."""
-    layers = o.data.uv_layers
+def single_uv_layer(mesh):
+    """Keeps only the render UV layer, named alike on every mesh, so a join
+    lines the layers up."""
+    layers = mesh.uv_layers
     if not layers:
         return
     keep = (layers.active or layers[0]).name
@@ -1138,7 +1139,7 @@ def bake_materials(scene, materials, objects, work):
         for o in users:
             c = o.copy()
             c.data = o.data.copy()
-            single_uv_layer(c)
+            single_uv_layer(c.data)
             fold_uvs(c.data)
             scene.collection.objects.link(c)
             copies.append(c)
@@ -1837,13 +1838,15 @@ def wall_penalty(wall, berth):
 
 
 def focus_point(objects):
-    """The centre of the objects the set's `focus` hint names (a terrace's
-    tables, a living room's sofa), or None."""
+    """The centre of the objects the set's `focus` hint names, by object or
+    material name (a terrace's tables, a bed's sheets), or None."""
     if not job.get("focus"):
         return None
     pattern = re.compile(job["focus"], re.I)
     centres = [o.matrix_world @ (sum((Vector(c) for c in o.bound_box), Vector()) / 8)
-               for o in objects if pattern.search(o.name)]
+               for o in objects
+               if pattern.search(o.name) or any(s.material and pattern.search(s.material.name)
+                                                 for s in o.material_slots)]
     if not centres:
         say("nothing matches the focus %s" % job["focus"])
         return None
@@ -2128,9 +2131,10 @@ def light_like_studio(scene, path, sky):
     # Only a real sun (thousands of times the sky) becomes a light with
     # shadows, as in the studio; a bright window stays part of the sky.
     world.sun_threshold = 100.0
-    # Bounced light keeps a room lit by its windows from looking flat.
+    # Bounced light keeps a room lit by its windows from looking flat; under
+    # an open sky it washes white stone out, and the studio has none.
     try:
-        scene.eevee.use_raytracing = True
+        scene.eevee.use_raytracing = not sky
         scene.eevee.fast_gi_method = "GLOBAL_ILLUMINATION"
     except (AttributeError, TypeError):
         pass
@@ -2190,6 +2194,11 @@ def main():
     counts = prepare_materials(scene, objects)
     say("materials: %s" % ", ".join("%d %s" % (v, k) for k, v in counts.items() if v))
     textures, scaled, largest = limit_textures(objects, int(job.get("maxTexture", 2048)))
+    # Every material now reads the render UVs; other layers (lightmap UVs
+    # from a game engine) would only add to the file.
+    for mesh in {o.data for o in objects}:
+        if len(mesh.uv_layers) > 1:
+            single_uv_layer(mesh)
     say("%d textures, %d downscaled, largest %d px" % (textures, scaled, largest))
     bpy.context.view_layer.update()
     tris, owners = world_triangles(objects)
