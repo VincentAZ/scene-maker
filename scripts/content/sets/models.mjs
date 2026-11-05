@@ -17,12 +17,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extract, findFile } from "../lib/archive.mjs";
-import { findBlender, runBlender, blenderVersion } from "../lib/blender.mjs";
+import {
+  blenderHasNumpy,
+  blenderVersion,
+  findBlender,
+  runBlender,
+} from "../lib/blender.mjs";
 import { download, fetchJSON, mb } from "../lib/download.mjs";
 import { blenderLib } from "../lib/thumbnail.mjs";
 
 // Bump to convert every set again after changing the converter.
-const CONVERTER_VERSION = 6;
+const CONVERTER_VERSION = 7;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // NVIDIA's stable download URL bounces to a signed, short-lived link; the zip
@@ -400,12 +405,17 @@ function committedEntries(root) {
   return new Map(entries.filter((e) => e.url).map((e) => [e.id, e]));
 }
 
-// The converter needs EEVEE Next and the 4.2+ Python API.
+// The converter needs the 4.2+ Python API and numpy, which blender.org's
+// builds bundle.
 function usableBlender(root) {
   const blender = findBlender(root);
   const [major, minor] = blenderVersion(blender);
   if (major < 4 || (major === 4 && minor < 2))
     throw Error(`Blender ${major}.${minor} is too old (4.2 or later).`);
+  if (!blenderHasNumpy(blender))
+    throw Error(
+      `${blender} has no numpy; use a Blender from blender.org (4.5 LTS) through BLENDER_PATH.`,
+    );
   return blender;
 }
 

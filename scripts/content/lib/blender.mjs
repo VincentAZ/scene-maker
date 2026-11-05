@@ -33,6 +33,24 @@ export function blenderVersion(blender) {
   return [Number(found[1]), Number(found[2])];
 }
 
+/** True when the Blender's Python can import numpy: blender.org's builds
+ * bundle it, some Linux distributions' packages do not. */
+export function blenderHasNumpy(blender) {
+  const run = spawnSync(
+    blender,
+    [
+      "--background",
+      "--factory-startup",
+      "--python-exit-code",
+      "1",
+      "--python-expr",
+      "import numpy",
+    ],
+    { encoding: "utf8", timeout: 120000 },
+  );
+  return run.status === 0;
+}
+
 /** Runs `script` with `args` after "--". Lines of stdout starting with
  * `prefix` are passed to `log` as they come, so a long bake shows progress;
  * the rest is kept quiet. Resolves when Blender exits cleanly; rejects with

@@ -2600,8 +2600,9 @@ def artist_views(scene, floor):
 
 def framing_penalty(distance):
     """What cutting the cast off costs a view: aimed at the chest (1 m), the
-    studio's 38° frame holds the whole figure from about 2.9 m away."""
-    return 3.0 * max(0.0, 1.0 - distance * math.tan(VIEW_HEIGHT / 2))
+    studio's 38° frame holds the whole figure from about 2.9 m away; at 2 m
+    it shows the cast from the knees to the chin."""
+    return 6.0 * max(0.0, 1.0 - distance * math.tan(VIEW_HEIGHT / 2))
 
 
 def wall_penalty(wall, berth):
@@ -2671,9 +2672,10 @@ def choose_view(scene, floor, shells, allowed, walls_at=None, focus=None):
         standing = main & (clear >= 0.4)
     if not standing.any():
         standing = main
-    # About 40 spawn points spread over the open floor, roomiest first.
+    # About 40 spawn points spread over the open floor, roomiest first (a
+    # small room has few spots from which a long view fits).
     area = float(standing.sum()) * step * step
-    spacing = max(1.0 if indoor else 3.0, math.sqrt(area / 40.0))
+    spacing = max(0.5 if indoor else 3.0, math.sqrt(area / 40.0))
     spawns = spread_cells(floor, standing, 40, spacing)
     if focus is not None:
         # Spots in front of the focus, where the cast would stand.
