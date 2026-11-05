@@ -86,6 +86,7 @@ def open_fbx(path):
 
 
 GLASS_NAMES = re.compile(r"(glass|window|crystal|cristal|vitre|verre|wine|bottle|vase|jar)", re.I)
+METAL_NAMES = re.compile(r"(chrome|steel|metal|alumin|silver|brass|copper|iron|nickel|inox)", re.I)
 
 
 def open_obj(path):
@@ -95,11 +96,17 @@ def open_obj(path):
         use_split_groups=False, validate_meshes=True,
     )
     # MTL "illum 4" (ray-traced reflection) makes the importer treat every
-    # material as glass; only glass-like names keep their transmission.
+    # material as glass; only glass-like names keep their transmission. The
+    # importer also reads the ambient colour (Ka) as metalness, which MTL
+    # does not have: metal is what is named so.
     for m in bpy.data.materials:
         p = m.node_tree.nodes.get("Principled BSDF") if m.use_nodes else None
-        if p is not None and p.inputs["Transmission Weight"].default_value > 0 and not GLASS_NAMES.search(m.name):
+        if p is None:
+            continue
+        if p.inputs["Transmission Weight"].default_value > 0 and not GLASS_NAMES.search(m.name):
             p.inputs["Transmission Weight"].default_value = 0.0
+        if not p.inputs["Metallic"].is_linked:
+            p.inputs["Metallic"].default_value = 1.0 if METAL_NAMES.search(m.name) else 0.0
     return scene
 
 
@@ -1831,6 +1838,12 @@ def artist_views(scene, floor):
         say("the artist's camera %s is not a home view: %s" % (cam.name.strip(), why))
 
 
+def framing_penalty(distance):
+    """What cutting the cast off costs a view: aimed at the chest (1 m), the
+    studio's 38° frame holds the whole figure from about 2.9 m away."""
+    return 3.0 * max(0.0, 1.0 - distance * math.tan(VIEW_HEIGHT / 2))
+
+
 def wall_penalty(wall, berth):
     """What standing close to a wall costs a view: nothing from `berth` out,
     growing steeply toward the 0.4 m a camera needs at the least."""
@@ -1878,7 +1891,9 @@ def choose_view(scene, floor, shells, focus=None):
     main, clear, step = floor["main"], floor["clearance"], floor["step"]
     nx, ny = main.shape
     indoor = floor["indoor"]
-    standing = main & (clear >= 0.6)
+    # Room to stand: 0.6 m to the nearest obstacle, measured on a grid that
+    # is coarse on a street (0.6 m cells), so there a cell more.
+    standing = main & (clear >= max(0.6, 1.5 * step))
     if standing.sum() < 4:
         standing = main & (clear >= 0.4)
     if not standing.any():
@@ -1924,7 +1939,8 @@ def choose_view(scene, floor, shells, focus=None):
     rough = []
     for wall, distance, spawn, position in options:
         target = cell_center(floor, *spawn) + Vector((0, 0, 1.0))
-        bonus = 0.4 * min(distance, prefer) - wall_penalty(wall, berth) + focus_bonus(focus, position, target)
+        bonus = (0.4 * min(distance, prefer) - wall_penalty(wall, berth) - framing_penalty(distance)
+                 + focus_bonus(focus, position, target))
         rough.append((view_score(floor, position, target, shells, 6, 4) + bonus, bonus, spawn, position))
     rough.sort(key=lambda option: -option[0])
     best = None
@@ -1944,8 +1960,10 @@ def choose_view(scene, floor, shells, focus=None):
             continue
         # The artist's composition is worth a little furniture.
         target = spot + Vector((0, 0, 1.0))
+        distance = (position - spot).xy.length
         score = (view_score(floor, position, target, shells) - wall_penalty(wall, berth)
-                 + 0.4 * min((position - spot).xy.length, prefer) + focus_bonus(focus, position, target) + 1.0)
+                 + 0.4 * min(distance, prefer) - framing_penalty(distance) + focus_bonus(focus, position, target)
+                 + 1.0)
         if best is None or score > best[0]:
             best = (score, spawn, position, cam)
     if best is None:
