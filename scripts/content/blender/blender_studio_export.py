@@ -622,7 +622,10 @@ def torso_rank(bone):
 if "head" not in roles:
     raise SystemExit(f"ERROR no head bone in {rig.name}: {sorted(roles)}")
 head = roles["head"]
-torso = sorted((b for b in deform if torso_rank(b) is not None and not split_side(b.name)[1] and b != head),
+# Further head segments (Phileas's Head2, the top of a tall head) belong to
+# the head, not to the spine the arms hang from.
+torso = sorted((b for b in deform if torso_rank(b) is not None and torso_rank(b) < len(TORSO) - 1
+                and not split_side(b.name)[1] and b != head),
                key=lambda b: (round(b.head.z, 2), torso_rank(b), b.name))
 torso.append(head)
 if len(torso) < 2:
@@ -641,6 +644,20 @@ for b, label in zip(necks, ["neck", "upper_neck"]):
     rename(b, RIGIFY_TORSO[label])
 rename(head, RIGIFY_TORSO["head"])
 chest = spines[-1] if spines else hips
+if not necks and chest != hips:
+    # A character drawn without a neck (Phil, Gabby, Lunte) gets a joint at
+    # the base of the head that carries no skin, so a captured neck turns
+    # the head there instead of being reported as lost.
+    neck = ebones.new("neck")
+    rename(neck, RIGIFY_TORSO["neck"])
+    neck.use_deform = True
+    neck.head = head.head.lerp(chest.head, 0.3)
+    neck.tail = head.head
+    neck.align_roll(head.z_axis)
+    neck.parent = chest
+    head.parent = neck
+    necks = [neck]
+    torso.insert(-1, neck)
 # Chain bones past the names above (a fourth spine) keep their names.
 placed.update(torso)
 roles["hips"] = hips
@@ -688,8 +705,15 @@ def role_by_name(bone):
 body_roles = [b for slot, b in roles.items() if not slot.startswith("eye")]
 
 
+def segment_distance(point, head, tail):
+    """How far a point lies from a bone's head-to-tail segment."""
+    axis = tail - head
+    t = max(0.0, min(1.0, (point - head).dot(axis) / max(axis.length_squared, 1e-12)))
+    return (point - (head + axis * t)).length
+
+
 def nearest_role(bone):
-    return min(body_roles, key=lambda r: (bone.head - r.head).length)
+    return min(body_roles, key=lambda r: segment_distance(bone.head, r.head, r.tail))
 
 
 for b in [b for b in deform if b not in placed]:
@@ -751,6 +775,8 @@ def deform_groups(obj):
 
 
 def has_weights(obj):
+    if obj.type != "MESH":
+        return False
     groups = deform_groups(obj)
     return any(g.group in groups and g.weight > 1e-4 for v in obj.data.vertices for g in v.groups)
 
@@ -785,6 +811,23 @@ def transfer_weights(obj, source):
     obj.modifiers.new("Armature", "ARMATURE").object = rig
 
 
+def touching_surface(obj, centre, reach=0.03):
+    """The skinned mesh whose surface comes within `reach` of a point."""
+    best, distance = None, reach
+    for other in meshes:
+        if other == obj or not has_weights(other):
+            continue
+        corners = [other.matrix_world @ Vector(c) for c in other.bound_box]
+        low = Vector([min(c[i] for c in corners) for i in range(3)])
+        high = Vector([max(c[i] for c in corners) for i in range(3)])
+        if any(centre[i] < low[i] - reach or centre[i] > high[i] + reach for i in range(3)):
+            continue
+        found, location, _, _ = other.closest_point_on_mesh(other.matrix_world.inverted() @ centre)
+        if found and (other.matrix_world @ location - centre).length < distance:
+            best, distance = other, (other.matrix_world @ location - centre).length
+    return best
+
+
 def skin(obj, seen=()):
     if has_weights(obj):
         return True
@@ -800,14 +843,24 @@ def skin(obj, seen=()):
     for source in (surface_of.get(obj, deform_target(obj)), original_parent.get(obj, obj.parent)):
         if source is not None and source != obj and skin(source, seen):
             transfer_weights(obj, source)
-            log("skinned", obj.name, "like", source.name)
-            return True
+            # A helper can pass on nothing a deform bone carries.
+            if has_weights(obj):
+                log("skinned", obj.name, "like", source.name)
+                return True
     centre = centres.get(obj) or obj.matrix_world @ (sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices))
     if centre.length < 0.05:
         # Nothing places it: a leftover at the scene origin, between the feet.
         return False
+    # A part resting on clothing or skin (a satchel's button) moves with it.
+    host = touching_surface(obj, centre)
+    if host is not None:
+        transfer_weights(obj, host)
+        if has_weights(obj):
+            log("skinned", obj.name, "like", host.name, "(touching)")
+            return True
     nearest = min((rig.data.bones[n] for slot, n in role_names.items() if not slot.startswith("eye")),
-                  key=lambda b: ((rig.matrix_world @ b.head_local) - centre).length).name
+                  key=lambda b: segment_distance(centre, rig.matrix_world @ b.head_local,
+                                                 rig.matrix_world @ b.tail_local)).name
     bind(obj, [(nearest, 1.0)])
     log("skinned", obj.name, "to", nearest, "(nearest)")
     return True
