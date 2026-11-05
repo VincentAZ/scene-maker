@@ -39,6 +39,7 @@ import {
   applyStageLighting,
   backdropHome,
   keepInsideBackdrop,
+  ORBIT_MAX_POLAR,
   loadPhotoSet,
 } from "./hdriBackdrop";
 import { libraryEntry } from "../shared/characterLibrary";
@@ -277,7 +278,7 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.target.set(0, 0.85, -0.5);
       controls.enableDamping = true;
-      controls.maxPolarAngle = Math.PI * 0.49;
+      controls.maxPolarAngle = ORBIT_MAX_POLAR;
       controls.minDistance = 2;
       controls.maxDistance = 25;
       const content = new T.Group();
@@ -781,7 +782,16 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
         }
         if (controls.enabled) controls.update();
         const photo = context.current?.environment.photo;
-        if (photo) keepInsideBackdrop(camera.position, photo.backdrop);
+        if (photo) {
+          // The orbit limits keep the camera inside the photo by themselves;
+          // should anything else have placed it outside, bring it back without
+          // changing the distance to the cast or where it looks.
+          const before = camera.position.clone();
+          if (keepInsideBackdrop(camera.position, photo.backdrop)) {
+            controls.target.add(camera.position.clone().sub(before));
+            camera.lookAt(controls.target);
+          }
+        }
         // The paused preview stays identical between planning batches. Avoid
         // competing GPU draws while computing, but redraw staging, selection,
         // scrubbing, resizing and camera gestures immediately.

@@ -237,38 +237,77 @@ export function matchExposure(
 export const backdropCenter = (backdrop: Backdrop) =>
   new T.Vector3(0, 0, T.MathUtils.clamp(backdrop.radius * 0.5, 3, 4.5));
 
-/** How far the camera may move from where the photo was taken. */
-export const backdropLimits = (backdrop: Backdrop) => ({
-  center: backdropCenter(backdrop),
+/** The studio's orbit never goes below the floor: the viewport's polar limit. */
+export const ORBIT_MAX_POLAR = Math.PI * 0.49;
+
+/**
+ * How far the camera may move from where the photo was taken. Every limit is
+ * expressed so that the orbit controls can enforce it themselves, in their own
+ * spherical terms (distance, azimuth, polar angle) around the cast. A clamp on
+ * the camera's position in metres would fight them: orbit controls read the
+ * clamped position back as a shorter distance, so each orbit that touched a
+ * wall or the ceiling became a dolly, and the orbit's damping kept dollying
+ * for a second after the mouse was released — the set appeared to zoom in on
+ * its own.
+ */
+export function backdropLimits(backdrop: Backdrop) {
+  const center = backdropCenter(backdrop);
   /** Horizontal distance from the photographer's position. Beyond ~8 m the
    * photographed ground nearest the camera is too coarse (cm per pixel grows
    * with the square of the distance). */
-  reach: T.MathUtils.clamp(backdrop.radius * 0.6, 3, 8),
-  /** Eye level or a little above; never a bird's-eye view. */
-  ceiling: backdrop.height + 0.6,
-  floor: 0.15,
-});
+  const reach = T.MathUtils.clamp(backdrop.radius * 0.6, 3, 8);
+  const target = new T.Vector3(0, 0.85, 0);
+  /** Orbit no further round the cast than this, either way (radians): the far
+   * side would look back at where the photographer stood, and in a small room
+   * nearby walls and furniture bend sooner. */
+  const azimuth = T.MathUtils.degToRad(
+    T.MathUtils.clamp(backdrop.radius * 4, 30, 50),
+  );
+  /** Look down on the cast by at most ~18°, like a standing camera. */
+  const minPolar = 1.25;
+  // The farthest the camera can orbit, at any allowed angle, and still stand
+  // within reach of the photographer's spot: measured along the widest orbit
+  // (±azimuth) at the lowest eye, where the horizontal distance is greatest.
+  const depth = center.z - target.z;
+  const widest =
+    depth * Math.cos(azimuth) +
+    Math.sqrt(Math.max(0, reach ** 2 - (depth * Math.sin(azimuth)) ** 2));
+  const maxDistance = Math.min(
+    25,
+    reach + center.length(),
+    (widest - 0.01) / Math.sin(ORBIT_MAX_POLAR),
+  );
+  return {
+    center,
+    reach,
+    target,
+    azimuth,
+    minPolar,
+    maxDistance,
+    /** As high as the steepest allowed look-down reaches at full distance;
+     * never a bird's-eye view, which the polar limit already rules out. */
+    ceiling: target.y + maxDistance * Math.cos(minPolar) + 0.05,
+    floor: 0.15,
+  };
+}
 
 /** The studio's home view in a photographic set: the photographer's own
  * viewpoint, looking toward the cast at the origin (−Z). */
 export function backdropHome(backdrop: Backdrop) {
-  const { center, reach } = backdropLimits(backdrop);
+  const { center, target, azimuth, minPolar, maxDistance } =
+    backdropLimits(backdrop);
   return {
     position: new T.Vector3(center.x, backdrop.height, center.z),
-    target: new T.Vector3(0, 0.85, 0),
-    maxDistance: Math.min(25, reach + center.length()),
-    /** Orbit no further round the cast than this, either way (radians):
-     * the far side would look back at where the photographer stood, and in a
-     * small room nearby walls and furniture bend sooner. */
-    azimuth: T.MathUtils.degToRad(
-      T.MathUtils.clamp(backdrop.radius * 4, 30, 50),
-    ),
-    /** Look down on the cast by at most ~18°, like a standing camera. */
-    minPolar: 1.25,
+    target,
+    maxDistance,
+    azimuth,
+    minPolar,
   };
 }
 
-/** Keeps a camera where the photographed set still looks right. */
+/** Keeps a camera where the photographed set still looks right. With the
+ * orbit limits from `backdropHome` applied this never has to move an orbiting
+ * camera; it is the safety net for a camera placed by other means. */
 export function keepInsideBackdrop(position: T.Vector3, backdrop: Backdrop) {
   const { center, reach, ceiling, floor } = backdropLimits(backdrop);
   let moved = false;

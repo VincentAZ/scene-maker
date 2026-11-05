@@ -19,6 +19,7 @@ import {
   extractSun,
   keepInsideBackdrop,
   matchExposure,
+  ORBIT_MAX_POLAR,
   PhotoSet,
   texelDirection,
 } from "../src/hdriBackdrop";
@@ -238,6 +239,35 @@ describe("camera in a photographic set", () => {
       .applyAxisAngle(new T.Vector3(0, 1, 0), home.azimuth)
       .add(home.target);
     expect(keepInsideBackdrop(side, backdrop)).toBe(false);
+  });
+  it("lets the orbit controls enforce every limit, so orbiting never dollies", () => {
+    // Regression: the position clamp used to fire at the ceiling while the
+    // creator orbited upward at full zoom-out, and the orbit's damping then
+    // kept pulling the camera in for a second after the mouse was released.
+    for (const set of sets) {
+      const limits = backdropLimits(set.backdrop);
+      const { target, azimuth, minPolar, maxDistance } = limits;
+      expect(maxDistance).toBeGreaterThanOrEqual(4.5);
+      expect(maxDistance).toBeGreaterThan(
+        backdropHome(set.backdrop).position.distanceTo(target),
+      );
+      for (let i = 0; i <= 6; i++)
+        for (let j = 0; j <= 6; j++)
+          for (const radius of [2, maxDistance]) {
+            const theta = -azimuth + (2 * azimuth * i) / 6;
+            const phi = minPolar + ((ORBIT_MAX_POLAR - minPolar) * j) / 6;
+            const position = new T.Vector3(
+              Math.sin(phi) * Math.sin(theta),
+              Math.cos(phi),
+              Math.sin(phi) * Math.cos(theta),
+            )
+              .multiplyScalar(radius)
+              .add(target);
+            const before = position.clone();
+            expect(keepInsideBackdrop(position, set.backdrop)).toBe(false);
+            expect(position.distanceTo(before)).toBe(0);
+          }
+    }
   });
   it("keeps orbiting and framing inside the dome and below a bird's-eye view", () => {
     const high = new T.Vector3(8, 6.5, 10);
