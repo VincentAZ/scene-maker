@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+// Converts the Blender Studio characters and merges their entries into
+// shared/content/characters.json, for work on that converter alone:
+//   node scripts/content/characters/merge-blender-studio.mjs
+//   CHARACTERS_ONLY=blender-rain node scripts/content/characters/merge-blender-studio.mjs
+// The full catalogue build (scripts/build-content.mjs) regenerates the file.
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "./blender-studio.mjs";
+
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const out = path.resolve(root, process.env.SCENE_MAKER_CONTENT || "content");
+const log = (...m) => console.log("[characters]", ...m);
+const entries = await build({
+  out,
+  cache: path.join(out, ".cache"),
+  root,
+  log,
+});
+const file = path.join(root, "shared/content/characters.json");
+const others = JSON.parse(fs.readFileSync(file, "utf8")).filter(
+  (entry) => !entries.some((e) => e.id === entry.id),
+);
+fs.writeFileSync(file, JSON.stringify([...others, ...entries], null, 2) + "\n");
+log(`${entries.length} Blender Studio items`);
