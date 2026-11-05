@@ -19,7 +19,7 @@ function glb(json: object) {
 }
 
 /** A GLB as Blender would write it for a download: `seconds` per take, and a
- * mesh when the file was downloaded With Skin. */
+ * skinned mesh when the file was downloaded With Skin. */
 function download(
   skinned: boolean,
   takes: Record<string, number>,
@@ -28,7 +28,9 @@ function download(
   const names = Object.keys(takes);
   return glb({
     asset: { version: "2.0" },
-    ...(skinned ? { meshes: [{ primitives: [] }] } : {}),
+    ...(skinned
+      ? { meshes: [{ primitives: [] }], skins: [{ joints: [] }] }
+      : {}),
     accessors: names.map((name) => ({ max: [takes[name]] })),
     animations: names.map((name, i) => ({ name, samplers: [{ input: i }] })),
     ...json,
@@ -191,6 +193,59 @@ describe("Mixamo batch import", () => {
     expect(fs.readdirSync(uploads)).toEqual([]);
   });
 
+  it("names the character whose animations cannot be combined and keeps none of the batch", async () => {
+    const blender = fakeBlender();
+    const service = createMixamoService({
+      config: () => ({ blender }),
+      uploads,
+    });
+    for (const name of ["Ch14_nonPBR", "Ch33_nonPBR"])
+      answer("convert-" + name, download(true, { "mixamo.com": 0 }));
+    for (const name of ["Walking", "Idle"])
+      answer("convert-" + name, download(false, { "mixamo.com": 1 }));
+    // Ch14's bundle works; Ch33's fails in Blender (no answer file).
+    answer(
+      "bundle-Ch14_nonPBR",
+      download(true, { Ch14_nonPBR: 0, Walking: 1 }),
+    );
+    const files = [
+      "Ch14_nonPBR.fbx",
+      "Walking.fbx",
+      "Ch33_nonPBR.fbx",
+      "Idle.fbx",
+    ].map(fbx);
+    await expect(service.importEach(files)).rejects.toThrow(
+      "Ch33_nonPBR.fbx could not be combined with the animations after it (Idle.fbx).",
+    );
+    expect(calls()).toContain("bundle Ch14_nonPBR Walking");
+    // Ch14's finished character is not left behind either.
+    expect(fs.readdirSync(uploads)).toEqual([]);
+  });
+
+  it("refuses by name a file that is neither a character nor an animation", async () => {
+    const blender = fakeBlender();
+    const service = createMixamoService({
+      config: () => ({ blender }),
+      uploads,
+    });
+    answer("convert-Y Bot", download(true, { "mixamo.com": 0 }));
+    // A static model: a mesh without a skeleton.
+    answer(
+      "convert-cube",
+      glb({ asset: { version: "2.0" }, meshes: [{ primitives: [] }] }),
+    );
+    answer("convert-empty", glb({ asset: { version: "2.0" } }));
+    await expect(
+      service.importEach(["Y Bot.fbx", "cube.fbx"].map(fbx)),
+    ).rejects.toThrow(
+      /^cube\.fbx has a 3D model but no skeleton, so it is neither a character nor an animation/,
+    );
+    await expect(
+      service.importEach(["Y Bot.fbx", "empty.fbx"].map(fbx)),
+    ).rejects.toThrow(/^empty\.fbx holds no character and no animation/);
+    expect(fs.readdirSync(uploads)).toEqual([]);
+  });
+
   it("names the file Blender could not read and keeps the batch limits", async () => {
     const blender = fakeBlender();
     const service = createMixamoService({
@@ -236,11 +291,11 @@ describe("Mixamo batch import", () => {
         files: ["X Bot.fbx"],
       }),
     ]);
-    // The single-character merge keeps every take, T-pose included.
+    // The single-character merge leaves the T-pose take out too.
     answer("bundle-X Bot", download(true, { "X Bot": 1 / 30 }));
     expect(await service.importBundle({ files: [file.token] })).toMatchObject({
       name: "X Bot",
-      animations: [{ name: "X Bot", duration: 0.2 }],
+      animations: [],
     });
     await expect(
       service.importBatch({ files: ["00000000-0000-0000-0000-000000000000"] }),

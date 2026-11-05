@@ -98,11 +98,13 @@ function readTakes(file: string) {
     bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString("utf8"),
   ) as {
     meshes?: unknown[];
+    skins?: unknown[];
     animations?: { name?: string; samplers: { input: number }[] }[];
     accessors: { max?: number[] }[];
   };
   return {
     hasMesh: (metadata.meshes || []).length > 0,
+    hasSkin: (metadata.skins || []).length > 0,
     takes: (metadata.animations || []).map((a, i) => ({
       // The loader ignores Blender action names; an untitled GLB animation
       // can only be found by its index name.
@@ -120,7 +122,7 @@ const asAnimations = (takes: { name: string; seconds: number }[]) =>
   takes.map((t) => ({ name: t.name, duration: Math.max(0.2, t.seconds || 1) }));
 
 /** Mixamo's character downloads carry a one-frame "mixamo.com" T-pose take:
- * a pose, not a motion, so a batch import does not offer it as an action. */
+ * a pose, not a motion, so it is not offered as an action. */
 const isMotion = (take: { seconds: number }) => take.seconds > 0.1;
 
 export function createMixamoService(deps: MixamoDeps) {
@@ -248,15 +250,10 @@ export function createMixamoService(deps: MixamoDeps) {
     });
   }
 
-  /** Merge the files into one rigged, animated GLB in uploads. */
-  async function importFiles(
-    files: string[],
-    names?: string[],
-  ): Promise<ImportedCharacter> {
-    if (!files.length || files.length > 40)
-      throw Error("Choose between 1 and 40 Mixamo files.");
-    const id = crypto.randomUUID();
-    const output = path.join(uploads, id + ".glb");
+  /** Merge the files (character first) into one GLB in uploads with
+   * mixamo_bundle.py and return its path; a failed run leaves nothing. */
+  async function bundle(files: string[], names?: string[]) {
+    const output = path.join(uploads, crypto.randomUUID() + ".glb");
     const temporary = fs.mkdtempSync(path.join(uploads, ".mixamo-"));
     try {
       const copied = files.map((file, index) => {
@@ -274,8 +271,27 @@ export function createMixamoService(deps: MixamoDeps) {
         blenderArgs("engine/mixamo_bundle.py", [output, ...copied]),
         { timeout: 300000, maxBuffer: 4 * 1024 * 1024 },
       );
+      return output;
     } catch (error) {
       fs.rmSync(output, { force: true });
+      throw error;
+    } finally {
+      // FBX embedded-texture extraction is isolated with our own input copies.
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
+  }
+
+  /** Merge the files into one rigged, animated GLB in uploads. */
+  async function importFiles(
+    files: string[],
+    names?: string[],
+  ): Promise<ImportedCharacter> {
+    if (!files.length || files.length > 40)
+      throw Error("Choose between 1 and 40 Mixamo files.");
+    let output: string;
+    try {
+      output = await bundle(files, names);
+    } catch (error) {
       const failure = error as Error & { stdout?: string };
       const reason = /ERROR (.+)/.exec(failure.stdout || "")?.[1];
       throw (
@@ -287,23 +303,20 @@ export function createMixamoService(deps: MixamoDeps) {
           { cause: error },
         )
       );
-    } finally {
-      // FBX embedded-texture extraction is isolated with our own input copies.
-      fs.rmSync(temporary, { recursive: true, force: true });
     }
     // Never write or delete texture directories beside user-owned Downloads files.
     // The bundle's STATS line lists Blender action names; the GLB loader only
     // sees the names written into the file, so those are reported instead.
     return {
-      url: "/uploads/" + id + ".glb",
+      url: "/uploads/" + path.basename(output),
       name: mixamoCharacterName(names?.[0] || files[0]),
-      animations: asAnimations(readTakes(output).takes),
+      animations: asAnimations(readTakes(output).takes.filter(isMotion)),
       files: files.map((file, index) => path.basename(names?.[index] || file)),
     };
   }
 
   /** Convert one download on its own (the app's generic FBX path) into
-   * uploads, and say whether it carries a body. */
+   * uploads, and say whether it carries a skinned body. */
   async function convertOne(file: string, name: string) {
     const unsupported = unsupportedFbxMessage(file, name);
     if (unsupported) throw Error(unsupported);
@@ -334,7 +347,8 @@ export function createMixamoService(deps: MixamoDeps) {
     };
   }
 
-  /** One character per download With Skin, each followed by its animations. */
+  /** One character per download With Skin, each followed by its animations.
+   * Files are kept only when the whole batch imports. */
   async function importEach(files: string[], names?: string[]) {
     if (!files.length || files.length > 40)
       throw Error("Choose between 1 and 40 Mixamo files.");
@@ -342,12 +356,22 @@ export function createMixamoService(deps: MixamoDeps) {
       path.basename(names?.[index] || files[index]);
     const characters: { index: number; takes: number[] }[] = [];
     const converted: Awaited<ReturnType<typeof convertOne>>[] = [];
-    const kept = new Set<string>();
+    // The GLBs the characters are handed back in: own conversions or bundles.
+    const delivered: string[] = [];
+    let complete = false;
     try {
       for (let index = 0; index < files.length; index++) {
         const model = await convertOne(files[index], label(index));
         converted.push(model);
+        if (model.hasMesh && !model.hasSkin)
+          throw Error(
+            `${label(index)} has a 3D model but no skeleton, so it is neither a character nor an animation. Choose files downloaded from Mixamo.`,
+          );
         if (model.hasMesh) characters.push({ index, takes: [] });
+        else if (!model.takes.length)
+          throw Error(
+            `${label(index)} holds no character and no animation. Choose files downloaded from Mixamo.`,
+          );
         else if (characters.length) characters.at(-1)!.takes.push(index);
         else
           throw Error(
@@ -356,34 +380,38 @@ export function createMixamoService(deps: MixamoDeps) {
       }
       const results: ImportedCharacter[] = [];
       for (const character of characters) {
+        const group = [character.index, ...character.takes];
         const own = converted[character.index];
-        let result: ImportedCharacter;
-        if (character.takes.length) {
-          const group = [character.index, ...character.takes];
-          result = await importFiles(
-            group.map((i) => files[i]),
-            group.map((i) => label(i)),
-          );
-          result.animations = asAnimations(
-            readTakes(
-              path.join(uploads, path.basename(result.url)),
-            ).takes.filter(isMotion),
-          );
-        } else {
-          kept.add(own.file);
-          result = {
-            url: own.url,
-            name: mixamoCharacterName(label(character.index)),
-            animations: asAnimations(own.takes.filter(isMotion)),
-            files: [label(character.index)],
-          };
-        }
-        results.push(result);
+        let file = own.file;
+        if (character.takes.length)
+          try {
+            file = await bundle(
+              group.map((i) => files[i]),
+              group.map(label),
+            );
+          } catch (error) {
+            throw new Error(
+              `${label(character.index)} could not be combined with the animations after it (${character.takes.map(label).join(", ")}). Check that they were downloaded for this character.`,
+              { cause: error },
+            );
+          }
+        delivered.push(file);
+        const takes = file === own.file ? own.takes : readTakes(file).takes;
+        results.push({
+          url: "/uploads/" + path.basename(file),
+          name: mixamoCharacterName(label(character.index)),
+          animations: asAnimations(takes.filter(isMotion)),
+          files: group.map(label),
+        });
       }
+      complete = true;
       return { characters: results };
     } finally {
       for (const model of converted)
-        if (!kept.has(model.file)) fs.rmSync(model.file, { force: true });
+        if (!complete || !delivered.includes(model.file))
+          fs.rmSync(model.file, { force: true });
+      if (!complete)
+        for (const file of delivered) fs.rmSync(file, { force: true });
     }
   }
 }

@@ -25,7 +25,7 @@ Conversions are idempotent (a GLB is rebuilt only when it or its `converted-v<ve
 
 ## Mixamo
 
-Adobe forbids redistributing Mixamo files, so the studio never bundles them. **Generate with AI · Rig with Mixamo** prepares any character, including the realistic library, as an unrigged FBX, opens mixamo.com and watches the Downloads folder. The downloads can be imported as one character (the file downloaded With Skin plus its animations) or, with **Each file becomes its own character**, as a batch of up to 40 files: every skinned file becomes a character named after its file ("Ch14_nonPBR" → "Ch14"), the skinless animation files after it become its actions, and the one-frame T-pose take is left out. Card thumbnails are rendered in the browser.
+Adobe forbids redistributing Mixamo files, so the studio never bundles them. **Generate with AI · Rig with Mixamo** prepares any character, including the realistic library, as an unrigged FBX, opens mixamo.com and watches the Downloads folder. The downloads can be imported as one character (the file downloaded With Skin plus its animations) or, with **Each file becomes its own character**, as a batch of up to 40 files: every skinned file becomes a character named after its file ("Ch14_nonPBR" → "Ch14") and the skinless animation files after it become its actions. A file that is neither (a model without a skeleton, or one with nothing in it) is refused by name, and a batch that fails part-way keeps none of its files. In both modes the one-frame T-pose take of a character download is left out of the actions. Card thumbnails are rendered in the browser.
 
 ## Retired stylized library
 
