@@ -880,6 +880,10 @@ def skin(obj, seen=()):
     if centre.length < 0.05:
         # Nothing places it: a leftover at the scene origin, between the feet.
         return False
+    if centre.z - floor < 0.15 * tall:
+        # Down by the feet with nothing of its own to move it: only the
+        # film's pose lifts it into place (Einar's zip, pockets, knee tyre).
+        return False
     # A part resting on clothing or skin (a satchel's button) moves with it.
     host = touching_surface(obj, centre)
     if host is not None:
@@ -895,9 +899,12 @@ def skin(obj, seen=()):
     return True
 
 
+corners = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box]
+floor = min(c.z for c in corners)
+tall = max(c.z for c in corners) - floor
 unplaced = [obj for obj in meshes if not skin(obj)]
 for obj in unplaced:
-    log("left out", obj.name, "(nothing moves it; it sits at the scene origin)")
+    log("left out", obj.name, "(nothing places it but the film's pose)")
     meshes.remove(obj)
     bpy.data.objects.remove(obj)
 
@@ -945,9 +952,6 @@ def carrying_bone(obj):
 # them. Whatever truly sits that low (boots, knee pads) hangs from a leg.
 # A whole body or a pair of arms is mostly carried by many bones, so only
 # the low parts are judged.
-corners = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box]
-floor = min(c.z for c in corners)
-tall = max(c.z for c in corners) - floor
 out_of_place = []
 for obj in meshes:
     name = carrying_bone(obj)
