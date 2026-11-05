@@ -5,6 +5,7 @@ import {
   clipSourceStart,
   MAX_PLAYBACK_RATE,
   MIN_PLAYBACK_RATE,
+  routeActiveDuration,
 } from "../shared/clipTiming";
 
 type Clip = Entity["clips"][number];
@@ -83,9 +84,28 @@ export function snapMarkers(options: {
     }
   }
   markers.push({ time: options.playhead, label: "the playhead" });
-  for (let i = 0; i <= 6; i++)
-    markers.push({ time: (options.total * i) / 6, label: "the ruler" });
+  // The ruler prints whole seconds, so land on the number the creator reads.
+  for (let i = 0; i <= 6; i++) {
+    const time = Math.round((options.total * i) / 6);
+    markers.push({ time, label: `the ${time}s mark` });
+  }
   return markers;
+}
+
+/** The action to select once the one at `removedIndex` is gone: whichever
+ * took its place, else the new last one. */
+export function clipAfterRemoval<T>(remaining: T[], removedIndex: number) {
+  return remaining[Math.min(removedIndex, remaining.length - 1)];
+}
+
+/** How much faster (above 1) or slower a route travels once its clip lasts
+ * `duration` seconds; the terminal hold, if any, keeps its length. */
+export function travelSpeedFactor(
+  clip: Pick<Clip, "duration" | "routeHold" | "routeActive">,
+  duration: number,
+) {
+  const active = duration - (clip.routeHold ?? 0);
+  return active > 0 ? routeActiveDuration(clip) / active : 1;
 }
 
 /** The moment a recorded take runs out of frames and the clip starts holding
@@ -122,6 +142,10 @@ export function snapToMarkers(
   return best ? { time: best.time, label: best.label } : { time };
 }
 
+/** A pointer that comes back to where it pressed changes nothing, even on an
+ * action whose length is off the grid. */
+const stays = (deltaSeconds: number) => Math.abs(deltaSeconds) < DRAG_STEP / 2;
+
 /** A right-edge drag: the clip's new length after moving its end by
  * `deltaSeconds`, on the tenth-of-a-second grid or, with Shift, snapped to a
  * marker. The label names the marker only when the snap survives clamping. */
@@ -141,7 +165,9 @@ export function dragEnd(options: {
   const wanted =
     snap?.label !== undefined
       ? Number((snap.time - start).toFixed(4))
-      : roundToStep(raw);
+      : stays(options.deltaSeconds)
+        ? clip.duration
+        : roundToStep(raw);
   const bounds = durationBounds(clip);
   const duration = clamp(wanted, bounds.min, bounds.max);
   return duration === wanted && snap?.label
@@ -152,7 +178,8 @@ export function dragEnd(options: {
 /** A left-edge drag on a standalone take trims into the recording: the clip
  * starts `shift` seconds later in the take and lasts that much less, so the
  * frame at its right edge stays where it was. Dragging left restores trimmed
- * frames down to the recording's first frame. */
+ * frames down to the recording's first frame. With Shift, a marker inside the
+ * clip (the playhead) names the frame the clip should now begin on. */
 export function trimStart(options: {
   clip: Clip;
   start: number;
@@ -165,7 +192,11 @@ export function trimStart(options: {
   const { clip, start, sourceDuration } = options;
   const rate = clipPlaybackRate(clip, sourceDuration);
   const sourceStart = clipSourceStart(clip, sourceDuration);
-  const earliest = rate > 0 ? -sourceStart / rate : 0;
+  // Restoring frames may not make the clip longer than any clip can be.
+  const earliest = Math.max(
+    rate > 0 ? -sourceStart / rate : 0,
+    clip.duration - MAX_CLIP_SECONDS,
+  );
   // Keep a playable moment of both the clip and the recording.
   const remaining = rate > 0 ? (sourceDuration - sourceStart) / rate : 0;
   const latest = Math.max(
@@ -182,7 +213,9 @@ export function trimStart(options: {
   const wanted =
     snap?.label !== undefined
       ? Number((snap.time - start).toFixed(4))
-      : clip.duration - roundToStep(clip.duration - options.deltaSeconds);
+      : stays(options.deltaSeconds)
+        ? 0
+        : clip.duration - roundToStep(clip.duration - options.deltaSeconds);
   const shift = clamp(wanted, earliest, latest);
   return {
     duration: Number((clip.duration - shift).toFixed(4)),

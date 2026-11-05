@@ -7,10 +7,12 @@ import {
   allMotions,
   duration,
   starterScene,
+  type Entity,
   type Motion,
   type Scene,
 } from "../shared/scene";
 
+type Clip = Entity["clips"][number];
 const TRACK_WIDTH = 600;
 let container: HTMLDivElement, root: Root;
 const captured = new Set<number>();
@@ -32,16 +34,20 @@ const route = (): Motion => ({
     ],
   },
 });
-/** The starter café, with a drawn route after Mila's wave and talk. */
-function fixture() {
+const routeClip = (over: Partial<Clip> = {}): Clip => ({
+  id: "route-clip",
+  motionId: "imported-route",
+  duration: 6,
+  playbackRate: 1,
+  ...over,
+});
+/** The starter café, with a drawn route after Mila's wave and talk unless
+ * the sequence is given. */
+function fixture(clips?: Clip[]) {
   const scene = starterScene();
   scene.customMotions.push(route());
-  scene.entities[0].clips.push({
-    id: "route-clip",
-    motionId: "imported-route",
-    duration: 6,
-    playbackRate: 1,
-  });
+  if (clips) scene.entities[0].clips = clips;
+  else scene.entities[0].clips.push(routeClip());
   return scene;
 }
 beforeEach(() => {
@@ -130,11 +136,16 @@ async function pointer(
   Object.defineProperty(event, "pointerType", { value: "mouse" });
   await act(async () => void target.dispatchEvent(event));
 }
-const key = (target: EventTarget, key: string) =>
+const key = (target: EventTarget, key: string, init: KeyboardEventInit = {}) =>
   act(
     async () =>
       void target.dispatchEvent(
-        new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+        new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        }),
       ),
   );
 const chips = () => [...container.querySelectorAll<HTMLElement>(".clip")];
@@ -272,20 +283,25 @@ describe("timeline track", () => {
     });
   });
 
-  it("trims into a take from its left edge, keeping its end frame in place", async () => {
+  it("trims into a take from its left edge, previewing the row as it will land", async () => {
     const scene = fixture();
     const { fns, props, entity } = await render(scene);
     const clip = entity.clips[0];
+    const talkWidth = chips()[1].style.width;
     const handle = chips()[0].querySelector<HTMLElement>(".clip-handle.start")!;
     await pointer(handle, "pointerdown", { clientX: 10 });
     await pointer(handle, "pointermove", {
       clientX: 10 + (1 * TRACK_WIDTH) / props.total,
     });
     const trimmed = tenth(clip.duration - 1);
-    expect(label()).toContain(`${trimmed.toFixed(1)} s · starts`);
-    expect(chips()[0].style.marginLeft).toBe(
-      `${((clip.duration - trimmed) / props.total) * 100}%`,
+    expect(label()).toBe(
+      `${trimmed.toFixed(1)} s · starts ${(clip.duration - trimmed).toFixed(2)} s into the recording`,
     );
+    // No gap opens: the start stays put, the chip shrinks from its right edge
+    // and the next chips follow it, exactly as the commit will lay them out.
+    expect(chips()[0].style.marginLeft).toBe("");
+    expect(chips()[0].style.width).toBe(`${(trimmed / props.total) * 100}%`);
+    expect(chips()[1].style.width).toBe(talkWidth);
     await pointer(handle, "pointerup", {
       clientX: 10 + (1 * TRACK_WIDTH) / props.total,
     });
@@ -298,6 +314,105 @@ describe("timeline track", () => {
     });
     expect(command.sourceStart).toBeCloseTo(clip.duration - trimmed, 3);
     expect(edgeTime).toBe(0);
+  });
+
+  it("cuts a take to the frame under the playhead with Shift, only when it has that frame", async () => {
+    const scene = fixture();
+    scene.entities[0].clips[1].sourceStart = 1;
+    const playhead = { current: 1 };
+    const { props } = await render(scene, { playhead });
+    const px = (seconds: number) => (seconds * TRACK_WIDTH) / props.total;
+    const wave = chips()[0].querySelector<HTMLElement>(".clip-handle.start")!;
+    await pointer(wave, "pointerdown", { clientX: 10 });
+    await pointer(wave, "pointermove", {
+      clientX: 10 + px(1.03),
+      shiftKey: true,
+    });
+    expect(label()).toBe(
+      "1.48 s · starts 1.0 s into the recording · cut to the playhead",
+    );
+    await pointer(wave, "pointercancel", { clientX: 10 + px(1.03) });
+    // A playhead just before Talk is within snapping distance of its edge but
+    // shows none of its frames, so restoring trimmed frames stays an ordinary
+    // drag rather than a cut.
+    playhead.current = 2.3;
+    const talk = chips()[1].querySelector<HTMLElement>(".clip-handle.start")!;
+    await pointer(talk, "pointerdown", { clientX: 100 });
+    await pointer(talk, "pointermove", {
+      clientX: 100 - px(0.2),
+      shiftKey: true,
+    });
+    expect(label()).toBe("8.2 s · starts 0.8 s into the recording");
+    await pointer(talk, "pointercancel", { clientX: 100 - px(0.2) });
+  });
+
+  it("commits nothing when the pointer comes back to where it pressed, yet swallows the click", async () => {
+    const { fns, entity } = await render(fixture());
+    const handle = chips()[0].querySelector<HTMLElement>(".clip-handle.end")!;
+    await pointer(handle, "pointerdown", { clientX: 100 });
+    await pointer(handle, "pointermove", { clientX: 140 });
+    await pointer(handle, "pointermove", { clientX: 101 });
+    expect(label()).toBe("2.48 s");
+    expect(chips()[0].style.width).toBe(
+      `${(entity.clips[0].duration / 16.483333349227905) * 100}%`,
+    );
+    await pointer(handle, "pointerup", { clientX: 101 });
+    expect(fns.onEditStart).toHaveBeenCalledTimes(1);
+    expect(fns.onRetime).not.toHaveBeenCalled();
+    await act(async () => chips()[0].click());
+    expect(fns.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("drags a stopped route by its right edge only and sends just the length", async () => {
+    const scene = fixture([routeClip({ routeStop: 2 })]);
+    const { fns, props, entity } = await render(scene);
+    const [chip] = chips();
+    expect(chip.querySelector(".clip-handle.start")).toBeNull();
+    expect(chip.title).toContain("Drag the right edge");
+    const handle = chip.querySelector<HTMLElement>(".clip-handle.end")!;
+    await pointer(handle, "pointerdown", { clientX: 200 });
+    await pointer(handle, "pointermove", {
+      clientX: 200 + (1 * TRACK_WIDTH) / props.total,
+    });
+    // A stopped route keeps its walking time, so no speed hint.
+    expect(label()).toBe("7.0 s");
+    await pointer(handle, "pointerup", {
+      clientX: 200 + (1 * TRACK_WIDTH) / props.total,
+    });
+    expect(fns.onRetime).toHaveBeenCalledWith(
+      { type: "retimeClip", id: entity.id, clipId: "route-clip", duration: 7 },
+      7,
+    );
+  });
+
+  it("tells how a route's walking speed changes with its length", async () => {
+    const { props } = await render(fixture([routeClip()]));
+    const handle = chips()[0].querySelector<HTMLElement>(".clip-handle.end")!;
+    await pointer(handle, "pointerdown", { clientX: 200 });
+    await pointer(handle, "pointermove", {
+      clientX: 200 + (6 * TRACK_WIDTH) / props.total,
+    });
+    expect(label()).toBe("12.0 s · 0.5× speed");
+    await pointer(handle, "pointercancel", { clientX: 200 });
+  });
+
+  it("shows a frozen wait without handles or hints, yet lets Delete remove it", async () => {
+    const scene = fixture([
+      routeClip({ routeStop: 2 }),
+      routeClip({
+        id: "wait",
+        duration: 3,
+        routeWait: "route-clip",
+        transition: "cut",
+      }),
+    ]);
+    const { fns, entity } = await render(scene, { selectedClipId: "wait" });
+    const wait = chips()[1];
+    expect(wait.title).toBe("Wait for clear route · 3s");
+    expect(wait.querySelector(".clip-handle")).toBeNull();
+    expect(wait.classList.contains("selected")).toBe(true);
+    await key(window, "Delete");
+    expect(fns.onRemoveClip).toHaveBeenCalledWith(entity.id, "wait");
   });
 
   it("double-clicking a route chip asks to edit its path; other chips just select", async () => {
@@ -326,6 +441,9 @@ describe("timeline track", () => {
     expect(chips()[1].classList.contains("selected")).toBe(true);
     await key(window, "Delete");
     expect(fns.onRemoveClip).toHaveBeenCalledWith(entity.id, clip.id);
+    // A held key repeats; only the first press removes.
+    await key(window, "Delete", { repeat: true });
+    expect(fns.onRemoveClip).toHaveBeenCalledTimes(1);
     await key(document.body, "Backspace");
     expect(fns.onRemoveClip).toHaveBeenCalledTimes(2);
     // Typing in a field never deletes.

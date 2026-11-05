@@ -103,6 +103,23 @@ describe("retimeClip", () => {
     ).toMatchObject({ duration: 2, routeActive: 6 });
   });
 
+  it("keeps a route with a saved terminal hold travelling for a moment", () => {
+    const held = (): Clip => ({
+      id: "held",
+      motionId: "imported-route",
+      duration: 6,
+      playbackRate: 1,
+      routeHold: 2,
+    });
+    expect(
+      actor(retime(fixture([held()]), { duration: 1.5 })).clips[0],
+    ).toEqual({ ...held(), duration: 2.2 });
+    expect(actor(retime(fixture([held()]), { duration: 9 })).clips[0]).toEqual({
+      ...held(),
+      duration: 9,
+    });
+  });
+
   it("lets a standalone take start later in its recording and play at another speed", () => {
     const scene = fixture();
     const wave = allMotions(scene).find((m) => m.id === "wave")!;

@@ -55,6 +55,7 @@ import { productionPackage } from "./productionPackage";
 import { ActionPreview } from "./ActionPreview";
 import { ImportedClipTiming } from "./ImportedClipTiming";
 import { TimelineTrack, type TimelineTrackProps } from "./TimelineTrack";
+import { clipAfterRemoval, durationBounds } from "./timelineGeometry";
 import { motionDetails } from "../shared/motionLibrary";
 import { ActionLibrary } from "./ActionLibrary";
 import { AssetLibrary } from "./AssetLibrary";
@@ -316,9 +317,14 @@ export default function App() {
       setModal(null);
     }
   }, [modal]);
+  // Once a chip is clicked, Delete belongs to the sequence until Escape or a
+  // selection made elsewhere, so removing the last action never removes the
+  // character on the next press.
+  const sequenceKeys = useRef(false);
   const setSelected = useCallback((id: string | null) => {
     setSelectedState(id);
     setMove(id !== null);
+    sequenceKeys.current = false;
   }, []);
   useEffect(() => {
     saveConversationPreferences({ rate: conversationRate });
@@ -763,7 +769,14 @@ export default function App() {
         setPlaying((v) => !v);
       }
       // With a clip selected, Delete removes that clip (its row handles it).
-      if (e.key === "Delete" && selected && !selectedClip)
+      if (e.key === "Escape" && !selectedClip) sequenceKeys.current = false;
+      if (
+        e.key === "Delete" &&
+        selected &&
+        !selectedClip &&
+        !sequenceKeys.current &&
+        !e.repeat
+      )
         execute([{ type: "remove", id: selected }]);
     };
     window.addEventListener("keydown", key);
@@ -873,6 +886,7 @@ export default function App() {
     onSelect: (id, clipId) => {
       setSelected(id);
       setSelectedClip(clipId);
+      sequenceKeys.current = clipId !== null;
       setRightTab("details");
       setPanel(true);
     },
@@ -893,8 +907,21 @@ export default function App() {
         clipId,
         dialogueClips.has(`${id}:${clipId}`),
       ).catch((e) => report(e.message)),
-    onRemoveClip: (id, clipId) => execute([{ type: "removeClip", id, clipId }]),
-    onDeselectClip: () => setSelectedClip(null),
+    onRemoveClip: (id, clipId) => {
+      const clipsOf = (s: Scene) =>
+        s.entities.find((e) => e.id === id)?.clips ?? [];
+      const at = clipsOf(sceneRef.current).findIndex((c) => c.id === clipId);
+      if (!execute([{ type: "removeClip", id, clipId }])) return;
+      // Move on to the neighbouring action, so repeated presses walk the
+      // sequence instead of falling through to the character.
+      setSelectedClip(
+        clipAfterRemoval(clipsOf(sceneRef.current), at)?.id ?? null,
+      );
+    },
+    onDeselectClip: () => {
+      setSelectedClip(null);
+      sequenceKeys.current = false;
+    },
   };
   const trackCallbacks = useMemo<TrackActions>(
     () => ({
@@ -2346,7 +2373,7 @@ export default function App() {
               <span>
                 <Lightbulb size={12} /> Chain actions to bring your characters
                 to life. Drag an action’s edge to change its length · Shift
-                snaps · Double-click a path to edit it.
+                snaps to cues · Double-click a path to edit it.
               </span>
               <span>
                 24 frames / second <span className="dot-separator">·</span>{" "}
@@ -3082,7 +3109,7 @@ export default function App() {
                                 <input
                                   aria-label={`Action ${i + 1} duration`}
                                   type="number"
-                                  min={Math.max(0.2, c.routeStop ?? 0)}
+                                  min={durationBounds(c).min}
                                   max="60"
                                   step=".2"
                                   value={c.duration}
@@ -3096,8 +3123,7 @@ export default function App() {
                                     const seconds = Number(e.target.value);
                                     // Typing in one field is a single undo step.
                                     if (
-                                      seconds >=
-                                        Math.max(0.2, c.routeStop ?? 0) &&
+                                      seconds >= durationBounds(c).min &&
                                       seconds <= 60
                                     )
                                       execute(

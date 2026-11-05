@@ -847,9 +847,14 @@ export function applyCommands(
         );
       const motion = allMotions(s).find((m) => m.id === clip.motionId);
       if (cmd.duration !== undefined) {
+        // A route keeping a saved terminal hold must still travel for a moment.
+        const hold =
+          clip.routeStop === undefined && clip.routeHold !== undefined
+            ? clip.routeHold + 0.2
+            : 0;
         const seconds = Math.min(
           60,
-          Math.max(0.2, clip.routeStop ?? 0, cmd.duration),
+          Math.max(0.2, clip.routeStop ?? 0, hold, cmd.duration),
         );
         // A stopped route keeps the travelling time it was cut from; whatever
         // the slot has beyond it holds the stopped pose.

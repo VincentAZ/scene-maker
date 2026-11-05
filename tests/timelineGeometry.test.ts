@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clipAfterRemoval,
   clipStarts,
   dragEnd,
   durationBounds,
@@ -12,6 +13,7 @@ import {
   snapToMarkers,
   sourceEndMarker,
   stretchRate,
+  travelSpeedFactor,
   trimStart,
 } from "../src/timelineGeometry";
 
@@ -63,9 +65,31 @@ describe("timeline geometry", () => {
     expect(markers).toContainEqual({ time: 4, label: "Leo" });
     expect(markers.some((m) => m.label === "Mila")).toBe(false);
     expect(markers).toContainEqual({ time: 7.25, label: "the playhead" });
+    const marks = (all: typeof markers) =>
+      all.filter((m) => / mark$/.test(m.label));
+    expect(marks(markers).map((m) => m.time)).toEqual([0, 2, 4, 6, 8, 10, 12]);
+    expect(marks(markers)[1].label).toBe("the 2s mark");
+    // The ruler prints rounded seconds, so the marks are the printed numbers.
     expect(
-      markers.filter((m) => m.label === "the ruler").map((m) => m.time),
-    ).toEqual([0, 2, 4, 6, 8, 10, 12]);
+      marks(
+        snapMarkers({ cast: [], entityId: "a", total: 13.48, playhead: 0 }),
+      ).map((m) => m.time),
+    ).toEqual([0, 2, 4, 7, 9, 11, 13]);
+  });
+
+  it("picks the action that takes a removed one's place, else the last", () => {
+    expect(clipAfterRemoval(["a", "c"], 1)).toBe("c");
+    expect(clipAfterRemoval(["a", "b"], 2)).toBe("b");
+    expect(clipAfterRemoval([], 0)).toBeUndefined();
+  });
+
+  it("tells how much faster or slower a route travels in a new length", () => {
+    const route = { duration: 2, playbackRate: 1 };
+    expect(travelSpeedFactor(route, 4)).toBe(0.5);
+    expect(travelSpeedFactor(route, 1)).toBe(2);
+    // A saved terminal hold keeps its length; only the travel stretches.
+    expect(travelSpeedFactor({ duration: 6, routeHold: 2 }, 10)).toBe(0.5);
+    expect(travelSpeedFactor({ duration: 6, routeHold: 2 }, 2)).toBe(1);
   });
 
   it("snaps to the nearest marker within tolerance", () => {
@@ -113,6 +137,13 @@ describe("timeline geometry", () => {
         ...noSnap,
       }),
     ).toEqual({ duration: 3 });
+    // A pointer back where it pressed leaves an off-grid length alone.
+    expect(dragEnd({ clip, start: 0, deltaSeconds: 0.04, ...noSnap })).toEqual({
+      duration: 2.4833,
+    });
+    expect(dragEnd({ clip, start: 0, deltaSeconds: 0.06, ...noSnap })).toEqual({
+      duration: 2.5,
+    });
   });
 
   it("snaps a right edge to a marker with Shift and names it", () => {
@@ -201,6 +232,27 @@ describe("timeline geometry", () => {
         ...noSnap,
       }),
     ).toMatchObject({ duration: 5.2, sourceStart: 3.8, shift: 3.8 });
+    // Restoring frames never makes the clip longer than any clip can be, so
+    // the frame at its right edge really does stay put.
+    expect(
+      trimStart({
+        clip: take({ duration: 59.5, sourceStart: 1 }),
+        start: 0,
+        sourceDuration: 70,
+        deltaSeconds: -3,
+        ...noSnap,
+      }),
+    ).toMatchObject({ duration: 60, sourceStart: 0.5, shift: -0.5 });
+    // A pointer back where it pressed trims nothing from an off-grid take.
+    expect(
+      trimStart({
+        clip: take({ duration: 2.4833 }),
+        start: 0,
+        sourceDuration: 4,
+        deltaSeconds: 0.03,
+        ...noSnap,
+      }),
+    ).toMatchObject({ duration: 2.4833, sourceStart: 0, shift: 0 });
     expect(
       trimStart({
         clip,

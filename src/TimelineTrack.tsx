@@ -4,6 +4,7 @@ import type { Command, Entity, Motion } from "../shared/scene";
 import {
   DRAG_THRESHOLD,
   SNAP_PIXELS,
+  clamp,
   clipStarts,
   dragEnd,
   formatRate,
@@ -12,6 +13,7 @@ import {
   snapMarkers,
   sourceEndMarker,
   stretchRate,
+  travelSpeedFactor,
   trimStart,
 } from "./timelineGeometry";
 
@@ -49,19 +51,23 @@ type Gesture = {
   handle: HTMLElement;
   /** Set for a standalone recorded take, which can trim and stretch. */
   sourceDuration?: number;
+  /** A route without a stop travels its path in whatever time it gets. */
+  paced: boolean;
   active: boolean;
 };
 type Preview = {
   clipId: string;
   duration: number;
-  /** Seconds the clip's start moved while trimming into the recording. */
-  shift: number;
   label: string;
+  /** Where along the row the label sits: the edge being dragged. */
   edgeFraction: number;
   edgeTime: number;
   command: RetimeCommand;
   changed: boolean;
 };
+
+/** Changes smaller than a frame are not worth an undo step. */
+const differs = (a: number, b: number) => Math.abs(a - b) > 1e-3;
 
 const clipName = (clip: Clip, motions: Map<string, Motion>) =>
   clip.routeWait ? "Wait for clear route" : motions.get(clip.motionId)?.name;
@@ -124,6 +130,7 @@ function clipDragging(options: {
         motion?.kind === "imported" && !motion.path
           ? motion.duration
           : undefined,
+      paced: !!motion?.path && clip.routeStop === undefined,
       active: false,
     };
     window.addEventListener("keydown", escape, true);
@@ -157,33 +164,41 @@ function clipDragging(options: {
       ...changes,
     });
     if (g.edge === "start") {
+      // The clip's start is where the previous action ends, so trimming shows
+      // as it lands: the start stays, the end moves in and later actions
+      // follow. Shift cuts to the frame under the playhead, when it is one of
+      // this clip's frames.
       const trim = trimStart({
         clip,
         start,
         sourceDuration: sourceDuration!,
         deltaSeconds,
         shift: e.shiftKey,
-        markers,
+        markers: markers.filter(
+          (m) =>
+            m.label === "the playhead" &&
+            m.time > start &&
+            m.time < start + clip.duration,
+        ),
         tolerance,
       });
       show({
         clipId: clip.id,
         duration: trim.duration,
-        shift: trim.shift,
         label: [
           formatSeconds(trim.duration),
           `starts ${formatSeconds(trim.sourceStart)} into the recording`,
-          trim.snapped && `snapped to ${trim.snapped}`,
+          trim.snapped && `cut to ${trim.snapped}`,
         ]
           .filter(Boolean)
           .join(" · "),
-        edgeFraction: (start + trim.shift) / props.total,
+        edgeFraction: start / props.total,
         edgeTime: start,
         command: command({
           duration: trim.duration,
           sourceStart: trim.sourceStart,
         }),
-        changed: trim.shift !== 0,
+        changed: differs(trim.shift, 0),
       });
       return;
     }
@@ -202,13 +217,15 @@ function clipDragging(options: {
       e.altKey && sourceDuration !== undefined
         ? stretchRate(clip, sourceDuration, duration)
         : undefined;
+    // A route without a stop walks the same path faster or slower.
+    const pace = g.paced ? travelSpeedFactor(clip, duration) : 1;
     show({
       clipId: clip.id,
       duration,
-      shift: 0,
       label: [
         formatSeconds(duration),
         rate !== undefined && formatRate(rate),
+        differs(pace, 1) && `${formatRate(pace)} speed`,
         snapped && `snapped to ${snapped}`,
       ]
         .filter(Boolean)
@@ -220,7 +237,7 @@ function clipDragging(options: {
         ...(rate !== undefined ? { playbackRate: rate } : {}),
       }),
       changed:
-        duration !== clip.duration ||
+        differs(duration, clip.duration) ||
         (rate !== undefined && rate !== clip.playbackRate),
     });
   };
@@ -289,7 +306,8 @@ export const TimelineTrack = memo(function TimelineTrack(
         return;
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        latest.current.onRemoveClip(entity.id, selectedClipId);
+        // A held key removes one action, not the whole sequence.
+        if (!e.repeat) latest.current.onRemoveClip(entity.id, selectedClipId);
       } else if (e.key === "Escape") latest.current.onDeselectClip();
     };
     window.addEventListener("keydown", key);
@@ -316,7 +334,7 @@ export const TimelineTrack = memo(function TimelineTrack(
         <span style={{ background: entity.color }}>{entity.name[0]}</span>
         {entity.name}
       </button>
-      <div className="track-clips" ref={track}>
+      <div className={`track-clips${preview ? " dragging" : ""}`} ref={track}>
         {entity.clips.map((c) => {
           const motion = motions.get(c.motionId);
           const live = preview?.clipId === c.id ? preview : undefined;
@@ -324,7 +342,7 @@ export const TimelineTrack = memo(function TimelineTrack(
           const take = motion?.kind === "imported" && !motion.path;
           const hints = c.routeWait
             ? ""
-            : ` · Drag an edge to change its length${path ? " · Double-click to edit the path" : ""}`;
+            : ` · Drag ${take ? "an" : "the right"} edge to change its length${path ? " · Double-click to edit the path" : ""}`;
           const activate = () => {
             if (gestures.suppressClick()) return;
             props.onSelect(entity.id, c.id);
@@ -337,9 +355,6 @@ export const TimelineTrack = memo(function TimelineTrack(
               className={`clip clip-${index % 3}${selectedClipId === c.id ? " selected" : ""}${live ? " dragging" : ""}`}
               style={{
                 width: `${((live?.duration ?? c.duration) / total) * 100}%`,
-                ...(live?.shift
-                  ? { marginLeft: `${(live.shift / total) * 100}%` }
-                  : {}),
               }}
               onClick={activate}
               onDoubleClick={() => {
@@ -376,8 +391,10 @@ export const TimelineTrack = memo(function TimelineTrack(
         {preview && (
           <span
             className="clip-drag-label"
+            // At the edge, sliding inside the row as the edge nears either end.
             style={{
-              left: `${Math.min(1, Math.max(0, preview.edgeFraction)) * 100}%`,
+              left: `${clamp(preview.edgeFraction, 0, 1) * 100}%`,
+              transform: `translateX(-${clamp(preview.edgeFraction, 0, 1) * 100}%)`,
             }}
           >
             {preview.label}
