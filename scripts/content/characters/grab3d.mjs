@@ -6,13 +6,15 @@
 // its LICENSE.txt dedicates the package to the public domain. The mesh is
 // then simplified to at most 120k triangles with glTF Transform (meshopt keeps
 // the skin weights), textures are capped at 2048 px, the bundled walk and run
-// clips are dropped (the studio has its own recordings) and the material is
-// made dielectric unless the outfit carries metal. Idempotent: downloads are
-// cached in content/.cache/grab3d/<slug> and a character is converted again
-// only when its GLB or thumbnail is missing.
+// clips are dropped (the studio has its own recordings), the rest pose is
+// given straight vertical legs and the material is made dielectric unless the
+// outfit carries metal. Idempotent: downloads are cached in
+// content/.cache/grab3d/<slug> and a character is converted again only when
+// its GLB is missing or the converter version has moved on.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import * as T from "three";
 
 const SITE = "https://grab3d.com";
 // Pinned so every machine simplifies the same way; `npx` fetches it on demand.
@@ -20,7 +22,7 @@ const GLTF_TRANSFORM = "@gltf-transform/cli@4.2.1";
 const MAX_TRIANGLES = 120_000;
 const MAX_TEXTURE = 2048;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 1;
+const CONVERTER_VERSION = 2;
 
 // The cast is the vetted subset of Grab3D's human characters: the ones whose
 // faces, hands and textures hold up as real people (docs/CHARACTER_ASSETS.md
@@ -33,19 +35,85 @@ const CONVERTER_VERSION = 1;
 // almost black there. body: feminine | masculine.
 export const cast = [
   // Everyday
-  { slug: "man-base-character", name: "Man in a T-shirt", body: "masculine", style: "Everyday", description: "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot." },
-  { slug: "woman-base-character", name: "Woman in a sports top", body: "feminine", style: "Everyday", description: "A woman with her dark hair in a bun, in a taupe sports top and fitted charcoal shorts, barefoot." },
+  {
+    slug: "man-base-character",
+    name: "Man in a T-shirt",
+    body: "masculine",
+    style: "Everyday",
+    description:
+      "A man with short dark hair in a plain taupe T-shirt and charcoal shorts, barefoot.",
+  },
+  {
+    slug: "woman-base-character",
+    name: "Woman in a sports top",
+    body: "feminine",
+    style: "Everyday",
+    description:
+      "A woman with her dark hair in a bun, in a taupe sports top and fitted charcoal shorts, barefoot.",
+  },
   // Uniformed
-  { slug: "soldier", name: "Soldier", body: "masculine", style: "Uniformed", description: "A modern infantry soldier in grey-green digital camouflage with a helmet, plate carrier, knee pads, gloves and tan combat boots." },
+  {
+    slug: "soldier",
+    name: "Soldier",
+    body: "masculine",
+    style: "Uniformed",
+    description:
+      "A modern infantry soldier in grey-green digital camouflage with a helmet, plate carrier, knee pads, gloves and tan combat boots.",
+  },
   // Historical
-  { slug: "samurai", name: "Samurai", body: "masculine", style: "Historical", metal: true, description: "A samurai in layered red lacquered armour edged with gold, a crested helmet and a katana at his hip." },
-  { slug: "pirate", name: "Pirate captain", body: "masculine", style: "Historical", metal: true, description: "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots." },
-  { slug: "ninja", name: "Ninja", body: "masculine", style: "Historical", description: "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back." },
+  {
+    slug: "samurai",
+    name: "Samurai",
+    body: "masculine",
+    style: "Historical",
+    metal: true,
+    description:
+      "A samurai in layered red lacquered armour edged with gold, a crested helmet and a katana at his hip.",
+  },
+  {
+    slug: "pirate",
+    name: "Pirate captain",
+    body: "masculine",
+    style: "Historical",
+    metal: true,
+    description:
+      "A pirate captain in a black tricorn hat with a red feather, a navy coat with brass buttons, a teal waistcoat, a coral sash and tall boots.",
+  },
+  {
+    slug: "ninja",
+    name: "Ninja",
+    body: "masculine",
+    style: "Historical",
+    description:
+      "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back.",
+  },
   // Fantasy
-  { slug: "armored-knight", name: "Armoured knight", body: "masculine", style: "Fantasy", description: "A young knight in polished plate armour edged with gold, a royal-blue tabard with a golden sun and a tall blue plume." },
+  {
+    slug: "armored-knight",
+    name: "Armoured knight",
+    body: "masculine",
+    style: "Fantasy",
+    description:
+      "A young knight in polished plate armour edged with gold, a royal-blue tabard with a golden sun and a tall blue plume.",
+  },
   // Sci-fi
-  { slug: "sci-fi-soldier", name: "Sci-fi trooper", body: "masculine", style: "Sci-fi", description: "A futuristic trooper in slim white armour plates over a dark undersuit, with cyan accent lines and a visored helmet that hides the face." },
-  { slug: "cyborg", name: "Cyborg courier", body: "masculine", style: "Sci-fi", metal: true, description: "A courier with an orange prosthetic left arm and lower leg, in a charcoal bomber jacket, cargo trousers and a backpack." },
+  {
+    slug: "sci-fi-soldier",
+    name: "Sci-fi trooper",
+    body: "masculine",
+    style: "Sci-fi",
+    description:
+      "A futuristic trooper in slim white armour plates over a dark undersuit, with cyan accent lines and a visored helmet that hides the face.",
+  },
+  {
+    slug: "cyborg",
+    name: "Cyborg courier",
+    body: "masculine",
+    style: "Sci-fi",
+    metal: true,
+    description:
+      "A courier with an orange prosthetic left arm and lower leg, in a charcoal bomber jacket, cargo trousers and a backpack.",
+  },
 ];
 const idOf = (c) => "grab3d-" + c.slug;
 
@@ -109,7 +177,9 @@ async function fetchPackage(character, dir, log) {
   if (!/CC0 1\.0 Universal/.test(license) || !/public domain/i.test(license))
     throw Error(`${character.slug}: LICENSE.txt is not a CC0 dedication`);
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
-  const glb = manifest.files?.glb;
+  // A light variant is simplified already; so far only the unrigged packages
+  // offer one.
+  const glb = manifest.files?.glb_light ?? manifest.files?.glb;
   if (!glb?.name || !glb.bytes)
     throw Error(`${character.slug}: manifest lists no rigged GLB`);
   const file = path.join(dir, glb.name);
@@ -140,7 +210,16 @@ function blender(root, script, args) {
   const exe = process.env.BLENDER_PATH || blenderPath(root);
   return run(
     exe,
-    ["--background", "--factory-startup", "--python-exit-code", "1", "--python", script, "--", ...args],
+    [
+      "--background",
+      "--factory-startup",
+      "--python-exit-code",
+      "1",
+      "--python",
+      script,
+      "--",
+      ...args,
+    ],
     root,
   );
 }
@@ -177,11 +256,14 @@ function writeGlb(file, json, rest) {
 export function imageSize(bytes) {
   if (bytes.readUInt32BE(0) === 0x89504e47)
     return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-  for (let i = 2; i + 9 < bytes.length; ) {
+  for (let i = 2; i + 9 < bytes.length;) {
     if (bytes[i] !== 0xff) throw Error("not a JPEG marker");
     const marker = bytes[i + 1];
     if (marker >= 0xc0 && marker <= 0xc2)
-      return { height: bytes.readUInt16BE(i + 5), width: bytes.readUInt16BE(i + 7) };
+      return {
+        height: bytes.readUInt16BE(i + 5),
+        width: bytes.readUInt16BE(i + 7),
+      };
     i += 2 + bytes.readUInt16BE(i + 2);
   }
   throw Error("JPEG without a frame header");
@@ -198,12 +280,232 @@ const triangles = (json) =>
       sum +
       mesh.primitives.reduce(
         (n, p) =>
-          n +
-          json.accessors[p.indices ?? p.attributes.POSITION].count / 3,
+          n + json.accessors[p.indices ?? p.attributes.POSITION].count / 3,
         0,
       ),
     0,
   );
+
+/** Element access to one accessor of the BIN chunk, packed or interleaved. */
+function accessorView(json, rest, index) {
+  const accessor = json.accessors[index];
+  const view = json.bufferViews[accessor.bufferView];
+  const size = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }[
+    accessor.type
+  ];
+  const bytes = { 5121: 1, 5123: 2, 5126: 4 }[accessor.componentType];
+  if (!size || !bytes)
+    throw Error(
+      `unsupported accessor ${accessor.type} ${accessor.componentType}`,
+    );
+  const stride = view.byteStride ?? size * bytes;
+  const start = 8 + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const at = (i, k) => start + i * stride + k * bytes;
+  const read = (i, k) => {
+    if (accessor.componentType === 5126) return rest.readFloatLE(at(i, k));
+    const raw =
+      bytes === 1 ? rest.readUInt8(at(i, k)) : rest.readUInt16LE(at(i, k));
+    return accessor.normalized ? raw / (bytes === 1 ? 255 : 65535) : raw;
+  };
+  const write = (i, k, value) => {
+    if (accessor.componentType !== 5126)
+      throw Error("only float accessors are rewritten");
+    rest.writeFloatLE(value, at(i, k));
+  };
+  return { accessor, count: accessor.count, read, write };
+}
+
+/** Local and global node matrices of the scene graph. */
+function nodeMatrices(json) {
+  const local = json.nodes.map((node) =>
+    node.matrix
+      ? new T.Matrix4().fromArray(node.matrix)
+      : new T.Matrix4().compose(
+          new T.Vector3(...(node.translation ?? [0, 0, 0])),
+          new T.Quaternion(...(node.rotation ?? [0, 0, 0, 1])),
+          new T.Vector3(...(node.scale ?? [1, 1, 1])),
+        ),
+  );
+  const parent = json.nodes.map(() => -1);
+  json.nodes.forEach((node, i) =>
+    node.children?.forEach((child) => (parent[child] = i)),
+  );
+  const global = json.nodes.map(() => null);
+  const of = (i) =>
+    (global[i] ??=
+      parent[i] < 0
+        ? local[i].clone()
+        : of(parent[i]).clone().multiply(local[i]));
+  json.nodes.forEach((_, i) => of(i));
+  return { local, parent, global };
+}
+
+const position = (matrix) => new T.Vector3().setFromMatrixPosition(matrix);
+const rotateAbout = (point, quaternion) =>
+  new T.Matrix4()
+    .makeTranslation(point)
+    .multiply(new T.Matrix4().makeRotationFromQuaternion(quaternion))
+    .multiply(new T.Matrix4().makeTranslation(point.clone().negate()));
+const degrees = (a, b) => T.MathUtils.radToDeg(a.angleTo(b));
+
+/** Meshy's rest pose stands with the knees bent and the legs apart (knees
+ * 9–34°, hips to ankles 5–10° off vertical). The studio grounds a character
+ * by the extent of its rest pose and then plays recordings whose legs are
+ * straight, so the feet reach below the floor by whatever the bend and the
+ * splay took from the height: the pirate sank 6 cm and overlapped the stage.
+ * The rest pose is re-posed instead: each leg is straightened and swung
+ * vertical from the hip, the foot keeps its orientation, the skinned vertices
+ * follow and the leg joints' inverse bind matrices are rebuilt, so the file
+ * shows the same character standing tall. */
+function straightenLegs(json, rest, slug) {
+  const byName = new Map(json.nodes.map((node, i) => [node.name, i]));
+  const skin = json.skins[0];
+  const { local, parent, global } = nodeMatrices(json);
+  const ibm = accessorView(json, rest, skin.inverseBindMatrices);
+  const bind = skin.joints.map((_, k) =>
+    new T.Matrix4().fromArray(
+      Array.from({ length: 16 }, (_, e) => ibm.read(k, e)),
+    ),
+  );
+  // With the bind pose as the rest pose, every joint maps the stored
+  // vertices to the world by one and the same transform.
+  const shown = global[skin.joints[0]].clone().multiply(bind[0]);
+  skin.joints.forEach((node, k) => {
+    const other = global[node].clone().multiply(bind[k]);
+    if (other.elements.some((e, i) => Math.abs(e - shown.elements[i]) > 1e-3))
+      throw Error(`${slug}: bind pose differs from rest pose`);
+  });
+  const down = new T.Vector3(0, -1, 0);
+  const changed = new Map();
+  for (const side of ["Left", "Right"]) {
+    const [thigh, shin, foot, toe] = ["UpLeg", "Leg", "Foot", "ToeBase"].map(
+      (bone) => byName.get(side + bone),
+    );
+    if (
+      [thigh, shin, foot].includes(undefined) ||
+      parent[shin] !== thigh ||
+      parent[foot] !== shin
+    )
+      throw Error(`${slug}: unexpected ${side.toLowerCase()} leg`);
+    const hip = position(global[thigh]);
+    const knee = position(global[shin]);
+    const ankle = position(global[foot]);
+    const straighten = rotateAbout(
+      knee,
+      new T.Quaternion().setFromUnitVectors(
+        ankle.clone().sub(knee).normalize(),
+        knee.clone().sub(hip).normalize(),
+      ),
+    );
+    const lower = rotateAbout(
+      hip,
+      new T.Quaternion().setFromUnitVectors(
+        knee.clone().sub(hip).normalize(),
+        down,
+      ),
+    );
+    const footMoved = lower.clone().multiply(straighten).multiply(global[foot]);
+    const footRotation = new T.Quaternion();
+    const footScale = new T.Vector3();
+    global[foot].decompose(new T.Vector3(), footRotation, footScale);
+    const footGlobal = new T.Matrix4().compose(
+      position(footMoved),
+      footRotation,
+      footScale,
+    );
+    changed.set(thigh, lower.clone().multiply(global[thigh]));
+    changed.set(
+      shin,
+      lower.clone().multiply(straighten).multiply(global[shin]),
+    );
+    changed.set(foot, footGlobal);
+    if (toe !== undefined)
+      changed.set(toe, footGlobal.clone().multiply(local[toe]));
+  }
+  // Only rotations change: every joint keeps its place in its parent.
+  for (const [node, matrix] of changed) {
+    const parentGlobal = changed.get(parent[node]) ?? global[parent[node]];
+    const rotation = new T.Quaternion();
+    parentGlobal
+      .clone()
+      .invert()
+      .multiply(matrix)
+      .decompose(new T.Vector3(), rotation, new T.Vector3());
+    if (json.nodes[node].matrix)
+      throw Error(`${slug}: leg joint uses a matrix`);
+    json.nodes[node].rotation = rotation.toArray();
+  }
+  // Pose the skin by the nodes as written, so the file is exactly consistent.
+  const posed = nodeMatrices(json).global;
+  const shownInverse = shown.clone().invert();
+  const jointMatrix = skin.joints.map((node, k) =>
+    shownInverse.clone().multiply(posed[node]).multiply(bind[k]),
+  );
+  const seen = new Set();
+  for (const mesh of json.meshes)
+    for (const primitive of mesh.primitives) {
+      const a = primitive.attributes;
+      if (a.JOINTS_0 === undefined || seen.has(a.POSITION)) continue;
+      seen.add(a.POSITION);
+      if (a.TANGENT !== undefined)
+        throw Error(`${slug}: tangents are not re-posed`);
+      const positions = accessorView(json, rest, a.POSITION);
+      const normals =
+        a.NORMAL !== undefined && accessorView(json, rest, a.NORMAL);
+      const joints = accessorView(json, rest, a.JOINTS_0);
+      const weights = accessorView(json, rest, a.WEIGHTS_0);
+      const blend = new T.Matrix4();
+      const normalMatrix = new T.Matrix3();
+      const vertex = new T.Vector3();
+      const min = [Infinity, Infinity, Infinity];
+      const max = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < positions.count; i++) {
+        blend.elements.fill(0);
+        let total = 0;
+        for (let k = 0; k < 4; k++) {
+          const weight = weights.read(i, k);
+          if (!weight) continue;
+          total += weight;
+          const part = jointMatrix[joints.read(i, k)].elements;
+          for (let e = 0; e < 16; e++) blend.elements[e] += weight * part[e];
+        }
+        if (total < 0.5) throw Error(`${slug}: vertex ${i} is not skinned`);
+        vertex
+          .set(positions.read(i, 0), positions.read(i, 1), positions.read(i, 2))
+          .applyMatrix4(blend);
+        vertex.toArray().forEach((value, axis) => {
+          positions.write(i, axis, value);
+          min[axis] = Math.min(min[axis], value);
+          max[axis] = Math.max(max[axis], value);
+        });
+        if (normals) {
+          vertex
+            .set(normals.read(i, 0), normals.read(i, 1), normals.read(i, 2))
+            .applyNormalMatrix(normalMatrix.getNormalMatrix(blend))
+            .normalize();
+          vertex
+            .toArray()
+            .forEach((value, axis) => normals.write(i, axis, value));
+        }
+      }
+      positions.accessor.min = min;
+      positions.accessor.max = max;
+    }
+  skin.joints.forEach((node, k) => {
+    if (!changed.has(node)) return;
+    const matrix = posed[node].clone().invert().multiply(shown);
+    matrix.elements.forEach((value, e) => ibm.write(k, e, value));
+  });
+  for (const side of ["Left", "Right"]) {
+    const [hip, knee, ankle] = ["UpLeg", "Leg", "Foot"].map((bone) =>
+      position(posed[byName.get(side + bone)]),
+    );
+    const thigh = knee.clone().sub(hip);
+    const shin = ankle.clone().sub(knee);
+    if (degrees(thigh, down) > 0.5 || degrees(shin, thigh) > 0.5)
+      throw Error(`${slug}: ${side.toLowerCase()} leg is not straight`);
+  }
+}
 
 /** Meshy numbers the spine from the top down (Spine02 sits on the hips,
  * Spine carries the shoulders); the studio's rig recognition, like Mixamo,
@@ -211,18 +513,26 @@ const triangles = (json) =>
  * captured torso bend expects them. */
 function renameSpine(json, slug) {
   const byName = new Map(json.nodes.map((n) => [n.name, n]));
-  const chain = ["Hips", "Spine02", "Spine01", "Spine"].map((n) => byName.get(n));
+  const chain = ["Hips", "Spine02", "Spine01", "Spine"].map((n) =>
+    byName.get(n),
+  );
   for (let i = 1; i < chain.length; i++)
-    if (!chain[i] || !chain[i - 1]?.children?.includes(json.nodes.indexOf(chain[i])))
-      throw Error(`${slug}: unexpected spine, no Hips > Spine02 > Spine01 > Spine`);
+    if (
+      !chain[i] ||
+      !chain[i - 1]?.children?.includes(json.nodes.indexOf(chain[i]))
+    )
+      throw Error(
+        `${slug}: unexpected spine, no Hips > Spine02 > Spine01 > Spine`,
+      );
   chain[1].name = "Spine";
   chain[2].name = "Spine1";
   chain[3].name = "Spine2";
 }
 
-/** Drop the bundled clips, name the spine the Mixamo way and settle the
- * material: one textured, double-sided material per character whose metal
- * mask is kept only where the outfit has metal. */
+/** Drop the bundled clips, name the spine the Mixamo way, stand the rest
+ * pose on straight legs and settle the material: one textured, double-sided
+ * material per character whose metal mask is kept only where the outfit has
+ * metal. */
 function correctGlb(file, character) {
   const { json, rest } = readGlb(file);
   const name = path.basename(file);
@@ -243,6 +553,7 @@ function correctGlb(file, character) {
       throw Error(`${name}: ${image.mimeType} texture`);
   delete json.animations;
   renameSpine(json, character.slug);
+  straightenLegs(json, rest, character.slug);
   writeGlb(file, json, rest);
 }
 
@@ -316,13 +627,25 @@ async function convert(character, source, { out, cache, root, log }) {
     // meshopt stops at the error bound before the ratio when the bound is
     // tight; the ratio is lowered until the budget is met.
     const count = triangles(readGlb(step("welded")).json);
-    for (let ratio = Math.min(1, (0.92 * MAX_TRIANGLES) / count); ; ratio *= 0.85) {
+    for (
+      let ratio = Math.min(1, (0.92 * MAX_TRIANGLES) / count);
+      ;
+      ratio *= 0.85
+    ) {
       await gltfTransform(root, [
-        "simplify", step("welded"), step("simplified"),
-        "--ratio", ratio.toFixed(3), "--error", "0.01",
+        "simplify",
+        step("welded"),
+        step("simplified"),
+        "--ratio",
+        ratio.toFixed(3),
+        "--error",
+        "0.01",
       ]);
       if (triangles(readGlb(step("simplified")).json) <= MAX_TRIANGLES) break;
-      if (ratio < 0.05) throw Error(`${character.slug}: cannot reach ${MAX_TRIANGLES} triangles`);
+      if (ratio < 0.05)
+        throw Error(
+          `${character.slug}: cannot reach ${MAX_TRIANGLES} triangles`,
+        );
     }
     correctGlb(step("simplified"), character);
     // prune drops the accessors the removed clips used.
@@ -337,17 +660,27 @@ async function convert(character, source, { out, cache, root, log }) {
     if (oversized) {
       fs.renameSync(step("final"), step("pruned"));
       await gltfTransform(root, [
-        "resize", step("pruned"), step("final"),
-        "--width", String(MAX_TEXTURE), "--height", String(MAX_TEXTURE),
+        "resize",
+        step("pruned"),
+        step("final"),
+        "--width",
+        String(MAX_TEXTURE),
+        "--height",
+        String(MAX_TEXTURE),
       ]);
     }
     fs.copyFileSync(step("final"), glb + ".part");
     fs.renameSync(glb + ".part", glb);
     fs.rmSync(work, { recursive: true, force: true });
+    // The card shows the rest pose, so it follows the file.
+    fs.rmSync(thumb, { force: true });
     fs.writeFileSync(stamp, "");
   }
   if (!fs.existsSync(thumb)) {
-    await blender(root, path.join(cache, "grab3d", "thumbnail.py"), [glb, thumb + ".part.png"]);
+    await blender(root, path.join(cache, "grab3d", "thumbnail.py"), [
+      glb,
+      thumb + ".part.png",
+    ]);
     fs.renameSync(thumb + ".part.png", thumb);
   }
 }
@@ -361,14 +694,19 @@ export async function build({ out, cache, root, log }) {
   fs.writeFileSync(path.join(dir, "thumbnail.py"), THUMBNAIL_PY);
   const sources = new Map();
   await pool(characters, 4, async (character) => {
-    sources.set(character, await fetchPackage(character, path.join(dir, character.slug), log));
+    sources.set(
+      character,
+      await fetchPackage(character, path.join(dir, character.slug), log),
+    );
   });
   // The renders share the GPU: a few side by side is enough.
   await pool(characters, 3, (character) =>
     convert(character, sources.get(character), { out, cache, root, log }),
   );
   return cast
-    .filter((c) => fs.existsSync(path.join(out, "characters", idOf(c) + ".glb")))
+    .filter((c) =>
+      fs.existsSync(path.join(out, "characters", idOf(c) + ".glb")),
+    )
     .map((c) => ({
       id: idOf(c),
       name: c.name,

@@ -13,6 +13,7 @@ import {
 import { contentAssets, contentCredits } from "../shared/contentLibrary";
 import characters from "../shared/content/characters.json";
 import { cast, imageSize } from "../scripts/content/characters/grab3d.mjs";
+import { snapshotCollider } from "../src/collision";
 import { prepareImportedAsset } from "../src/importedAsset";
 import { humanoidWarning } from "../src/rig";
 import { applyAnimatedEntityPose, disposeObject } from "../src/world";
@@ -57,6 +58,44 @@ const triangles = (json: {
       ),
     0,
   );
+
+/** World position of every named node in the file's rest pose. */
+function jointPositions(json: {
+  nodes: {
+    name?: string;
+    matrix?: number[];
+    translation?: number[];
+    rotation?: number[];
+    scale?: number[];
+    children?: number[];
+  }[];
+}) {
+  const local = json.nodes.map((node) =>
+    node.matrix
+      ? new T.Matrix4().fromArray(node.matrix)
+      : new T.Matrix4().compose(
+          new T.Vector3(...(node.translation ?? [0, 0, 0])),
+          new T.Quaternion(...(node.rotation ?? [0, 0, 0, 1])),
+          new T.Vector3(...(node.scale ?? [1, 1, 1])),
+        ),
+  );
+  const parent = json.nodes.map(() => -1);
+  json.nodes.forEach((node, i) =>
+    node.children?.forEach((child) => (parent[child] = i)),
+  );
+  const global: T.Matrix4[] = [];
+  const of = (i: number): T.Matrix4 =>
+    (global[i] ??=
+      parent[i] < 0
+        ? local[i].clone()
+        : of(parent[i]).clone().multiply(local[i]));
+  return new Map(
+    json.nodes.map((node, i) => [
+      node.name,
+      new T.Vector3().setFromMatrixPosition(of(i)),
+    ]),
+  );
+}
 
 /** The same GLB without its images: Node has no image decoder, and the rig
  * checks need only geometry, skin and bones. */
@@ -153,6 +192,25 @@ describe.skipIf(!built)("built Grab3D characters", () => {
       const names = new Set(json.nodes.map((n: { name?: string }) => n.name));
       for (const bone of ["Hips", "Spine", "Spine1", "Spine2", "Head"])
         expect(names.has(bone), `${asset.id} ${bone}`).toBe(true);
+      // The rest pose stands on straight, vertical legs: the studio grounds a
+      // character by this pose, so Meshy's bent, splayed stance would sink the
+      // feet once a recording straightens the legs.
+      const joints = jointPositions(json);
+      for (const side of ["Left", "Right"]) {
+        const [hip, knee, ankle] = ["UpLeg", "Leg", "Foot"].map((bone) =>
+          joints.get(side + bone)!,
+        );
+        const thigh = knee.clone().sub(hip);
+        const shin = ankle.clone().sub(knee);
+        expect(
+          T.MathUtils.radToDeg(thigh.angleTo(new T.Vector3(0, -1, 0))),
+          `${asset.id} ${side} thigh`,
+        ).toBeLessThan(0.5);
+        expect(
+          T.MathUtils.radToDeg(shin.angleTo(thigh)),
+          `${asset.id} ${side} knee`,
+        ).toBeLessThan(0.5);
+      }
       const png = fs.readFileSync(file(asset.thumbnail!));
       expect(png.subarray(1, 4).toString(), asset.id).toBe("PNG");
     }
@@ -193,6 +251,16 @@ describe.skipIf(!built)("built Grab3D characters", () => {
         ]);
         const entity = scene.entities[0];
         expect(entity, asset.id).toBeDefined();
+        // Standing idle, the lowest skinned vertex stays above the studio's
+        // collision floor (4 cm below the stage): a character that reached
+        // it would be flagged as overlapping the backdrop the moment it is
+        // placed.
+        applyAnimatedEntityPose(group, entity, scene, 0);
+        group.updateMatrixWorld(true);
+        expect(
+          snapshotCollider(group).bounds.min.y,
+          `${asset.id} idle`,
+        ).toBeGreaterThan(-0.03);
         entity.clips = [
           { id: "walk", motionId: "walk", duration: 3, playbackRate: 1 },
           { id: "wave", motionId: "wave", duration: 2, transition: "smooth" },
