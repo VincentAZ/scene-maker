@@ -16,7 +16,16 @@ import {
 } from "./motionLibrary";
 import { setAssets, setLayout } from "./setLayouts";
 import { contentAssets, contentURL } from "./contentLibrary";
-import { keepOnSetFloor, setSchema, spawnPosition } from "./sets";
+import {
+  floorPlan,
+  FLOOR_TOP,
+  freeSpot,
+  insidePolygon,
+  keepOnSetFloor,
+  setSchema,
+  spawnPosition,
+  type FloorBlocked,
+} from "./sets";
 import { thinkingLevels } from "./thinking";
 import { MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE } from "./clipTiming";
 export const providers = [
@@ -667,7 +676,11 @@ export const resolveMotionSource = (s: Scene, id: string | undefined) =>
 export function applyCommands(
   scene: Scene,
   input: unknown,
-  options: { deferInteractionTiming?: boolean } = {},
+  options: {
+    deferInteractionTiming?: boolean;
+    /** The loaded 3D set's furniture, so new cast members appear clear of it. */
+    floorBlocked?: FloorBlocked;
+  } = {},
 ): Scene {
   const commands = z.array(commandSchema).max(100).parse(input);
   const s = structuredClone(scene);
@@ -706,6 +719,30 @@ export function applyCommands(
     s.entities = s.entities.filter((entity) => !ids.has(entity.id));
     detachTargets(ids);
   };
+  // The furniture the caller knows belongs to the set loaded now; once a
+  // command changes the set, nothing is known about the new one's.
+  let floorBlocked = options.floorBlocked;
+  // A 3D set replaces the stage: cast members left off its floor plan (at
+  // their studio spots, inside its walls) step onto free floor near its spawn
+  // point, facing its heading. Its furniture is not known until it loads, so
+  // only the plan and the rest of the cast are avoided.
+  const stepOntoSet = () => {
+    floorBlocked = undefined;
+    const set = environmentSet(s);
+    if (!set) return;
+    const plan = floorPlan(set);
+    const stays = (entity: Entity) =>
+      allAssets(s).find((asset) => asset.id === entity.assetId)?.category !==
+        "characters" ||
+      Math.abs(entity.position[1]) > FLOOR_TOP ||
+      insidePolygon(entity.position[0], entity.position[2], plan);
+    const taken = s.entities.filter(stays).map((entity) => entity.position);
+    for (const entity of s.entities.filter((entity) => !stays(entity))) {
+      entity.position = freeSpot(set, taken);
+      entity.rotation = set.heading;
+      taken.push(entity.position);
+    }
+  };
   for (const cmd of commands) {
     if (cmd.type === "add") {
       const a = allAssets(s).find((a) => a.id === cmd.assetId);
@@ -716,6 +753,7 @@ export function applyCommands(
           a.url || a.hdri ? "studio" : (a.style as Scene["environment"]);
         if (a.url || a.hdri) s.environmentAssetId = a.id;
         else delete s.environmentAssetId;
+        stepOntoSet();
         const layout = setLayout(a.id);
         if (layout) {
           for (const placed of layout.props) {
@@ -752,7 +790,7 @@ export function applyCommands(
         name: cmd.name || a.name,
         position: cmd.position
           ? keepOnSetFloor(set, cmd.position)
-          : spawnPosition(set, s.entities.length),
+          : spawnPosition(set, s.entities, floorBlocked),
         rotation: set?.heading ?? 0,
         scale: 1,
         color: a.color,
@@ -949,6 +987,8 @@ export function applyCommands(
         delete s.environmentAssetId;
       Object.assign(s, changes);
       if (changes.environmentAssetId) s.environment = "studio";
+      if (changes.environment || changes.environmentAssetId !== undefined)
+        stepOntoSet();
     }
     if (cmd.type === "createAsset") {
       if (allAssets(s).some((a) => a.id === cmd.asset.id))

@@ -12,8 +12,10 @@ import {
 import { findRoute } from "../shared/navigation";
 import {
   defaultSetBlock,
+  depthInside,
   floorEdges,
   floorPlan,
+  freeSpot,
   insidePolygon,
   keepOnSetFloor,
   onWalkableFloor,
@@ -204,9 +206,15 @@ describe("a 3D set in the environment model", () => {
     expect(home.position.toArray()).toEqual([0, 1.6, 5]);
     expect(home.target.toArray()).toEqual([0, 1, 0]);
     expect(home.maxDistance).toBe(12);
-    // The shell never blocks; the furniture keeps its boxes.
+    // The shell never blocks; the furniture keeps its boxes, and new cast
+    // members are placed clear of it.
     expect(names(model)).toEqual(["wall", "chair", "table"]);
+    expect(environment.floorBlocked(1.5, -1)).toBe(true);
+    expect(environment.floorBlocked(1.9, -1)).toBe(true);
+    expect(environment.floorBlocked(3, 2)).toBe(false);
+    expect(environment.floorBlocked(0, 0)).toBe(false);
     environment.update(starterScene(), settled, () => {});
+    expect(environment.floorBlocked(1.5, -1)).toBe(false);
     expect(show).toHaveBeenLastCalledWith(null);
     expect(environment.modelSet).toBeNull();
   });
@@ -451,27 +459,91 @@ describe("shell and furniture in a 3D set", () => {
 });
 
 describe("spawn and drops on a set's floor", () => {
-  it("places new cast members around the spawn point, turned to the heading, on open floor", () => {
-    const scene = withSet();
-    const placed = applyCommands(scene, [
+  it("places the first cast member on the spawn point and the next ones beside it, facing the heading", () => {
+    const placed = applyCommands(withSet(), [
       { type: "add", assetId: "mila" },
       { type: "add", assetId: "leo" },
+      { type: "add", assetId: "mila" },
     ]);
-    expect(placed.entities[0].rotation).toBe(Math.PI / 2);
-    // Grid cell (-1.5, 0) turned a quarter turn: across becomes depth.
-    expect(placed.entities[0].position[0]).toBeCloseTo(0);
-    expect(placed.entities[0].position[2]).toBeCloseTo(1.5);
-    expect(placed.entities[1].position[2]).toBeCloseTo(0.5);
-    for (const entity of placed.entities)
+    expect(placed.entities.map((entity) => entity.rotation)).toEqual([
+      Math.PI / 2,
+      Math.PI / 2,
+      Math.PI / 2,
+    ]);
+    expect(placed.entities[0].position).toEqual([0, 0, 0]);
+    // A quarter turn: across the view runs along −Z.
+    const [second, third] = placed.entities.slice(1).map((e) => e.position);
+    expect(second[0]).toBeCloseTo(0);
+    expect(second[2]).toBeCloseTo(-0.8);
+    expect(third[0]).toBeCloseTo(0);
+    expect(third[2]).toBeCloseTo(0.8);
+    expect(spawnPosition(undefined, [])).toEqual([-1.5, 0, 0]);
+    expect(
+      spawnPosition(undefined, Array(5).fill({ position: [0, 0, 0] })),
+    ).toEqual([-0.5, 0, 1]);
+  });
+
+  it("keeps new cast members clear of the floor's edge, the furniture and each other", () => {
+    const facing = { ...staging, heading: 0 };
+    // The spawn point 10 cm from the edge of the floor.
+    const corner: SetBlock = {
+      ...facing,
+      walkable: [
+        [-0.1, -0.1],
+        [3, -0.1],
+        [3, 3],
+        [-0.1, 3],
+      ],
+    };
+    const [cx, , cz] = freeSpot(corner, []);
+    expect(depthInside(cx, cz, corner.walkable!)).toBeGreaterThanOrEqual(0.25);
+    // A table on the spawn point and a counter to its right.
+    const blocked = (x: number, z: number) =>
+      Math.hypot(x, z) < 0.6 || (x > 0.5 && x < 1.5 && Math.abs(z) < 0.5);
+    const [bx, , bz] = freeSpot(facing, [], blocked);
+    expect(blocked(bx, bz)).toBe(false);
+    expect(Math.hypot(bx, bz)).toBeLessThan(1.5);
+    // Nobody lands on someone already there, however crowded the spawn.
+    const taken = [
+      [0, 0, 0],
+      [0.8, 0, 0],
+      [-0.8, 0, 0],
+    ];
+    const next = freeSpot(facing, taken);
+    for (const other of taken)
       expect(
-        insidePolygon(
-          entity.position[0],
-          entity.position[2],
-          staging.walkable!,
-        ),
-      ).toBe(true);
-    expect(spawnPosition(undefined, 0)).toEqual([-1.5, 0, 0]);
-    expect(spawnPosition(undefined, 5)).toEqual([-0.5, 0, 1]);
+        Math.hypot(next[0] - other[0], next[2] - other[2]),
+      ).toBeGreaterThanOrEqual(0.75);
+    // The loaded set's furniture reaches new cast members through applyCommands.
+    const scene = applyCommands(
+      withSet({ ...set, set: facing }),
+      [{ type: "add", assetId: "leo" }],
+      { floorBlocked: blocked },
+    );
+    const [ex, , ez] = scene.entities.at(-1)!.position;
+    expect(blocked(ex, ez)).toBe(false);
+  });
+
+  it("moves the cast left outside a new set onto its floor, in the same step", () => {
+    const studio = applyCommands(blankScene(), [
+      { type: "createAsset", asset: set },
+      { type: "add", assetId: "mila", position: [9, 0, 9] },
+      { type: "add", assetId: "leo", position: [0.5, 0, 0.5] },
+      { type: "add", assetId: "ph-dining-chair-leather", position: [9, 0, -9] },
+    ]);
+    const staged = applyCommands(studio, [{ type: "add", assetId: set.id }]);
+    const [mila, leo, chair] = staged.entities;
+    expect(
+      insidePolygon(mila.position[0], mila.position[2], staging.walkable!),
+    ).toBe(true);
+    expect(
+      Math.hypot(mila.position[0] - 0.5, mila.position[2] - 0.5),
+    ).toBeGreaterThanOrEqual(0.75);
+    expect(mila.rotation).toBe(staging.heading);
+    // On the floor already, or not cast: left where they were.
+    expect(leo.position).toEqual([0.5, 0, 0.5]);
+    expect(leo.rotation).toBe(0);
+    expect(chair.position).toEqual([9, 0, -9]);
   });
 
   it("leaves a placement resting on furniture where it was put", () => {

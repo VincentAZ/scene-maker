@@ -10,6 +10,13 @@ import {
   type SetLight,
 } from "./modelSet";
 import { createEnvironment, disposeObject } from "./world";
+import { obstacleMesh, snapshotCollider } from "./collision";
+import { FLOOR_TOP } from "../shared/sets";
+
+/** A standing body's reach from its centre and its height, for placing new
+ * cast members clear of a set's furniture. */
+const BODY_HALF_WIDTH = 0.28,
+  BODY_HEIGHT = 1.7;
 
 export const environmentAsset = (scene: Scene) =>
   allAssets(scene).find((asset) => asset.id === scene.environmentAssetId);
@@ -61,6 +68,8 @@ export class EnvironmentModel {
   photo: PhotoSet | null = null;
   /** The loaded 3D set's staging and light, applied by the viewport. */
   modelSet: ModelSet | null = null;
+  /** The loaded 3D set's furniture within a standing body's height. */
+  private furniture: T.Box3[] = [];
   private pending: object | null = null;
 
   constructor(
@@ -78,6 +87,16 @@ export class EnvironmentModel {
   get view() {
     return this.photo ?? this.modelSet;
   }
+
+  /** Would a body standing at this floor point touch the loaded 3D set's
+   * furniture? New cast members are placed clear of it. */
+  floorBlocked = (x: number, z: number) => {
+    const body = new T.Box3(
+      new T.Vector3(x - BODY_HALF_WIDTH, FLOOR_TOP, z - BODY_HALF_WIDTH),
+      new T.Vector3(x + BODY_HALF_WIDTH, BODY_HEIGHT, z + BODY_HALF_WIDTH),
+    );
+    return this.furniture.some((box) => box.intersectsBox(body));
+  };
 
   update(
     scene: Scene,
@@ -175,6 +194,9 @@ export class EnvironmentModel {
       root.add(object);
       const set = setBlockFor(asset, object);
       markSetCollision(object, set);
+      this.furniture = snapshotCollider(object, obstacleMesh).boxes.filter(
+        (box) => box.max.y > FLOOR_TOP && box.min.y < BODY_HEIGHT,
+      );
       this.modelSet = new ModelSet(asset, set, loaded);
       this.viewer?.progress?.(null);
       this.viewer?.show(this.modelSet);
@@ -196,6 +218,7 @@ export class EnvironmentModel {
       this.viewer?.show(null);
       photo.dispose();
     }
+    this.furniture = [];
     if (this.modelSet) {
       const shown = this.modelSet;
       this.modelSet = null;

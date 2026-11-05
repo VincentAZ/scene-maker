@@ -86,6 +86,8 @@ export type ViewportHandle = {
   waitForScene: (scene: Scene, signal?: AbortSignal) => Promise<void>;
   sequenceOrigin: (actorId: string, beforeClipId?: string) => PathFrame;
   routeContext: (actorId: string, beforeClipId?: string) => RouteContext;
+  /** Would a body standing here touch the loaded 3D set's furniture? */
+  floorBlocked: (x: number, z: number) => boolean;
   planRoute: (
     actorId: string,
     targetId: string,
@@ -1225,6 +1227,9 @@ export const Viewport = forwardRef<ViewportHandle, Props>(
           c.camera.position.copy(target).addScaledVector(direction, distance);
           c.controls.update();
           c.renderer.render(c.world, c.camera);
+        },
+        floorBlocked(x, z) {
+          return context.current?.environment.floorBlocked(x, z) ?? false;
         },
         reset() {
           const c = context.current;

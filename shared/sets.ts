@@ -270,22 +270,109 @@ export function keepOnSetFloor(
   return [x, position[1], z];
 }
 
+/** How far a floor point lies inside a polygon: its distance to the nearest
+ * edge, negative outside. */
+export function depthInside(
+  x: number,
+  z: number,
+  polygon: readonly FloorPoint[],
+) {
+  let nearest = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [ax, az] = polygon[j],
+      [bx, bz] = polygon[i];
+    const dx = bx - ax,
+      dz = bz - az,
+      length = dx * dx + dz * dz;
+    const t = length
+      ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / length))
+      : 0;
+    nearest = Math.min(nearest, Math.hypot(x - ax - dx * t, z - az - dz * t));
+  }
+  return insidePolygon(x, z, polygon) ? nearest : -nearest;
+}
+
+/** Room a body keeps from the edge of the open floor, and from each other
+ * cast member, when it is placed. */
+const BODY_RADIUS = 0.25,
+  CAST_SPACING = 0.75;
+
+/** Is this floor point taken by the set's furniture? Known only once the
+ * set's model has loaded (src/environmentModel.ts). */
+export type FloorBlocked = (x: number, z: number) => boolean;
+
 /**
- * Where the n-th new scene object stands: a 4 × 3 grid of one-metre cells
- * around the set's spawn point, turned to its heading and kept on open floor.
- * Without a set the grid surrounds the studio origin.
+ * Where a new cast member stands in a 3D set: the spawn point itself when it
+ * is free, otherwise the nearest free spot searched outward from it in the
+ * set's own frame — across the view first, then behind, then in front. A free
+ * spot is on the open floor at least a body's radius from its edge, clear of
+ * the set's furniture and CAST_SPACING from everyone already placed. A full
+ * floor gives up the spacing, and then the furniture, before the spawn.
  */
-export function spawnPosition(set: SetBlock | undefined, index: number): Vec3 {
-  const across = (index % 4) - 1.5,
-    ahead = Math.floor(index / 4) % 3;
-  if (!set) return [across, 0, ahead];
+export function freeSpot(
+  set: SetBlock,
+  taken: readonly (readonly number[])[],
+  blocked?: FloorBlocked,
+): Vec3 {
+  const plan = floorPlan(set);
   const sin = Math.sin(set.heading),
     cos = Math.cos(set.heading);
-  return keepOnSetFloor(set, [
+  const step = 0.4,
+    reach = 12;
+  const offsets: [number, number, number][] = [];
+  for (let i = -reach; i <= reach; i++)
+    for (let j = -reach; j <= reach; j++) {
+      const across = i * step,
+        ahead = j * step;
+      // Rows in front of the first would hide it from the home camera.
+      const cost =
+        Math.abs(across) +
+        1.5 * Math.abs(ahead) +
+        (ahead > 0 ? 0.6 * ahead : 0);
+      offsets.push([cost, across, ahead]);
+    }
+  offsets.sort((a, b) => a[0] - b[0] || b[1] - a[1] || a[2] - b[2]);
+  const spots = offsets.map(([, across, ahead]): Vec3 => [
     set.spawn[0] + across * cos + ahead * sin,
-    set.spawn[1],
+    0,
     set.spawn[2] - across * sin + ahead * cos,
   ]);
+  const open = (spot: Vec3) =>
+    depthInside(spot[0], spot[2], plan) >= BODY_RADIUS &&
+    !blocked?.(spot[0], spot[2]);
+  const apart = (spot: Vec3) =>
+    taken.every(
+      (other) =>
+        Math.hypot(other[0] - spot[0], other[2] - spot[2]) >= CAST_SPACING,
+    );
+  const found =
+    spots.find((spot) => open(spot) && apart(spot)) ??
+    spots.find(open) ??
+    spots.find(
+      (spot) =>
+        depthInside(spot[0], spot[2], plan) >= BODY_RADIUS && apart(spot),
+    );
+  return found ?? keepOnSetFloor(set, [set.spawn[0], 0, set.spawn[2]]);
+}
+
+/**
+ * Where a new scene object stands: in a 3D set, the nearest free spot to its
+ * spawn point (`freeSpot`); on the studio stage, the next cell of a 4 × 3
+ * grid of one-metre cells around the origin.
+ */
+export function spawnPosition(
+  set: SetBlock | undefined,
+  entities: readonly { position: readonly number[] }[],
+  blocked?: FloorBlocked,
+): Vec3 {
+  if (set)
+    return freeSpot(
+      set,
+      entities.map((entity) => entity.position),
+      blocked,
+    );
+  const index = entities.length;
+  return [(index % 4) - 1.5, 0, Math.floor(index / 4) % 3];
 }
 
 /** The home view for a set without an authored one: a standing camera at

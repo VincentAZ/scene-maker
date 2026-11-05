@@ -680,9 +680,16 @@ export default function App() {
     setScene(next);
     setHistoryVersion((v) => v + 1);
   };
+  // New cast members in a 3D set appear clear of its loaded furniture.
+  const floorBlocked = (x: number, z: number) =>
+    viewport.current?.floorBlocked(x, z) ?? false;
   const execute = (commands: Command[], coalesce?: string) => {
     try {
-      change(applyCommands(sceneRef.current, commands), false, coalesce);
+      change(
+        applyCommands(sceneRef.current, commands, { floorBlocked }),
+        false,
+        coalesce,
+      );
       return true;
     } catch (e) {
       report((e as Error).message);
@@ -916,7 +923,9 @@ export default function App() {
         load: loadScene,
         read: (id) => api<Scene>("/api/projects/" + id),
         edit: (commands) =>
-          applyAssistantScene(applyCommands(sceneRef.current, commands)),
+          applyAssistantScene(
+            applyCommands(sceneRef.current, commands, { floorBlocked }),
+          ),
         perform: performStudioStep,
       });
       setMessages((m) => [
