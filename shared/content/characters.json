@@ -748,50 +748,5 @@
       "license": "CC0",
       "source": "https://grab3d.com/models/characters/ninja/"
     }
-  },
-  {
-    "id": "grab3d-armored-knight",
-    "name": "Armoured knight",
-    "category": "characters",
-    "style": "Fantasy",
-    "body": "masculine",
-    "url": "/content/characters/grab3d-armored-knight.glb",
-    "thumbnail": "/content/characters/grab3d-armored-knight.png",
-    "description": "A young knight in polished plate armour edged with gold, a royal-blue tabard with a golden sun and a tall blue plume.",
-    "credit": {
-      "author": "Alexander Popov (Grab3D), AI-assisted",
-      "license": "CC0",
-      "source": "https://grab3d.com/models/characters/armored-knight/"
-    }
-  },
-  {
-    "id": "grab3d-sci-fi-soldier",
-    "name": "Sci-fi trooper",
-    "category": "characters",
-    "style": "Sci-fi",
-    "body": "masculine",
-    "url": "/content/characters/grab3d-sci-fi-soldier.glb",
-    "thumbnail": "/content/characters/grab3d-sci-fi-soldier.png",
-    "description": "A futuristic trooper in slim white armour plates over a dark undersuit, with cyan accent lines and a visored helmet that hides the face.",
-    "credit": {
-      "author": "Alexander Popov (Grab3D), AI-assisted",
-      "license": "CC0",
-      "source": "https://grab3d.com/models/characters/sci-fi-soldier/"
-    }
-  },
-  {
-    "id": "grab3d-cyborg",
-    "name": "Cyborg courier",
-    "category": "characters",
-    "style": "Sci-fi",
-    "body": "masculine",
-    "url": "/content/characters/grab3d-cyborg.glb",
-    "thumbnail": "/content/characters/grab3d-cyborg.png",
-    "description": "A courier with an orange prosthetic left arm and lower leg, in a charcoal bomber jacket, cargo trousers and a backpack.",
-    "credit": {
-      "author": "Alexander Popov (Grab3D), AI-assisted",
-      "license": "CC0",
-      "source": "https://grab3d.com/models/characters/cyborg/"
-    }
   }
 ]

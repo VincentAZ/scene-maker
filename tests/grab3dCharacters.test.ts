@@ -136,7 +136,6 @@ describe("Grab3D character catalogue", () => {
       expect(asset.description.length).toBeGreaterThan(10);
       expect([
         "Everyday",
-        "Service",
         "Uniformed",
         "Historical",
         "Fantasy",

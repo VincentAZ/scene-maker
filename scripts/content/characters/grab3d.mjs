@@ -1,7 +1,7 @@
 // Realistic characters from Grab3D (CC0, grab3d.com): AI-assisted humans by
 // Alexander Popov, rigged by Meshy with a Mixamo-named skeleton. The skeleton
-// has no face bones and, apart from the samurai and the viking, no finger
-// bones, so hands stay in their relaxed rest pose. Each rigged GLB is
+// has no face bones and, apart from the samurai's, no finger bones, so hands
+// stay in their relaxed rest pose. Each rigged GLB is
 // downloaded with its manifest and LICENSE.txt, and a model is only used once
 // its LICENSE.txt dedicates the package to the public domain. The mesh is
 // then simplified to at most 120k triangles with glTF Transform (meshopt keeps
@@ -28,11 +28,9 @@ const CONVERTER_VERSION = 2;
 // faces, hands and textures hold up as real people (docs/CHARACTER_ASSETS.md
 // lists the rejected ones and why). slug: the model page
 // grab3d.com/models/characters/<slug>/. metal: the outfit has small metal
-// parts (buckles, a blade, a prosthetic) whose painted metal mask is kept;
+// parts (buckles, buttons, a blade) whose painted metal mask is kept;
 // otherwise the character is fully dielectric so stray mask values cannot
-// darken skin or cloth. The knight's plate stays dielectric too: the studio
-// stage has little for a metal to reflect, so a mostly-metal outfit turns
-// almost black there. body: feminine | masculine.
+// darken skin or cloth. body: feminine | masculine.
 export const cast = [
   // Everyday
   {
@@ -86,33 +84,6 @@ export const cast = [
     style: "Historical",
     description:
       "A masked ninja in a fitted indigo hood and wrapped jacket with a persimmon sash, forearm wraps and a short sword across his back.",
-  },
-  // Fantasy
-  {
-    slug: "armored-knight",
-    name: "Armoured knight",
-    body: "masculine",
-    style: "Fantasy",
-    description:
-      "A young knight in polished plate armour edged with gold, a royal-blue tabard with a golden sun and a tall blue plume.",
-  },
-  // Sci-fi
-  {
-    slug: "sci-fi-soldier",
-    name: "Sci-fi trooper",
-    body: "masculine",
-    style: "Sci-fi",
-    description:
-      "A futuristic trooper in slim white armour plates over a dark undersuit, with cyan accent lines and a visored helmet that hides the face.",
-  },
-  {
-    slug: "cyborg",
-    name: "Cyborg courier",
-    body: "masculine",
-    style: "Sci-fi",
-    metal: true,
-    description:
-      "A courier with an orange prosthetic left arm and lower leg, in a charcoal bomber jacket, cargo trousers and a backpack.",
   },
 ];
 const idOf = (c) => "grab3d-" + c.slug;
