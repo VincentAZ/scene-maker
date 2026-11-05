@@ -28,6 +28,7 @@ import sys
 import bpy
 import numpy as np
 from mathutils import Vector, kdtree
+from mathutils.bvhtree import BVHTree
 
 args = sys.argv[sys.argv.index("--") + 1:]
 source, work, destination = args[:3]
@@ -702,7 +703,10 @@ def role_by_name(bone):
     return chains[slot][0] if chains.get(slot) else None
 
 
-body_roles = [b for slot, b in roles.items() if not slot.startswith("eye")]
+# Hosts for bones and parts nothing else places. Not the neck: the neck
+# folds what hangs from it into itself, and a stray lip bone belongs to the
+# head.
+body_roles = [b for slot, b in roles.items() if not slot.startswith("eye") and slot != "neck"]
 
 
 def segment_distance(point, head, tail):
@@ -811,20 +815,24 @@ def transfer_weights(obj, source):
     obj.modifiers.new("Armature", "ARMATURE").object = rig
 
 
+surface_trees = {}
+
+
 def touching_surface(obj, centre, reach=0.03):
-    """The skinned mesh whose surface comes within `reach` of a point."""
+    """The skinned mesh whose surface comes within `reach` of a point. The
+    exported meshes are their rest shapes already, so their own data is
+    what the surface looks like."""
     best, distance = None, reach
     for other in meshes:
         if other == obj or not has_weights(other):
             continue
-        corners = [other.matrix_world @ Vector(c) for c in other.bound_box]
-        low = Vector([min(c[i] for c in corners) for i in range(3)])
-        high = Vector([max(c[i] for c in corners) for i in range(3)])
-        if any(centre[i] < low[i] - reach or centre[i] > high[i] + reach for i in range(3)):
-            continue
-        found, location, _, _ = other.closest_point_on_mesh(other.matrix_world.inverted() @ centre)
-        if found and (other.matrix_world @ location - centre).length < distance:
-            best, distance = other, (other.matrix_world @ location - centre).length
+        if other not in surface_trees:
+            surface_trees[other] = BVHTree.FromPolygons(
+                [other.matrix_world @ v.co for v in other.data.vertices],
+                [tuple(p.vertices) for p in other.data.polygons])
+        location, _, _, gap = surface_trees[other].find_nearest(centre, distance)
+        if location is not None and gap < distance:
+            best, distance = other, gap
     return best
 
 
@@ -858,7 +866,7 @@ def skin(obj, seen=()):
         if has_weights(obj):
             log("skinned", obj.name, "like", host.name, "(touching)")
             return True
-    nearest = min((rig.data.bones[n] for slot, n in role_names.items() if not slot.startswith("eye")),
+    nearest = min((rig.data.bones[n] for slot, n in role_names.items() if not slot.startswith("eye") and slot != "neck"),
                   key=lambda b: segment_distance(centre, rig.matrix_world @ b.head_local,
                                                  rig.matrix_world @ b.tail_local)).name
     bind(obj, [(nearest, 1.0)])

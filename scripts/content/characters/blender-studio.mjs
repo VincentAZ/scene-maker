@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 9;
+const CONVERTER_VERSION = 10;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../blender",
