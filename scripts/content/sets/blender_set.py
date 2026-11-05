@@ -987,8 +987,15 @@ def rebuild_material(material, spec):
 
     def plug_alpha(out):
         # A cut-out (a leaf, a fringe) is either there or not: rounding tells
-        # the glTF exporter to write MASK, which needs no depth sorting.
-        if spec.get("alphaMode", "MASK") == "MASK":
+        # the glTF exporter to write MASK, which needs no depth sorting. A
+        # mostly empty mask (a wire basket) keeps soft alpha, or its thin
+        # strands vanish once the texture is seen from afar.
+        mode = spec.get("alphaMode")
+        if mode is None:
+            image = out.node.image
+            px = read_pixels(image)
+            mode = "MASK" if float(px[..., 3 if out.name == "Alpha" else 0].mean()) >= 0.35 else "BLEND"
+        if mode == "MASK":
             cut = tree.nodes.new("ShaderNodeMath")
             cut.operation = "ROUND"
             tree.links.new(out, cut.inputs[0])

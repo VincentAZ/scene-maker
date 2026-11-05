@@ -27,7 +27,7 @@ import { download, fetchJSON, mb } from "../lib/download.mjs";
 import { blenderLib } from "../lib/thumbnail.mjs";
 
 // Bump to convert every set again after changing the converter.
-const CONVERTER_VERSION = 8;
+const CONVERTER_VERSION = 9;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // NVIDIA's stable download URL bounces to a signed, short-lived link; the zip
