@@ -436,6 +436,7 @@ export function applyEntityPose(
   group.visible = e.visible;
   group.userData.climb = pose.climb;
   group.userData.seat = pose.seat;
+  group.userData.seatWarning = pose.seatWarning;
   group.userData.motionWarning =
     e.visible &&
     e.clips.some(

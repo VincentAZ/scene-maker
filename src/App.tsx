@@ -70,6 +70,7 @@ import {
   nearestSeat,
   reseat,
   seatedAddPlan,
+  missingSitDown,
 } from "../shared/seating";
 import { ladderProfile, nearestLadder } from "../shared/ladder";
 import { contactAction } from "../shared/transitions";
@@ -852,7 +853,7 @@ export default function App() {
       disposeObject(model);
       if (!seat) {
         report(
-          `No sitting surface was found on ${asset.name} between knee and table height.`,
+          `No level sitting surface at least 20 cm wide was found on ${asset.name} between knee and table height.`,
         );
         return;
       }
@@ -993,11 +994,17 @@ export default function App() {
       toast("Add a ladder from Props, then try this action.");
       return;
     }
-    const seat =
+    // A seated take nobody sat down on yet gets this Sit down put in front of
+    // it, on its own seat; otherwise Sit down goes on the nearest seat.
+    const gap =
       motion.role === "sit"
+        ? missingSitDown(actor.clips, allMotions(current))
+        : undefined;
+    const seat =
+      motion.role === "sit" && !gap
         ? nearestSeat(current, allAssets(current), actor)
         : undefined;
-    if (motion.role === "sit" && !seat) {
+    if (motion.role === "sit" && !gap && !seat) {
       toast(
         "Add a chair with a sitting surface from Props, then try this action.",
       );
@@ -1013,10 +1020,32 @@ export default function App() {
       motion.id,
     );
     try {
+      const library = studioLibraryCommands(current, studioLibrary, {
+        motionIds: [motion.id],
+      });
+      if (gap) {
+        const clips = [...actor.clips];
+        clips.splice(gap.index, 0, {
+          id: uid(),
+          motionId: motion.id,
+          duration: motion.duration,
+          ...(motion.kind === "imported" ? { playbackRate: 1 } : {}),
+          targetId: gap.targetId,
+          transition: "smooth",
+        });
+        if (
+          execute([
+            ...library,
+            { type: "update", id: actor.id, changes: { clips } },
+          ])
+        )
+          toast(
+            `${motion.name} added to ${actor.name}’s sequence, before ${gap.name}`,
+          );
+        return;
+      }
       const added = execute([
-        ...studioLibraryCommands(current, studioLibrary, {
-          motionIds: [motion.id],
-        }),
+        ...library,
         ...(seated.leadIn
           ? [
               {
@@ -3050,22 +3079,38 @@ export default function App() {
                           );
                           const seatAction =
                             motion?.role === "sit" || seatedRecording(motion);
-                          // What the seat makes of this action, as the
-                          // viewport reports it; the body's own reach is only
-                          // known once the character is loaded there.
+                          // What the seat makes of this action, said once
+                          // under the action that takes the seat. Reach and
+                          // width are judged on the body the viewport
+                          // measured; until the character is loaded there
+                          // only the missing Sit down can be told.
                           const seatNote = (() => {
                             if (!target || !seatAction) return;
                             const start = entity.clips
                               .slice(0, i)
                               .reduce((sum, clip) => sum + clip.duration, 0);
-                            const seat = entityPose(
+                            const body = viewport.current?.seatingBody(
+                              entity.id,
+                            );
+                            const options = { seatBody: body };
+                            const pose = entityPose(
                               entity,
                               scene,
                               start + 1e-3,
-                            ).seat;
-                            return seat?.plan.targetId === target.id
-                              ? seat.plan.warning || seat.notice
-                              : undefined;
+                              options,
+                            );
+                            if (!pose.seat)
+                              return body ? pose.seatWarning : undefined;
+                            if (
+                              pose.seat.plan.targetId !== target.id ||
+                              (i > 0 &&
+                                entityPose(entity, scene, start - 1e-3, options)
+                                  .seat?.plan.targetId === target.id)
+                            )
+                              return;
+                            return body
+                              ? pose.seat.plan.warning || pose.seat.notice
+                              : pose.seat.notice;
                           })();
                           return (
                             <div className="clip-editor" key={c.id}>

@@ -31,6 +31,10 @@ export type Pose = {
   heading?: number;
   climb?: LadderSample;
   seat?: SeatSample;
+  /** A chosen seat the body is not held on (hidden, moving, out of the Sit
+   * down's reach): the take plays as it does without a seat, and this says
+   * why. */
+  seatWarning?: string;
 };
 /** Scene transforms carry no limb rotations: every body comes from a
  * recorded take, sampled on the rig after the transform is applied. */
@@ -190,45 +194,53 @@ export function entityPose(
       asset &&
       seatProfile(asset) &&
       seatedRecording(m) &&
-      seated?.targetId !== target.id
+      (seated?.targetId !== target.id || seated.warning)
     ) {
       // A take performed seated from start to finish is held on its seat the
       // way the hold after a targeted Sit down is (sitting down on this seat
       // earlier carries straight into it, below). Without that Sit down the
       // body snaps onto the seat, and the notice asks for one.
-      seated = planSeat(
-        p.root,
-        p.heading!,
-        e,
-        target,
-        asset,
-        options.canSit !== false,
-        options.seatBody,
-        true,
-      );
-      const native = recorded();
-      p.root = [...(seated.warning ? seated.from : seated.centre)];
-      p.seat = {
-        plan: seated,
-        amount: seated.warning ? 0 : 1,
-        progress: 1,
-        standing: false,
-        ...(seated.warning
-          ? {}
-          : {
-              notice: `${e.name} sits on ${target.name} without sitting down first. Add Sit down before it.`,
-            }),
-      };
-      p.climb = undefined;
-      p.rotations = neutralRotations();
-      const facing = seated.warning ? seated.heading : seated.facing;
-      if (time < end) {
-        p.heading = facing - (native?.startHeading ?? 0);
-        return p;
+      const plan =
+        seated?.targetId === target.id
+          ? seated
+          : planSeat(
+              p.root,
+              p.heading!,
+              e,
+              target,
+              asset,
+              options.canSit !== false,
+              options.seatBody,
+              true,
+            );
+      if (plan.warning) {
+        // A seat that cannot be used (hidden, moving, beyond the Sit down's
+        // reach) holds nothing: the take plays where the actor is, as it
+        // does without a seat, and the warning says why.
+        seated = undefined;
+        p.seat = undefined;
+        if (time < end) p.seatWarning = plan.warning;
+      } else {
+        seated = plan;
+        const native = recorded();
+        p.root = [...plan.centre];
+        p.seat = {
+          plan,
+          amount: 1,
+          progress: 1,
+          standing: false,
+          notice: `${e.name} sits on ${target.name} without sitting down first. Add Sit down before it.`,
+        };
+        p.climb = undefined;
+        p.rotations = neutralRotations();
+        if (time < end) {
+          p.heading = plan.facing - (native?.startHeading ?? 0);
+          return p;
+        }
+        p.heading = plan.facing + (native?.heading ?? 0);
+        start = end;
+        continue;
       }
-      p.heading = facing + (native?.heading ?? 0);
-      start = end;
-      continue;
     }
     if (m.role === "stand" && seated) {
       const sample = sampleSeat(

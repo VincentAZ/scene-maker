@@ -165,11 +165,12 @@ export function measureSeatSurface(
       break;
     }
   }
-  return {
-    position: [cx, height, cz],
-    width: x1 - x0 + step,
-    depth: z1 - z0 + step,
-  };
+  // A level patch under 20 cm either way (an armrest, a perch) is no seat;
+  // 20 cm is also the least the seat metadata accepts.
+  const width = x1 - x0 + step,
+    depth = z1 - z0 + step;
+  if (width < 0.2 || depth < 0.2) return;
+  return { position: [cx, height, cz], width, depth };
 }
 
 function percentile(values: number[], q: number) {

@@ -4,6 +4,7 @@ import { allAssets, allMotions, type Scene } from "../shared/scene";
 import { type PerformanceAction, type Speech } from "../shared/conversation";
 import { seatProfile } from "../shared/seating";
 import { ladderProfile } from "../shared/ladder";
+import { seatedRecording } from "../shared/motionLibrary";
 
 export function DialogueComposer({
   scene,
@@ -81,17 +82,22 @@ export function DialogueComposer({
           <div className="dialogue-performance">
             {performance.map((action, index) => {
               const motion = motions.find((m) => m.id === action.motionId);
+              // A take performed seated may name its seat; left open, it
+              // keeps the seat the speaker already sits on.
+              const seatable = seatedRecording(motion);
               const targeted =
                 motion &&
-                ["pick", "sip", "place", "sit", "climb"].includes(
+                (["pick", "sip", "place", "sit", "climb"].includes(
                   motion.role ?? "",
-                );
+                ) ||
+                  seatable);
               const props = scene.entities.filter((e) => {
                 const asset = allAssets(scene).find((a) => a.id === e.assetId);
                 return (
                   e.visible &&
                   asset?.category === "props" &&
-                  (motion?.role !== "sit" || seatProfile(asset)) &&
+                  ((motion?.role !== "sit" && !seatable) ||
+                    seatProfile(asset)) &&
                   (motion?.role !== "climb" || ladderProfile(asset))
                 );
               });
@@ -148,7 +154,7 @@ export function DialogueComposer({
                       Use prop
                       <select
                         aria-label={`Line action ${index + 1} prop`}
-                        required
+                        required={!seatable}
                         value={action.targetId || ""}
                         onChange={(event) =>
                           update(index, {
@@ -159,7 +165,7 @@ export function DialogueComposer({
                       >
                         <option value="">
                           Choose a{" "}
-                          {motion?.role === "sit"
+                          {motion?.role === "sit" || seatable
                             ? "seat"
                             : motion?.role === "climb"
                               ? "ladder"

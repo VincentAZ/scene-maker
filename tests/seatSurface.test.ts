@@ -1,6 +1,7 @@
 import { it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import * as T from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { applyCommands, blankScene, allAssets } from "../shared/scene";
 import { seatProfile } from "../shared/seating";
@@ -80,6 +81,24 @@ it.skipIf(!built)(
     }
   },
 );
+
+it("takes no level patch narrower than 20 cm for a seat", () => {
+  const slab = (width: number, depth: number) => {
+    const model = new T.Group();
+    const top = new T.Mesh(new T.BoxGeometry(width, 0.04, depth));
+    top.position.y = 0.45;
+    model.add(top);
+    return model;
+  };
+  // An armrest or a perch: wide enough in area, too narrow to sit on.
+  expect(measureSeatSurface(slab(0.15, 0.4))).toBeUndefined();
+  expect(measureSeatSurface(slab(0.4, 0.15))).toBeUndefined();
+  const seat = measureSeatSurface(slab(0.4, 0.4));
+  expect(seat).toBeDefined();
+  expect(seat!.position[1]).toBeCloseTo(0.47, 2);
+  expect(seat!.width).toBeGreaterThan(0.36);
+  expect(seat!.depth).toBeGreaterThan(0.36);
+});
 
 it("stores a measured seat on the creator's own prop only", () => {
   const chair = {

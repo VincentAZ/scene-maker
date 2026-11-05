@@ -98,15 +98,22 @@ export function seatTiming(motion: Motion): [number, number] | undefined {
 /** A recording performed seated from start to finish (Talk while seated,
  * Chin in hand…), measured from its hips. With a seat chosen it is held on
  * that seat like the hold after a targeted Sit down; takes that sit down or
- * get up inside the take are not seated recordings. */
+ * get up inside the take are not seated recordings. Asked every frame, so
+ * the takes are keyed once by source and take name. */
+const seatedTakes = new Set(
+  catalogueEntries
+    .filter((entry) => entry.posture === "seated")
+    .map(
+      (entry) =>
+        `cmu-capture-${entry.trial.replaceAll("_", "-")}|${entry.trial}`,
+    ),
+);
 export function seatedRecording(motion: Motion | undefined) {
-  if (!motion || motion.kind !== "imported" || motion.path) return false;
-  return catalogueEntries.some(
-    (entry) =>
-      entry.posture === "seated" &&
-      entry.trial === motion.animationName &&
-      `cmu-capture-${entry.trial.replaceAll("_", "-")}` ===
-        motion.sourceAssetId,
+  return (
+    !!motion &&
+    motion.kind === "imported" &&
+    !motion.path &&
+    seatedTakes.has(`${motion.sourceAssetId}|${motion.animationName}`)
   );
 }
 /** A library recording performed in place (it does not travel). */

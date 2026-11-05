@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Plus } from "lucide-react";
 import { resolveMotionSource, type Scene, type Motion } from "../shared/scene";
 import { actionPreview } from "../shared/actionPreview";
-import { motionDetails } from "../shared/motionLibrary";
+import { motionDetails, seatedRecording } from "../shared/motionLibrary";
 import { Viewport, type ViewportHandle } from "./Viewport";
 import { Modal } from "./Modal";
 const ignore = () => {};
@@ -55,7 +55,8 @@ export function ActionPreview({
       .then(() => {
         if (cancelled) return;
         if (
-          ["sit", "stand"].includes(motion.role ?? "") &&
+          (["sit", "stand"].includes(motion.role ?? "") ||
+            seatedRecording(motion)) &&
           seatScale === undefined
         ) {
           const body = viewport.current!.seatingBody(rehearsal.actor.id);
@@ -188,7 +189,9 @@ export function ActionPreview({
           . Your scene stays as it is. Drag to orbit.
           {["sit", "stand"].includes(motion.role ?? "")
             ? " The rehearsal bench is sized for this performer. Choose the scene’s seat in Details after adding Sit down."
-            : ""}
+            : seatedRecording(motion)
+              ? " The rehearsal sits down first, on a bench sized for this performer. Choose the scene’s seat in Details."
+              : ""}
           {motion.role === "place"
             ? " This preview picks up the cup before putting it down."
             : ""}
