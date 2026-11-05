@@ -165,6 +165,10 @@ def exportable(obj):
     return viewport or render
 
 
+# Let the file's drivers settle first: they pick the outfit (Rain's scarf
+# stays off) and hide detail parts in the viewport only (Einar's arm hoses,
+# which renders still show).
+view_layer.update()
 meshes = [o for o in scene.objects if exportable(o)]
 if not meshes:
     raise SystemExit("ERROR no visible mesh is skinned to " + rig.name)
@@ -1383,4 +1387,12 @@ bpy.ops.export_scene.gltf(
     export_tangents=False, export_materials="EXPORT", export_vertex_color="NONE",
     export_unused_images=False, export_leaf_bone=False,
 )
+# Every part meant for the library must be in the file: an exporter that
+# skips some would otherwise pass unnoticed.
+with open(destination, "rb") as glb:
+    head = glb.read(20)
+    gltf = json.loads(glb.read(int.from_bytes(head[12:16], "little")))
+exported = sum(1 for node in gltf.get("nodes", []) if "mesh" in node)
+if exported != len(meshes):
+    raise SystemExit(f"ERROR exported {exported} of {len(meshes)} parts")
 log("exported", destination, "meshes", len(meshes), "baked", len(targets))

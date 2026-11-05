@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const SITE = "https://studio.blender.org";
 const FILES = `${SITE}/download-source/files`;
 // Bump to rebuild every GLB after changing the converter.
-const CONVERTER_VERSION = 11;
+const CONVERTER_VERSION = 12;
 const scripts = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../blender",
@@ -43,7 +43,7 @@ export const cast = [
     blend: "Rain v3.3/rain_v3.2.blend",
     body: "feminine",
     description:
-      "A young woman with an undercut and a swept-back ponytail, in a white tank top, blue jeans and sneakers. Blender Studio's Rain, version 3, adapted for the studio.",
+      "A young woman with an undercut and a swept-back ponytail, in a white tank top with a light-blue neckerchief, blue jeans and sneakers. Blender Studio's Rain, version 3, adapted for the studio.",
   },
   {
     id: "blender-snow",
