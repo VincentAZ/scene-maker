@@ -5,10 +5,7 @@ import * as T from "three";
 import { createRoot, type Root } from "react-dom/client";
 import { PathEditor } from "../src/PathEditor";
 import { starterScene, validateScene, type Motion } from "../shared/scene";
-import {
-  capturedMotions,
-  capturedRouteGaits,
-} from "../shared/motionLibrary";
+import { capturedMotions, capturedRouteGaits } from "../shared/motionLibrary";
 
 /** A recorded walk other than the studio stride, as an imported gait choice. */
 const casualWalk = capturedMotions.find((m) => m.id === "captured-141-19")!;
@@ -85,6 +82,7 @@ async function render(
       movement: "walk" | "run",
       locomotion?: Motion,
     ) => Motion;
+    onClose?: () => void;
   } = {},
 ) {
   const scene = starterScene(),
@@ -401,7 +399,7 @@ describe("PathEditor imported locomotion", () => {
       locomotionCycle: () => ({ distance: 1.5, duration: 1 }),
     });
     await changeSelect("Route locomotion", casualWalk.id);
-    await click("Use natural pace");
+    await click("Keep natural pace");
     await click("Save path");
     expect(onSave.mock.lastCall?.[0].duration).toBe(4);
     expect(container.textContent).not.toContain("Natural pace is estimated");
@@ -447,7 +445,7 @@ it("preserves a selected source interval through edits and saves exact imported 
   expect(container.textContent).toContain(
     "Average step length: 105% of the captured gait.",
   );
-  await click("Use natural pace");
+  await click("Keep natural pace");
   await click("Save path");
   expect(onSave.mock.lastCall![0].path.strideScale).toBe(1.05);
   expect(onSave.mock.lastCall![0].path.sourceProgress).toEqual([0, 1]);
@@ -605,5 +603,459 @@ describe("PathEditor production gait measurement", () => {
       query<HTMLInputElement>('input[aria-label="Route duration"]').value,
     ).toBe("");
     expect(loadImportedAsset).not.toHaveBeenCalled();
+  });
+});
+
+/** The map at its drawn size: one map unit per screen pixel. */
+function mockMapRect() {
+  const svg = query<SVGSVGElement>("svg.path-map");
+  svg.getBoundingClientRect = () =>
+    ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 400,
+      width: 600,
+      height: 400,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  return svg;
+}
+function mapPositions(): [number, number][] {
+  return [
+    ...container.querySelectorAll<SVGGElement>(
+      "svg.path-map .path-start, svg.path-map .path-point",
+    ),
+  ].map((group) => {
+    const match = /translate\(([-\d.e]+) ([-\d.e]+)\)/.exec(
+      group.getAttribute("transform")!,
+    )!;
+    return [Number(match[1]), Number(match[2])];
+  });
+}
+async function pointer(
+  target: Element | Window,
+  type: string,
+  x: number,
+  y: number,
+  init: MouseEventInit = {},
+) {
+  await act(async () =>
+    target.dispatchEvent(
+      new MouseEvent(type, {
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        ...init,
+      }),
+    ),
+  );
+}
+async function key(init: KeyboardEventInit, target: Element | Window = window) {
+  await act(async () =>
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      }),
+    ),
+  );
+}
+const inputValue = (label: string) =>
+  Number(query<HTMLInputElement>(`input[aria-label="${label}"]`).value);
+const corner = (): Motion => ({
+  ...route(),
+  path: {
+    smooth: false,
+    points: [
+      [0, 0, 0],
+      [4, 0, 0],
+      [4, 0, 4],
+    ],
+  },
+});
+
+describe("PathEditor map editing", () => {
+  beforeEach(() => {
+    for (const method of [
+      "setPointerCapture",
+      "releasePointerCapture",
+      "hasPointerCapture",
+    ])
+      Object.defineProperty(Element.prototype, method, {
+        value: vi.fn(),
+        configurable: true,
+      });
+  });
+
+  it("inserts a point into the segment under a click on the route and appends elsewhere", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const [start, first, second] = mapPositions();
+    await pointer(
+      svg,
+      "click",
+      (start[0] + first[0]) / 2,
+      (start[1] + first[1]) / 2,
+    );
+    expect(mapPositions()).toHaveLength(4);
+    expect(inputValue("Point 1 across")).toBeCloseTo(2, 1);
+    expect(inputValue("Point 1 along")).toBeCloseTo(0, 1);
+    expect(inputValue("Point 2 across")).toBeCloseTo(4, 1);
+    // The new point is selected, with its remove control beside it.
+    expect(container.querySelector(".path-point.selected")).not.toBeNull();
+    expect(container.textContent).toContain("Point 1 is selected");
+    await pointer(
+      query('svg.path-map [aria-label="Remove point 1"]'),
+      "click",
+      0,
+      0,
+    );
+    expect(mapPositions()).toHaveLength(3);
+    // Away from the route a click still appends after the last point.
+    await pointer(svg, "click", second[0] + 90, second[1] + 60);
+    const scale = (first[0] - start[0]) / 4;
+    expect(mapPositions()).toHaveLength(4);
+    expect(inputValue("Point 3 across")).toBeCloseTo(4 + 90 / scale, 1);
+    expect(inputValue("Point 3 along")).toBeCloseTo(4 + 60 / scale, 1);
+  });
+
+  it("inserts between the right pair of points on a smooth curve", async () => {
+    await render();
+    const svg = mockMapRect();
+    const samples = query<SVGPolylineElement>("svg.path-map polyline")
+      .getAttribute("points")!
+      .split(" ")
+      .map((pair) => pair.split(",").map(Number));
+    // A sample well inside the second span, between points 1 and 2.
+    const [x, y] = samples[60];
+    await pointer(svg, "click", x, y);
+    expect(mapPositions()).toHaveLength(6);
+    const [start, first] = mapPositions();
+    const scale = (first[0] - start[0]) / 2;
+    expect(inputValue("Point 2 across")).toBeCloseTo((x - start[0]) / scale, 1);
+    expect(inputValue("Point 2 along")).toBeCloseTo((y - start[1]) / scale, 1);
+    expect(inputValue("Point 3 across")).toBeCloseTo(4, 1);
+  });
+
+  it("drags points with the pointer, swallows the click that ends a drag, and undoes and redoes the move", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const [start, first] = mapPositions();
+    const scale = (first[0] - start[0]) / 4;
+    const point = query("svg.path-map .path-point");
+    await pointer(point, "pointerdown", first[0], first[1]);
+    await pointer(svg, "pointermove", first[0] + 1, first[1]);
+    // A jiggle under the drag threshold leaves the point where it was.
+    expect(inputValue("Point 1 across")).toBe(4);
+    await pointer(svg, "pointermove", first[0] + 60, first[1] + 30);
+    await pointer(svg, "pointerup", first[0] + 60, first[1] + 30);
+    await pointer(svg, "click", first[0] + 60, first[1] + 30);
+    expect(mapPositions()).toHaveLength(3);
+    expect(mapPositions()[1][0]).toBeCloseTo(first[0] + 60, 6);
+    expect(mapPositions()[1][1]).toBeCloseTo(first[1] + 30, 6);
+    expect(inputValue("Point 1 across")).toBeCloseTo(4 + 60 / scale, 1);
+    expect(inputValue("Point 1 along")).toBeCloseTo(30 / scale, 1);
+    await key({ key: "z", ctrlKey: true });
+    expect(inputValue("Point 1 across")).toBe(4);
+    expect(inputValue("Point 1 along")).toBe(0);
+    await key({ key: "z", ctrlKey: true, shiftKey: true });
+    expect(inputValue("Point 1 across")).toBeCloseTo(4 + 60 / scale, 1);
+    await key({ key: "z", metaKey: true });
+    expect(inputValue("Point 1 across")).toBe(4);
+    await key({ key: "y", ctrlKey: true });
+    expect(inputValue("Point 1 across")).toBeCloseTo(4 + 60 / scale, 1);
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].path.points[1][0]).toBeCloseTo(
+      4 + 60 / scale,
+      1,
+    );
+  });
+
+  it("selects a point on the map and removes it with Delete or Backspace, never the start", async () => {
+    await render();
+    const svg = mockMapRect();
+    const positions = mapPositions();
+    const points = container.querySelectorAll("svg.path-map .path-point");
+    await pointer(points[1], "pointerdown", ...positions[2]);
+    await pointer(svg, "pointerup", ...positions[2]);
+    expect(points[1].classList.contains("selected")).toBe(true);
+    expect(container.textContent).toContain("Point 2 is selected");
+    // Keys typed into a field belong to the field.
+    await key({ key: "Delete" }, query('input[aria-label="Point 1 across"]'));
+    expect(mapPositions()).toHaveLength(5);
+    await key({ key: "Delete" });
+    expect(mapPositions()).toHaveLength(4);
+    expect(container.querySelector(".path-point.selected")).toBeNull();
+    expect(inputValue("Point 2 across")).toBe(3);
+    await pointer(
+      query("svg.path-map .path-point"),
+      "pointerdown",
+      ...mapPositions()[1],
+    );
+    await pointer(svg, "pointerup", ...mapPositions()[1]);
+    await key({ key: "Backspace" });
+    expect(mapPositions()).toHaveLength(3);
+    await pointer(query("svg.path-map .path-start"), "pointerdown", 0, 0);
+    await pointer(svg, "pointerup", 0, 0);
+    await key({ key: "Delete" });
+    expect(mapPositions()).toHaveLength(3);
+    expect(container.querySelector(".path-start.selected")).toBeNull();
+  });
+
+  it("nudges the selected point with the arrow keys", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const [, first] = mapPositions();
+    await pointer(query("svg.path-map .path-point"), "pointerdown", ...first);
+    await pointer(svg, "pointerup", ...first);
+    await key({ key: "ArrowRight" });
+    await key({ key: "ArrowRight" });
+    await key({ key: "ArrowUp", shiftKey: true });
+    expect(inputValue("Point 1 across")).toBeCloseTo(4.02, 6);
+    expect(inputValue("Point 1 along")).toBeCloseTo(-0.1, 6);
+    // One undo step covers the run of nudges.
+    await click("Undo");
+    expect(inputValue("Point 1 across")).toBe(4);
+    expect(inputValue("Point 1 along")).toBe(0);
+  });
+
+  it("offers Undo and Redo buttons over every waypoint change", async () => {
+    await render();
+    const undo = () =>
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.getAttribute("aria-label") === "Undo",
+      )!;
+    const redo = () =>
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.getAttribute("aria-label") === "Redo",
+      )!;
+    expect(undo().disabled).toBe(true);
+    expect(redo().disabled).toBe(true);
+    await click("Add point");
+    await changeSelect("Point 5 action", "wave");
+    expect(mapPositions()).toHaveLength(6);
+    expect(undo().disabled).toBe(false);
+    await click("Undo");
+    expect(
+      query<HTMLSelectElement>('select[aria-label="Point 5 action"]').value,
+    ).toBe("");
+    await click("Undo");
+    expect(mapPositions()).toHaveLength(5);
+    expect(undo().disabled).toBe(true);
+    expect(redo().disabled).toBe(false);
+    await click("Redo");
+    await click("Redo");
+    expect(mapPositions()).toHaveLength(6);
+    expect(
+      query<HTMLSelectElement>('select[aria-label="Point 5 action"]').value,
+    ).toBe("wave");
+    await click("Start over");
+    expect(mapPositions()).toHaveLength(1);
+    await click("Undo");
+    expect(mapPositions()).toHaveLength(6);
+  });
+
+  it("zooms about the cursor with the wheel, pans by dragging the background, and refits", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    const before = mapPositions();
+    const wheel = new WheelEvent("wheel", {
+      deltaY: -100,
+      clientX: before[1][0],
+      clientY: before[1][1],
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => svg.dispatchEvent(wheel));
+    // The page must not scroll while the map zooms.
+    expect(wheel.defaultPrevented).toBe(true);
+    const zoomed = mapPositions();
+    expect(zoomed[1][0]).toBeCloseTo(before[1][0], 6);
+    expect(zoomed[1][1]).toBeCloseTo(before[1][1], 6);
+    expect(zoomed[2][1] - zoomed[1][1]).toBeCloseTo(
+      (before[2][1] - before[1][1]) * Math.exp(0.15),
+      6,
+    );
+    await pointer(svg, "pointerdown", 300, 200);
+    await pointer(svg, "pointermove", 340, 220);
+    await pointer(svg, "pointerup", 340, 220);
+    await pointer(svg, "click", 340, 220);
+    const panned = mapPositions();
+    expect(panned).toHaveLength(3);
+    expect(panned[0][0]).toBeCloseTo(zoomed[0][0] + 40, 6);
+    expect(panned[0][1]).toBeCloseTo(zoomed[0][1] + 20, 6);
+    // Dragged points may leave the original frame: nothing clamps them.
+    await pointer(
+      query("svg.path-map .path-point"),
+      "pointerdown",
+      ...panned[1],
+    );
+    await pointer(svg, "pointermove", 700, -50);
+    await pointer(svg, "pointerup", 700, -50);
+    expect(mapPositions()[1][0]).toBeCloseTo(700, 6);
+    expect(mapPositions()[1][1]).toBeCloseTo(-50, 6);
+    await click("Fit");
+    const fitted = mapPositions();
+    expect(
+      fitted.every(([x, y]) => x >= 0 && x <= 600 && y >= 0 && y <= 400),
+    ).toBe(true);
+  });
+
+  it("warns live about points too close together or too far away and disables saving", async () => {
+    await render({ motion: corner() });
+    const save = () => query<HTMLButtonElement>(".path-footer .primary");
+    expect(container.querySelector(".path-warning")).toBeNull();
+    await changeInput("Point 1 across", "60");
+    expect(query('[role="alert"]').textContent).toContain(
+      "Point 1 is more than 50 m from the start",
+    );
+    expect(save().disabled).toBe(true);
+    await changeInput("Point 1 across", "4");
+    expect(container.querySelector(".path-warning")).toBeNull();
+    expect(save().disabled).toBe(false);
+    await changeInput("Point 2 along", "0.02");
+    expect(query('[role="alert"]').textContent).toContain(
+      "Point 2 is too close to point 1",
+    );
+    expect(save().disabled).toBe(true);
+    await changeInput("Point 2 along", "4");
+    await click("Save path");
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws direction arrows and lets the arrival facing be dragged, kept and cleared", async () => {
+    await render({ motion: corner() });
+    const svg = mockMapRect();
+    expect(
+      container.querySelectorAll("svg.path-map .path-arrow").length,
+    ).toBeGreaterThanOrEqual(5);
+    const heading = query('svg.path-map [aria-label="Facing on arrival"]');
+    expect(
+      heading.closest(".path-heading")!.classList.contains("natural"),
+    ).toBe(true);
+    expect(container.textContent).not.toContain(
+      "Use path direction on arrival",
+    );
+    const [, , last] = mapPositions();
+    await pointer(heading, "pointerdown", last[0], last[1] + 46);
+    // Towards +X from the last point: a quarter turn in path terms.
+    await pointer(svg, "pointermove", last[0] + 80, last[1]);
+    await pointer(svg, "pointerup", last[0] + 80, last[1]);
+    expect(
+      heading.closest(".path-heading")!.classList.contains("natural"),
+    ).toBe(false);
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].path.endHeading).toBeCloseTo(
+      Math.PI / 2,
+      6,
+    );
+    await click("Undo");
+    expect(container.textContent).not.toContain(
+      "Use path direction on arrival",
+    );
+    await click("Redo");
+    await click("Use path direction on arrival");
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].path.endHeading).toBeUndefined();
+  });
+
+  it("explains keeping the duration against the natural pace and switches between them", async () => {
+    await render({
+      motion: {
+        ...route(),
+        path: {
+          smooth: false,
+          points: [
+            [0, 0, 0],
+            [0, 0, 6],
+          ],
+        },
+      },
+    });
+    const pressed = () =>
+      query<HTMLButtonElement>(
+        '[aria-label="Route timing"] button[aria-pressed="true"]',
+      ).textContent;
+    expect(pressed()).toBe("Keep duration");
+    expect(inputValue("Route duration")).toBe(12);
+    expect(container.textContent).toContain(
+      "Keeping 12.0 s for 6.0 m: Mila moves at 0.50 m/s, against a natural 1.50 m/s.",
+    );
+    expect(container.textContent).toContain(
+      "Keeping the duration changes this rate",
+    );
+    await click("Keep natural pace");
+    expect(pressed()).toBe("Keep natural pace");
+    expect(inputValue("Route duration")).toBe(4);
+    expect(container.textContent).not.toContain("Keeping 4.0 s");
+    expect(container.textContent).toContain(
+      "Natural pace keeps the recording at its own speed",
+    );
+    // Shortening the route under natural pace shortens the duration…
+    await changeInput("Point 1 along", "3");
+    expect(inputValue("Route duration")).toBe(2);
+    // …while keeping the duration locks the current value as the route changes.
+    await click("Keep duration");
+    expect(pressed()).toBe("Keep duration");
+    expect(inputValue("Route duration")).toBe(2);
+    await changeInput("Point 1 along", "6");
+    expect(inputValue("Route duration")).toBe(2);
+    expect(container.textContent).toContain("Mila moves at 3.00 m/s");
+    await changeInput("Route duration", "9");
+    expect(pressed()).toBe("Keep duration");
+    await click("Save path");
+    expect(onSave.mock.lastCall![0].duration).toBe(9);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render({ speechDuration: 8 });
+    expect(container.querySelector('[aria-label="Route timing"]')).toBeNull();
+    expect(
+      query<HTMLInputElement>('input[aria-label="Route duration"]').disabled,
+    ).toBe(true);
+  });
+
+  it("closes untouched routes at once but asks before discarding changes, from Cancel and Escape alike", async () => {
+    const onClose = vi.fn();
+    await render({ onClose });
+    await click("Cancel");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    onClose.mockClear();
+    await render({ onClose });
+    await click("Add point");
+    await click("Cancel");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(query('[role="alertdialog"]').textContent).toContain(
+      "Discard changes to this path?",
+    );
+    await click("Keep editing");
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    // Escape reaches the dialog as a cancel event and asks the same question.
+    const cancel = new Event("cancel", { cancelable: true });
+    await act(async () => query("dialog").dispatchEvent(cancel));
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(query('[role="alertdialog"]').textContent).toContain(
+      "Discard changes to this path?",
+    );
+    await click("Discard");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // Undoing back to the saved shape counts as untouched again.
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    onClose.mockClear();
+    await render({ onClose });
+    await click("Add point");
+    await click("Undo");
+    await click("Cancel");
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

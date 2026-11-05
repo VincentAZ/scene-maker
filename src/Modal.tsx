@@ -15,17 +15,36 @@ export function Modal({
   error?: string;
   onDismissError?: () => void;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
+  const ref = useRef<HTMLDialogElement>(null),
+    leaving = useRef(false);
   useEffect(() => {
     const dialog = ref.current;
     dialog?.showModal();
-    return () => dialog?.close();
+    return () => {
+      leaving.current = true;
+      dialog?.close();
+    };
   }, []);
   return (
     <dialog
       ref={ref}
       className={wide ? "modal wide" : "modal"}
-      onCancel={onClose}
+      onCancel={(e) => {
+        // Escape asks the owner, which may want to confirm first; the dialog
+        // itself stays open until the owner unmounts it.
+        e.preventDefault();
+        onClose();
+      }}
+      onClose={() => {
+        // Browsers may still force a modal shut (a second Escape in a row).
+        // Tell the owner; if it keeps the dialog, show it again.
+        if (leaving.current) return;
+        onClose();
+        setTimeout(() => {
+          const dialog = ref.current;
+          if (dialog && !leaving.current && !dialog.open) dialog.showModal();
+        });
+      }}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
