@@ -54,6 +54,7 @@ import { AssistantModelMenu } from "./AssistantModelMenu";
 import { productionPackage } from "./productionPackage";
 import { ActionPreview } from "./ActionPreview";
 import { ImportedClipTiming } from "./ImportedClipTiming";
+import { TimelineTrack, type TimelineTrackProps } from "./TimelineTrack";
 import { motionDetails } from "../shared/motionLibrary";
 import { ActionLibrary } from "./ActionLibrary";
 import { AssetLibrary } from "./AssetLibrary";
@@ -196,6 +197,8 @@ export default function App() {
       useState<StudioLibrary>(emptyStudioLibrary),
     [studioLibraryError, setStudioLibraryError] = useState(""),
     [selected, setSelectedState] = useState<string | null>(null),
+    // The clip chosen in the timeline, always one of the selected character's.
+    [selectedClip, setSelectedClip] = useState<string | null>(null),
     [tab, setTab] = useState<Tab>("characters"),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("All"),
@@ -759,12 +762,13 @@ export default function App() {
         e.preventDefault();
         setPlaying((v) => !v);
       }
-      if (e.key === "Delete" && selected)
+      // With a clip selected, Delete removes that clip (its row handles it).
+      if (e.key === "Delete" && selected && !selectedClip)
         execute([{ type: "remove", id: selected }]);
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [selected, modal, previewAction, historyVersion]);
+  }, [selected, selectedClip, modal, previewAction, historyVersion]);
   async function openPathEditor(
     actorId: string,
     clipId?: string,
@@ -813,10 +817,18 @@ export default function App() {
   const entity = scene.entities.find((e) => e.id === selected);
   const selectedAsset = allAssets(scene).find((a) => a.id === entity?.assetId);
   const isCharacter = selectedAsset?.category === "characters";
-  const cast = scene.entities.filter(
-    (e) =>
-      allAssets(scene).find((a) => a.id === e.assetId)?.category ===
-      "characters",
+  const cast = useMemo(
+    () =>
+      scene.entities.filter(
+        (e) =>
+          allAssets(scene).find((a) => a.id === e.assetId)?.category ===
+          "characters",
+      ),
+    [scene],
+  );
+  const motionsById = useMemo(
+    () => new Map(allMotions(scene).map((m) => [m.id, m])),
+    [scene],
   );
   const total = duration(scene);
   const dialogueClips = useMemo(
@@ -829,6 +841,74 @@ export default function App() {
         ),
       ),
     [scene.transcript],
+  );
+  // The rows read the playhead through a ref, so they skip the per-frame renders.
+  const playheadRef = useRef(0);
+  playheadRef.current = time;
+  // A clip stays selected only while the selected character's sequence has it.
+  useEffect(() => {
+    if (selectedClip && !entity?.clips.some((c) => c.id === selectedClip))
+      setSelectedClip(null);
+  }, [selectedClip, entity]);
+  useEffect(() => {
+    if (selectedClip && rightTab === "details" && panel)
+      document
+        .getElementById(`clip-editor-${selectedClip}`)
+        ?.scrollIntoView({ block: "nearest" });
+  }, [selectedClip, rightTab, panel]);
+  type TrackActions = Pick<
+    TimelineTrackProps,
+    | "onSelect"
+    | "onAdd"
+    | "onEditStart"
+    | "onRetime"
+    | "onEditPath"
+    | "onRemoveClip"
+    | "onDeselectClip"
+  >;
+  // The memoized rows get callbacks with a fixed identity that act on the
+  // latest state.
+  const trackActions = useRef<TrackActions>(null!);
+  trackActions.current = {
+    onSelect: (id, clipId) => {
+      setSelected(id);
+      setSelectedClip(clipId);
+      setRightTab("details");
+      setPanel(true);
+    },
+    onAdd: (id) => {
+      setSelected(id);
+      setTab("motions");
+    },
+    onEditStart: () => {
+      setPlaying(false);
+      cancelConversationForEdit();
+    },
+    onRetime: (command, edgeTime) => {
+      if (execute([command])) setTime(Math.max(0, edgeTime));
+    },
+    onEditPath: (id, clipId) =>
+      void openPathEditor(
+        id,
+        clipId,
+        dialogueClips.has(`${id}:${clipId}`),
+      ).catch((e) => report(e.message)),
+    onRemoveClip: (id, clipId) => execute([{ type: "removeClip", id, clipId }]),
+    onDeselectClip: () => setSelectedClip(null),
+  };
+  const trackCallbacks = useMemo<TrackActions>(
+    () => ({
+      onSelect: (id, clipId) => trackActions.current.onSelect(id, clipId),
+      onAdd: (id) => trackActions.current.onAdd(id),
+      onEditStart: () => trackActions.current.onEditStart(),
+      onRetime: (command, edgeTime) =>
+        trackActions.current.onRetime(command, edgeTime),
+      onEditPath: (id, clipId) => trackActions.current.onEditPath(id, clipId),
+      onRemoveClip: (id, clipId) =>
+        trackActions.current.onRemoveClip(id, clipId),
+      onDeselectClip: () => trackActions.current.onDeselectClip(),
+    }),
+    [],
   );
   const update = (id: string, changes: Partial<Entity>, coalesce?: string) =>
     execute([{ type: "update", id, changes }], coalesce);
@@ -2240,57 +2320,20 @@ export default function App() {
                   }}
                 />
                 {cast.map((e, i) => (
-                  <div
-                    className={`track ${selected === e.id ? "selected" : ""}`}
+                  <TimelineTrack
                     key={e.id}
-                  >
-                    <button
-                      className="track-character"
-                      onClick={() => {
-                        setSelected(e.id);
-                        setRightTab("details");
-                        setPanel(true);
-                      }}
-                    >
-                      <span style={{ background: e.color }}>{e.name[0]}</span>
-                      {e.name}
-                    </button>
-                    <div className="track-clips">
-                      {e.clips.map((c) => (
-                        <button
-                          key={c.id}
-                          className={`clip clip-${i % 3}`}
-                          style={{ width: `${(c.duration / total) * 100}%` }}
-                          onClick={() => {
-                            setSelected(e.id);
-                            setRightTab("details");
-                            setPanel(true);
-                          }}
-                          title={`${c.routeWait ? "Wait for clear route" : allMotions(scene).find((m) => m.id === c.motionId)?.name} · ${Number(c.duration.toFixed(1))}s${!c.routeWait && c.playbackRate !== undefined ? ` · ${Number(c.playbackRate.toFixed(4))}×${c.legacyFit ? " (legacy fit)" : ""}` : ""}`}
-                        >
-                          {dialogueClips.has(`${e.id}:${c.id}`) ? (
-                            <MessageCircle size={12} />
-                          ) : (
-                            <Footprints size={12} />
-                          )}
-                          {c.routeWait
-                            ? "Wait for clear route"
-                            : allMotions(scene).find((m) => m.id === c.motionId)
-                                ?.name}
-                        </button>
-                      ))}
-                      <button
-                        className="add-clip"
-                        aria-label={`Add action to ${e.name}`}
-                        onClick={() => {
-                          setSelected(e.id);
-                          setTab("motions");
-                        }}
-                      >
-                        <Plus size={13} />
-                      </button>
-                    </div>
-                  </div>
+                    entity={e}
+                    index={i}
+                    total={total}
+                    cast={cast}
+                    motions={motionsById}
+                    dialogueClips={dialogueClips}
+                    selected={selected === e.id}
+                    selectedClipId={selected === e.id ? selectedClip : null}
+                    playhead={playheadRef}
+                    shortcuts={!modal && !previewAction}
+                    {...trackCallbacks}
+                  />
                 ))}
                 {!cast.length && (
                   <p className="empty-state">
@@ -2302,7 +2345,8 @@ export default function App() {
             <div className="timeline-footer">
               <span>
                 <Lightbulb size={12} /> Chain actions to bring your characters
-                to life.
+                to life. Drag an action’s edge to change its length · Shift
+                snaps · Double-click a path to edit it.
               </span>
               <span>
                 24 frames / second <span className="dot-separator">·</span>{" "}
@@ -2972,7 +3016,11 @@ export default function App() {
                             (m) => m.id === c.motionId,
                           );
                           return (
-                            <div className="clip-editor" key={c.id}>
+                            <div
+                              className={`clip-editor${selectedClip === c.id ? " selected" : ""}`}
+                              id={`clip-editor-${c.id}`}
+                              key={c.id}
+                            >
                               <div>
                                 <span className="clip-number">
                                   {String(i + 1).padStart(2, "0")}
@@ -3038,34 +3086,31 @@ export default function App() {
                                   max="60"
                                   step=".2"
                                   value={c.duration}
+                                  disabled={!!c.routeWait}
+                                  title={
+                                    c.routeWait
+                                      ? "This wait holds the stopped pose until the route continues; its length follows the route."
+                                      : undefined
+                                  }
                                   onChange={(e) => {
                                     const seconds = Number(e.target.value);
-                                    const active = routeActiveDuration(c);
+                                    // Typing in one field is a single undo step.
                                     if (
                                       seconds >=
                                         Math.max(0.2, c.routeStop ?? 0) &&
                                       seconds <= 60
                                     )
-                                      update(entity.id, {
-                                        clips: entity.clips.map((x) =>
-                                          x.id === c.id
-                                            ? {
-                                                ...x,
-                                                duration: seconds,
-                                                ...(x.routeStop !== undefined &&
-                                                motion?.path
-                                                  ? {
-                                                      routeActive: active,
-                                                      routeHold:
-                                                        seconds > active
-                                                          ? seconds - active
-                                                          : undefined,
-                                                    }
-                                                  : {}),
-                                              }
-                                            : x,
-                                        ),
-                                      });
+                                      execute(
+                                        [
+                                          {
+                                            type: "retimeClip",
+                                            id: entity.id,
+                                            clipId: c.id,
+                                            duration: seconds,
+                                          },
+                                        ],
+                                        `duration:${c.id}`,
+                                      );
                                   }}
                                 />
                                 <span>sec</span>

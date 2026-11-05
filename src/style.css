@@ -805,6 +805,7 @@ button svg {
   font-size: 9px;
 }
 .track-clips {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -819,6 +820,7 @@ button svg {
   );
 }
 .clip {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -831,6 +833,67 @@ button svg {
   text-align: left;
   border: 1px solid #cbd9b1;
   flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+.clip:hover {
+  filter: brightness(0.97);
+}
+.clip:focus-visible {
+  outline: 2px solid #8aab66;
+  outline-offset: 3px;
+}
+.clip.selected {
+  border-color: #718c50;
+  box-shadow: inset 0 0 0 1px #718c50;
+}
+.clip.dragging {
+  z-index: 2;
+}
+/* Edge handles sit inside the chip's padding; the bar shows on hover. */
+.clip-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.clip-handle.end {
+  right: 0;
+}
+.clip-handle.start {
+  left: 0;
+}
+.clip-handle::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.16s;
+}
+.clip:hover .clip-handle::after,
+.clip.selected .clip-handle::after,
+.clip.dragging .clip-handle::after {
+  opacity: 0.45;
+}
+.clip-drag-label {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  white-space: nowrap;
+  background: #35422f;
+  color: #fff;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 4px;
 }
 .clip-0 {
   background: #dfe9cc;
@@ -1270,6 +1333,11 @@ label > span {
   padding: 8px;
   margin: 7px 0;
   background: #f8faf2;
+}
+.clip-editor.selected {
+  border-color: #a9bf85;
+  box-shadow: 0 0 0 1px #a9bf85;
+  background: #f1f6e6;
 }
 .clip-editor > div:first-child {
   display: flex;
@@ -2122,6 +2190,16 @@ label > span {
   }
   .clip svg {
     display: none;
+  }
+  .clip-handle {
+    width: 6px;
+  }
+  .clip-handle::after {
+    left: 2px;
+  }
+  .clip-drag-label {
+    font-size: 8px;
+    padding: 2px 5px;
   }
   .timeline-footer {
     font-size: 6px;
