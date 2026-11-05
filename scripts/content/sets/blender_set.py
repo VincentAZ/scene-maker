@@ -927,12 +927,111 @@ def fold_uvs(mesh):
     layer.foreach_set("uv", uv.reshape(-1).astype(np.float32))
 
 
+def face_uv_areas(mesh):
+    """The UV area of every face of `mesh` (first UV layer)."""
+    layer = mesh.uv_layers[0].data
+    uv = np.empty(len(layer) * 2, dtype=np.float64)
+    layer.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2)
+    starts = np.empty(len(mesh.polygons), dtype=np.int64)
+    totals = np.empty(len(mesh.polygons), dtype=np.int64)
+    mesh.polygons.foreach_get("loop_start", starts)
+    mesh.polygons.foreach_get("loop_total", totals)
+    face = np.repeat(np.arange(len(starts)), totals)
+    within = np.arange(len(face)) - np.repeat(np.cumsum(totals) - totals, totals)
+    loops = starts[face] + within
+    following = starts[face] + (within + 1) % totals[face]
+    cross = uv[loops, 0] * uv[following, 1] - uv[following, 0] * uv[loops, 1]
+    area = np.zeros(len(starts))
+    np.add.at(area, face, cross)
+    return np.abs(area) / 2
+
+
+def bake_subset(copies, bake_set, budget=3.0):
+    """Trims the bake copies to the faces worth baking: for each baked
+    material the largest faces until they cover its texture `budget` times
+    over. More faces would only paint over the same texels (thousands of
+    tiled floor planks, a row of identical chairs), yet each one costs the
+    bake a pass over its whole UV area. Faces of other materials go too."""
+    import bmesh
+
+    faces = []
+    for c in copies:
+        me = c.data
+        if not me.uv_layers or not len(me.polygons):
+            continue
+        slots = np.empty(len(me.polygons), dtype=np.int64)
+        me.polygons.foreach_get("material_index", slots)
+        sizes = np.empty(len(me.polygons), dtype=np.float64)
+        me.polygons.foreach_get("area", sizes)
+        uv_area = np.minimum(face_uv_areas(me), 1.0)
+        materials = [slot.material for slot in c.material_slots]
+        for index in np.flatnonzero(sizes > 0):
+            slot = int(slots[index])
+            m = materials[slot] if slot < len(materials) else None
+            if m in bake_set:
+                faces.append((m.name, -float(sizes[index]), id(c), int(index), float(uv_area[index])))
+    keep = {}
+    covered = {}
+    for name, _, owner, index, uv_area in sorted(faces):
+        if covered.get(name, 0.0) < budget:
+            covered[name] = covered.get(name, 0.0) + uv_area
+            keep.setdefault(owner, set()).add(index)
+    kept = []
+    for c in copies:
+        chosen = keep.get(id(c))
+        if not chosen:
+            mesh = c.data
+            bpy.data.objects.remove(c)
+            bpy.data.meshes.remove(mesh)
+            continue
+        if len(chosen) < len(c.data.polygons):
+            bm = bmesh.new()
+            bm.from_mesh(c.data)
+            bm.faces.ensure_lookup_table()
+            bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in chosen], context="FACES")
+            bm.to_mesh(c.data)
+            bm.free()
+        kept.append(c)
+    say("baking %d of %d faces" % (sum(len(v) for v in keep.values()), len(faces)))
+    return kept
+
+
+def constant_emission(material):
+    """The glow of a material whose tree has an Emission shader (or a
+    Principled emission) of fixed colour and strength, as [r, g, b,
+    strength]: the bake passes only capture how a surface reflects."""
+    for node in material.node_tree.nodes:
+        if not node.outputs or not node.outputs[0].is_linked:
+            continue
+        if node.type == "EMISSION":
+            color, strength = node.inputs["Color"], node.inputs["Strength"]
+        elif node.type == "BSDF_PRINCIPLED":
+            color, strength = node.inputs["Emission Color"], node.inputs["Emission Strength"]
+        else:
+            continue
+        if color.is_linked or strength.is_linked or strength.default_value <= 0:
+            continue
+        if max(color.default_value[:3]) > 0.001:
+            return [float(c) for c in color.default_value[:3]] + [float(min(strength.default_value, 10.0))]
+    return None
+
+
 def compose_baked(material, results, work):
     """Textures from the three bake passes: diffuse + glossy colour is the
     base colour (metal shows up as glossy colour without diffuse colour),
     roughness stays a texture only when it varies. Only the pixels the bake
     reached count; the rest take the average so distant mip levels do not
     darken. Returns the material's entry for the bake cache."""
+    entry = compose_reflection(material, results, work)
+    glow = constant_emission(material)
+    if glow:
+        entry["emission"] = glow
+    return entry
+
+
+def compose_reflection(material, results, work):
+    """The base colour, metalness and roughness part of compose_baked."""
     diffuse, glossy, rough = results["DIFFUSE"], results["GLOSSY"], results["ROUGHNESS"]
     reached = (rough[..., 0] > 0) | (diffuse[..., :3].max(-1) > 0) | (glossy[..., :3].max(-1) > 0)
     if not reached.any():
@@ -969,11 +1068,12 @@ def apply_baked(material, entry, work):
         image.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
         return ("image", ImageRef(image))
 
-    color, roughness = entry["color"], entry["roughness"]
+    color, roughness, glow = entry["color"], entry["roughness"], entry.get("emission")
     rebuild_material(material, plain({
         "color": texture(color, True) if isinstance(color, str) else ("const", (*color, 1.0)),
         "metallic": ("const", entry["metallic"]),
         "roughness": texture(roughness, False) if isinstance(roughness, str) else ("const", roughness),
+        "emission": (("const", (*glow[:3], 1.0)), glow[3]) if glow else None,
     }))
 
 
@@ -1042,6 +1142,9 @@ def bake_materials(scene, materials, objects, work):
             fold_uvs(c.data)
             scene.collection.objects.link(c)
             copies.append(c)
+        copies = bake_subset(copies, bake_set)
+        if not copies:
+            raise Exception("no face to bake")
         with context_objects(copies):
             bpy.ops.object.join()
         copies = [copies[0]]
@@ -1641,16 +1744,19 @@ def in_sight(floor, position, spot):
 def view_score(floor, position, target, shells, columns=14, rows=9):
     """How much of the set a view shows: rays across the frame count the
     distinct pieces of furniture in sight and how deep the view reaches. A
-    lens close to a surface, back faces (inside a wall, outside the room)
-    and, indoors, open sky count against it."""
+    lens close to a surface, anything but floor between the lens and the
+    cast (a door frame, chair backs: a view squeezed through a doorway),
+    back faces (inside a wall, outside the room) and, indoors, open sky
+    count against it."""
     bvh, owners = floor["bvh"], floor["owners"]
     forward = (target - position).normalized()
+    before_cast = 0.8 * (target - position).length
     right = forward.cross(Vector((0, 0, 1))).normalized()
     up = right.cross(forward)
     half_h = math.tan(VIEW_HEIGHT / 2)
     half_w = half_h * VIEW_ASPECT
     seen, depths = set(), []
-    near = backs = misses = 0
+    near = backs = misses = blocked = 0
     for a in range(columns):
         x = ((a + 0.5) / columns * 2 - 1) * half_w
         for b in range(rows):
@@ -1662,6 +1768,7 @@ def view_score(floor, position, target, shells, columns=14, rows=9):
                 continue
             depths.append(distance)
             near += distance < 1.2
+            blocked += distance < before_cast and abs(normal.z) < 0.7
             backs += normal.dot(direction) > 0.1
             owner = int(owners[index])
             if owner not in shells:
@@ -1671,7 +1778,8 @@ def view_score(floor, position, target, shells, columns=14, rows=9):
     sky = misses / total if floor["indoor"] else 0.0
     # Fewer rays see fewer pieces: scale the count to the full frame's 126.
     pieces = len(seen) * 126.0 / total
-    return 1.5 * math.log1p(pieces) + 0.6 * depth - 8.0 * backs / total - 6.0 * near / total - 4.0 * sky
+    return (1.5 * math.log1p(pieces) + 0.6 * depth - 8.0 * backs / total - 6.0 * near / total
+            - 6.0 * blocked / total - 4.0 * sky)
 
 
 def spread_cells(floor, ok, count, spacing):
@@ -1728,7 +1836,34 @@ def wall_penalty(wall, berth):
     return 4.0 * (max(0.0, berth - wall) / berth) ** 1.5
 
 
-def choose_view(scene, floor, shells):
+def focus_point(objects):
+    """The centre of the objects the set's `focus` hint names (a terrace's
+    tables, a living room's sofa), or None."""
+    if not job.get("focus"):
+        return None
+    pattern = re.compile(job["focus"], re.I)
+    centres = [o.matrix_world @ (sum((Vector(c) for c in o.bound_box), Vector()) / 8)
+               for o in objects if pattern.search(o.name)]
+    if not centres:
+        say("nothing matches the focus %s" % job["focus"])
+        return None
+    return sum(centres, Vector()) / len(centres)
+
+
+def focus_bonus(focus, position, target):
+    """How squarely a view frames the focus: up to 2 points when it lies at
+    the centre of the frame, nothing beyond the frame's edge."""
+    if focus is None:
+        return 0.0
+    look, toward = (target - position).xy, (focus - position).xy
+    if toward.length < 0.5 or toward.length > 25.0:
+        return 0.0
+    angle = abs(look.angle_signed(toward))
+    edge = math.atan(math.tan(VIEW_HEIGHT / 2) * VIEW_ASPECT)
+    return 2.0 * max(0.0, 1.0 - angle / edge)
+
+
+def choose_view(scene, floor, shells, focus=None):
     """Spawn cell, camera position and view target in the source frame.
 
     The camera stands on the open floor at eye height, 1.5 m or more from
@@ -1749,6 +1884,12 @@ def choose_view(scene, floor, shells):
     area = float(standing.sum()) * step * step
     spacing = max(1.0 if indoor else 3.0, math.sqrt(area / 40.0))
     spawns = spread_cells(floor, standing, 40, spacing)
+    if focus is not None:
+        # Spots in front of the focus, where the cast would stand.
+        xs, ys = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
+        reach = np.hypot(floor["lo"][0] + xs * step - focus.x, floor["lo"][1] + ys * step - focus.y)
+        near_focus = standing & (reach >= 1.5) & (reach <= 6.0)
+        spawns += [c for c in spread_cells(floor, near_focus, 24, 1.5) if c not in spawns]
     # Small rooms only allow a short step back; longer ones score better.
     distances = (1.6, 2.2, 2.9, 3.6, 4.5) if indoor else (4.0, 5.5, 7.0, 9.0)
     prefer = 3.5 if indoor else 6.0
@@ -1780,7 +1921,7 @@ def choose_view(scene, floor, shells):
     rough = []
     for wall, distance, spawn, position in options:
         target = cell_center(floor, *spawn) + Vector((0, 0, 1.0))
-        bonus = 0.4 * min(distance, prefer) - wall_penalty(wall, berth)
+        bonus = 0.4 * min(distance, prefer) - wall_penalty(wall, berth) + focus_bonus(focus, position, target)
         rough.append((view_score(floor, position, target, shells, 6, 4) + bonus, bonus, spawn, position))
     rough.sort(key=lambda option: -option[0])
     best = None
@@ -1799,8 +1940,9 @@ def choose_view(scene, floor, shells):
             say("the artist's camera %s is not a home view: something hides the cast" % cam.name.strip())
             continue
         # The artist's composition is worth a little furniture.
-        score = (view_score(floor, position, spot + Vector((0, 0, 1.0)), shells) - wall_penalty(wall, berth)
-                 + 0.4 * min((position - spot).xy.length, prefer) + 1.0)
+        target = spot + Vector((0, 0, 1.0))
+        score = (view_score(floor, position, target, shells) - wall_penalty(wall, berth)
+                 + 0.4 * min((position - spot).xy.length, prefer) + focus_bonus(focus, position, target) + 1.0)
         if best is None or score > best[0]:
             best = (score, spawn, position, cam)
     if best is None:
@@ -2054,7 +2196,8 @@ def main():
     floor = analyse_floor(scene, tris, owners)
     roles = classify_roles(objects, tris, owners, floor["z"])
     say("floor analysed after %d s" % (time.time() - started))
-    cell, spawn, cam_position, cam_target, artist = choose_view(scene, floor, shell_indices(objects, roles))
+    cell, spawn, cam_position, cam_target, artist = choose_view(
+        scene, floor, shell_indices(objects, roles), focus_point(objects))
     say("home view chosen after %d s" % (time.time() - started))
     transform = place(scene, spawn, cam_position)
     if job.get("extent"):

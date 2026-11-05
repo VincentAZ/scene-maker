@@ -39,6 +39,8 @@ const bistro = {
 // `convert` holds per-set hints for blender_set.py: `floorLevel` (the source
 // height of the floor the cast lives on, when the largest floor is the wrong
 // one), `extent` (metres from the cast beyond which a landscape is cut off),
+// `focus` (a pattern of object names the home view should frame, when the
+// most furnished view is not the one the set is about),
 // `maxTriangles` (a budget met by decimating the heaviest meshes), `scale`,
 // `camera` (the artist's camera to use), `materials`, `maxTexture`.
 export const sets = [
@@ -105,6 +107,8 @@ export const sets = [
     ],
     main: /^flat-archiviz\.blend$/,
     format: "blend",
+    // The living room, not the view through the sliding doors.
+    convert: { focus: "^(Sofa|Poliform_JANE_armchair)" },
     credit: {
       author: "Flavio Della Tommasa",
       license: "CC BY",
@@ -155,6 +159,8 @@ export const sets = [
       shellNames: false,
       maxTriangles: 1900000,
       extent: 55,
+      // The café terrace: its tables, chairs, awnings and menu boards.
+      focus: "Paris_(Table_01|Chair_01|BistroAwning|MenuSign)",
     },
     hdri: /^san_giuseppe_bridge_4k\.hdr$/,
     // The archive's sky is Poly Haven's San Giuseppe Bridge.
