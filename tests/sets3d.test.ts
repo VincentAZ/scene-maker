@@ -9,8 +9,10 @@ import {
   type Asset,
   type Scene,
 } from "../shared/scene";
+import { findRoute } from "../shared/navigation";
 import {
   defaultSetBlock,
+  floorEdges,
   floorPlan,
   insidePolygon,
   keepOnSetFloor,
@@ -518,6 +520,74 @@ describe("spawn and drops on a set's floor", () => {
     ]);
     expect(scene.entities[0].position).toEqual([-1.5, 0, 0]);
     expect(scene.entities[0].rotation).toBe(0);
+  });
+});
+
+describe("routes in a set", () => {
+  const clearance = 0.3;
+  const plan = (walkable: [number, number][]) =>
+    floorEdges({ ...staging, walkable }).map((box) => ({
+      ...box,
+      minX: box.minX - clearance,
+      maxX: box.maxX + clearance,
+      minZ: box.minZ - clearance,
+      maxZ: box.maxZ + clearance,
+    }));
+  /** Every 5 cm of a route lies on the floor plan, give or take 5 cm. */
+  const onPlan = (route: number[][], walkable: [number, number][]) => {
+    for (let i = 1; i < route.length; i++) {
+      const [a, b] = [route[i - 1], route[i]];
+      const steps = Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) / 0.05);
+      for (let k = 0; k <= steps; k++) {
+        const x = a[0] + ((b[0] - a[0]) * k) / steps,
+          z = a[2] + ((b[2] - a[2]) * k) / steps;
+        const [px, pz] = onWalkableFloor(x, z, walkable);
+        if (Math.hypot(px - x, pz - z) > 0.05) return false;
+      }
+    }
+    return true;
+  };
+
+  it("keep to the floor plan around its inner corners", () => {
+    const l: [number, number][] = [
+      [0, 0],
+      [4, 0],
+      [4, 1.2],
+      [1.2, 1.2],
+      [1.2, 4],
+      [0, 4],
+    ];
+    const edges = plan(l);
+    const route = findRoute([0.6, 0, 3.5], [[3.5, 0, 0.6]], edges);
+    // Straight across would cut the missing corner of the L.
+    expect(route.length).toBeGreaterThan(2);
+    expect(onPlan(route, l)).toBe(true);
+    expect(() => findRoute([0.6, 0, 3.5], [[3, 0, 3]], edges)).toThrow();
+  });
+
+  it("keep to a slanted floor plan without closing it", () => {
+    // A square room turned 45°, with a notch cut into one side.
+    const diamond: [number, number][] = [
+      [0, -3],
+      [3, 0],
+      [0, 3],
+      [-1.5, 1.5],
+      [-0.5, 0],
+      [-1.5, -1.5],
+    ];
+    const edges = floorEdges({ ...staging, walkable: diamond });
+    for (const box of edges)
+      for (const [x, z] of [
+        [box.minX, box.minZ],
+        [box.maxX, box.maxZ],
+        [box.minX, box.maxZ],
+        [box.maxX, box.minZ],
+        [(box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2],
+      ])
+        expect(insidePolygon(x, z, diamond)).toBe(false);
+    const route = findRoute([0, 0, -2], [[0, 0, 2]], plan(diamond));
+    expect(onPlan(route, diamond)).toBe(true);
+    expect(route.at(-1)).toEqual([0, 0, 2]);
   });
 });
 

@@ -2,12 +2,14 @@ import * as T from "three";
 import {
   allAssets,
   allMotions,
+  environmentSet,
   motionSchema,
   uid,
   type Scene,
   type Entity,
   type Motion,
 } from "../shared/scene";
+import { floorEdges } from "../shared/sets";
 import { interactionSessions } from "../shared/interactions";
 import { retimeDialogueAfterChange } from "../shared/dialogueSchedule";
 import { inside, type Footprint } from "../shared/navigation";
@@ -198,6 +200,10 @@ export function routeContext(
       });
     }
   }
+  // A 3D set's walls may be walked through (part of a room built as one
+  // mesh), so its floor plan's edge keeps routes inside.
+  const set = environmentSet(scene);
+  if (set) footprints.push(...floorEdges(set));
   const bones = rig.userData.bones as Record<string, T.Bone> | undefined;
   const shoulderWidth =
     bones?.leftArm && bones.rightArm

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Footprint } from "./navigation";
 
 const vec3 = z.tuple([
   z.number().finite(),
@@ -151,6 +152,75 @@ export function floorPlan(set: SetBlock): FloorPoint[] {
     [max[0] - x, max[2] - z],
     [min[0] + x, max[2] - z],
   ];
+}
+
+/** Route planners keep a body's clearance from every footprint, so the
+ * floor plan's edge is drawn as thin footprints about a body's radius beyond
+ * it: a route's centre line may come up to the edge but never cross it. */
+const EDGE_OFFSET = 0.3,
+  EDGE_THICKNESS = 0.05,
+  /** A slanted edge is split into pieces whose boxes reach no further than
+   * this back toward the floor, so they stay outside it. */
+  EDGE_SLACK = 0.2;
+
+/**
+ * The edge of a set's open floor as footprints just outside it. Routes plan
+ * around footprints, so with these they stay on the floor plan even where a
+ * set's walls are walked through (part of a room built as one mesh). At a
+ * convex corner the pieces run on past it so the corner has no gap.
+ */
+export function floorEdges(set: SetBlock): Footprint[] {
+  const plan = floorPlan(set);
+  let area = 0;
+  for (let i = 0, j = plan.length - 1; i < plan.length; j = i++)
+    area += plan[j][0] * plan[i][1] - plan[i][0] * plan[j][1];
+  // +1 when the corners run counter-clockwise in (x, z).
+  const turn = Math.sign(area) || 1;
+  const direction = (i: number): FloorPoint => {
+    const [ax, az] = plan[i % plan.length],
+      [bx, bz] = plan[(i + 1) % plan.length];
+    const length = Math.hypot(bx - ax, bz - az) || 1;
+    return [(bx - ax) / length, (bz - az) / length];
+  };
+  const convex = (before: FloorPoint, after: FloorPoint) =>
+    (before[0] * after[1] - before[1] * after[0]) * turn > 1e-9;
+  const edges: Footprint[] = [];
+  const reach = EDGE_OFFSET + EDGE_THICKNESS;
+  for (let i = 0; i < plan.length; i++) {
+    const [ax, az] = plan[i],
+      [bx, bz] = plan[(i + 1) % plan.length];
+    const length = Math.hypot(bx - ax, bz - az);
+    if (length < 1e-6) continue;
+    const [ux, uz] = direction(i);
+    const [nx, nz] = [turn * uz, -turn * ux];
+    const start = convex(direction(i + plan.length - 1), [ux, uz]) ? -reach : 0,
+      end = length + (convex([ux, uz], direction(i + 1)) ? reach : 0);
+    // A piece's box reaches length × |ux × uz| back across its own line.
+    const pieces = Math.max(
+      1,
+      Math.ceil(((end - start) * Math.abs(ux * uz)) / EDGE_SLACK),
+    );
+    for (let k = 0; k < pieces; k++) {
+      const xs: number[] = [],
+        zs: number[] = [];
+      for (const t of [k, k + 1]) {
+        const along = start + ((end - start) * t) / pieces;
+        for (const out of [EDGE_OFFSET, reach]) {
+          xs.push(ax + ux * along + nx * out);
+          zs.push(az + uz * along + nz * out);
+        }
+      }
+      edges.push({
+        id: `floor-edge-${i}-${k}`,
+        name: "the edge of the set",
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minZ: Math.min(...zs),
+        maxZ: Math.max(...zs),
+      });
+    }
+  }
+  return edges;
 }
 
 /** The extent of a set's open floor along X and Z. */
