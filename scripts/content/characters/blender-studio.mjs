@@ -37,8 +37,8 @@ const scripts = path.resolve(
 // credit the page asks for ("<Name> Rig (CC) Blender Foundation |
 // studio.blender.org" where it names none). options: passed to the converter
 // (skip: name patterns of parts to leave out). The library lists people
-// only, in this order: the three leads, the Sprite Fright cast, the
-// Settlers' Gabby and Lunte.
+// only: Rain, Snow and Einar. The cartoon-styled Sprite Fright and
+// Settlers casts are excluded from the realistic library.
 /** The start of every id this source owns (see scripts/content/characters.mjs). */
 export const idPrefix = "blender-";
 
@@ -86,71 +86,6 @@ export const cast = [
     body: "masculine",
     description:
       "An Icelandic tinkerer with a white beard and a woollen hat, in a padded jacket, a knitted sweater and work trousers, with a satchel and the robotic left arm he built from scrap: the realistic lead of the open movie Charge. Blender Studio's Einar, version 1, adapted for the studio.",
-  },
-  {
-    id: "blender-victoria",
-    name: "Victoria",
-    folder: "victoria",
-    page: `${SITE}/characters/victoria/v1/`,
-    download: `${FILES}/f3/f399fb2523e10448b6d6e7b77d2eaa26/f399fb2523e10448b6d6e7b77d2eaa26.blend`,
-    sha256: "852dc7bea686db2d59302679609bd0c438ef88936f3684dd193a74b3b292cd6b",
-    file: "victoria.blend",
-    notice: "Victoria Rig (CC) Blender Foundation | studio.blender.org",
-    body: "feminine",
-    description:
-      "A teenage girl with a huge mane of yellow and orange hair and bright eye make-up, in a pink dress, fishnet tights and teal boots, with bead necklaces, black bangles and big triangle earrings: the most popular girl in school from the open movie Sprite Fright. Blender Studio's Victoria, version 1, adapted for the studio.",
-  },
-  {
-    id: "blender-jay",
-    name: "Jay",
-    folder: "jay",
-    page: `${SITE}/characters/jay/v1/`,
-    download: `${FILES}/5f/5fe2b56638e96ce325e47b916524ded5/5fe2b56638e96ce325e47b916524ded5.blend`,
-    sha256: "18383a3d25d68c6a91208e4240f2e4dfe67592739078f18b21cf257be91a8458",
-    file: "jay.blend",
-    notice: "Jay Rig (CC) Blender Foundation | studio.blender.org",
-    body: "masculine",
-    description:
-      "A lanky teenager in a black bucket hat, red shutter shades, a white track jacket, a gold chain, red shorts and chunky trainers: the would-be eighties music star of the open movie Sprite Fright. Blender Studio's Jay, version 1, adapted for the studio.",
-  },
-  {
-    id: "blender-phil",
-    name: "Phil",
-    folder: "phil",
-    page: `${SITE}/characters/phil/v1/`,
-    download: `${FILES}/c1/c1a19179f6136a2f8c7b802d1201ea3b/c1a19179f6136a2f8c7b802d1201ea3b.blend`,
-    sha256: "b9671b4add7a7e52000c5dba3ddfa322fb0c0c85abf70ea3ad5fcf6499947e59",
-    file: "phil.blend",
-    notice: "Phil Rig (CC) Blender Foundation | studio.blender.org",
-    body: "masculine",
-    description:
-      "A big, round-faced, freckled teenager with curly red hair, in a navy Union Jack T-shirt, denim shorts and flip-flops: the gear-hauling cook of the open movie Sprite Fright. Blender Studio's Phil, version 1, adapted for the studio.",
-  },
-  {
-    id: "blender-gabby",
-    name: "Gabby",
-    folder: "gabby",
-    page: `${SITE}/characters/gabby/v3/`,
-    download: `${FILES}/68/680933efa5276c8ebb20826df7726836/680933efa5276c8ebb20826df7726836.blend`,
-    sha256: "80e0c2e8a7d97746bfa192104f07d36caecd32ff4bfc423f2a7ddbefacc065c4",
-    file: "gabby.blend",
-    notice: "Gabby Rig (CC) Blender Foundation | studio.blender.org",
-    body: "feminine",
-    description:
-      "A freckled girl whose teal hair curls up like a devil's horns, with goggles on her head, a white T-shirt, purple shorts and yellow boots: the only settler who is (probably) human, from Blender Studio's Settlers. Blender Studio's Gabby, version 3, adapted for the studio.",
-  },
-  {
-    id: "blender-lunte",
-    name: "Lunte",
-    folder: "lunte",
-    page: `${SITE}/characters/lunte/v4/`,
-    download: `${FILES}/a4/a428e902193306ef2d4f161069c6f342/a428e902193306ef2d4f161069c6f342.blend`,
-    sha256: "8c95c3a929dbceae20a0028d6e0066a3c855fe74ccb62829ff84072150f51360",
-    file: "lunte.blend",
-    notice: "Lunte Rig (CC) Blender Foundation | studio.blender.org",
-    body: "masculine",
-    description:
-      "A settler with a shock of orange hair and a boxy metal mask that somehow still shows his glowing eyes and grin, in a dark suit with a backpack, from Blender Studio's Settlers. Blender Studio's Lunte, version 4, adapted for the studio.",
   },
 ];
 const idOf = (c) => c.id;

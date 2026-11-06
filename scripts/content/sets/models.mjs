@@ -2,8 +2,7 @@
 // ORCA, Benedikt Bitterli's rendering resources and the McGuire archive,
 // converted by Blender (sets/blender_set.py) into one self-contained GLB each:
 // metres, Y-up, the walkable floor at y = 0, the origin on open floor where
-// the cast appears, with the home camera toward +Z (within 45°: the set keeps
-// its own axes and the cast's heading faces the camera). The converter
+// the cast appears, with the cast facing its home camera (the set keeps its own axes). The converter
 // measures the bounds, chooses the home camera, traces the open floor, tags
 // floor and shell meshes, and renders the thumbnail lit by the set's HDR;
 // this module records all of it in the catalogue's `set` block.
@@ -74,58 +73,6 @@ export const sets = [
     credit: {
       author: "Christophe Seux",
       license: "CC0",
-      source: "https://www.blender.org/download/demo-files/",
-    },
-  },
-  {
-    id: "set-modern-flat",
-    slug: "modern-flat",
-    name: "Modern flat",
-    style: "Indoor",
-    description:
-      "A bright modern flat: an open living room with an oak floor and a bedroom, with a hall and bathroom off to the side.",
-    files: [
-      {
-        url: "https://download.blender.org/demo/eevee/archiviz/archiviz.blend",
-        file: "archiviz.blend",
-      },
-      {
-        url: "https://download.blender.org/demo/eevee/archiviz/README.txt",
-        file: "README.txt",
-      },
-    ],
-    licence: { file: "README.txt", text: "CC0 1.0 Universal" },
-    main: /^archiviz\.blend$/,
-    format: "blend",
-    credit: {
-      author: "Marek Moravec (bed by Lech Sokolowski)",
-      license: "CC0",
-      source: "https://download.blender.org/demo/eevee/archiviz/README.txt",
-    },
-  },
-  {
-    id: "set-barcelona-pavilion",
-    slug: "barcelona-pavilion",
-    name: "Barcelona pavilion",
-    style: "Outdoor",
-    description:
-      "Mies van der Rohe's Barcelona pavilion: a travertine plaza with a shallow pool, marble walls and a flat roof on chrome columns.",
-    files: [
-      {
-        url: "https://download.blender.org/demo/test/pabellon_barcelona_v1.scene_.zip",
-        file: "pabellon_barcelona_v1.scene_.zip",
-        extract: true,
-      },
-    ],
-    main: /^pavillon_barcelone.*\.blend$/,
-    format: "blend",
-    // The plaza stands 1.06 m above a lawn that runs 140 m to the horizon;
-    // the view takes in the pool.
-    convert: { floorLevel: 1.5, extent: 45, focus: "^water_plane_still" },
-    sky: "kloofendal_48d_partly_cloudy_puresky",
-    credit: {
-      author: "Hamza Cheggour (eMirage)",
-      license: "CC BY",
       source: "https://www.blender.org/download/demo-files/",
     },
   },
@@ -212,6 +159,8 @@ export const sets = [
     style: "Indoor",
     description:
       "A calm bedroom with a low double bed, wooden panelling and a teapot on the side table.",
+    // Reviewed eye-height view: keep the cast's shoes clear of foreground furniture.
+    homeCamera: { position: [-3, 1.6, 1.4], target: [0, 1, 0] },
     files: [
       {
         url: "https://benedikt-bitterli.me/resources/mitsuba/bedroom.zip",
@@ -262,6 +211,8 @@ export const sets = [
     style: "Indoor",
     description:
       "A white living room with a sofa, cushions, a bookcase and framed pictures.",
+    // Reviewed eye-height view: keep the cast's shoes clear of foreground furniture.
+    homeCamera: { position: [-1.4, 1.6, 3.3], target: [0, 0.9, 0] },
     files: [
       {
         url: "https://casual-effects.com/g3d/data10/research/model/living_room/living_room.zip",
@@ -283,36 +234,6 @@ export const sets = [
     },
     credit: {
       author: "Jay-Artist",
-      license: "CC BY 3.0",
-      source: "https://casual-effects.com/data",
-    },
-  },
-  {
-    id: "set-breakfast-room",
-    slug: "breakfast-room",
-    name: "Breakfast room",
-    style: "Indoor",
-    description:
-      "A bright breakfast room with a marble-topped table, chairs and tall windows.",
-    files: [
-      {
-        url: "https://casual-effects.com/g3d/data10/research/model/breakfast_room/breakfast_room.zip",
-        file: "breakfast_room.zip",
-        extract: true,
-      },
-    ],
-    licence: { file: "license.txt", text: "Creative Commons Attribution 3.0" },
-    main: /^breakfast_room\.obj$/,
-    format: "obj",
-    // Modelled in feet: the table top sits 2.3 units up. The archive ships
-    // the table's marble, but its MTL file never names it.
-    convert: {
-      scale: 0.3048,
-      focus: "^(tabletop|Chair_seats)",
-      maps: { White_Marble: "marble.jpg" },
-    },
-    credit: {
-      author: "Wig42",
       license: "CC BY 3.0",
       source: "https://casual-effects.com/data",
     },
@@ -588,13 +509,18 @@ export async function build({ out, cache, root, log, only, deferModels }) {
       ...(fs.existsSync(hdr) ? { hdri: `/content/sets/${set.id}.hdr` } : {}),
       set: {
         camera: {
-          position: roundAll(m.camera.position),
-          target: roundAll(m.camera.target),
+          position: roundAll(set.homeCamera?.position ?? m.camera.position),
+          target: roundAll(set.homeCamera?.target ?? m.camera.target),
           maxDistance: round(m.camera.maxDistance, 1),
         },
         bounds: { min: roundAll(m.bounds.min), max: roundAll(m.bounds.max) },
         spawn: [0, 0, 0],
-        heading: round(m.heading ?? 0, 3),
+        heading: round(
+          set.homeCamera
+            ? Math.atan2(set.homeCamera.position[0], set.homeCamera.position[2])
+            : (m.heading ?? 0),
+          3,
+        ),
         ...(m.walkable?.length >= 3
           ? { walkable: m.walkable.map((p) => roundAll(p)) }
           : {}),

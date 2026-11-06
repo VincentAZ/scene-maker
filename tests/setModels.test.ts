@@ -1,16 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { Box3, Ray, Vector3 } from "three";
 import catalogue from "../shared/content/sets.json";
+import { shellBox, type SetBlock } from "../shared/sets";
 import { imageSizes, meshBounds, readGLB, selfContained } from "./helpers/glb";
 
 const sets = catalogue as {
   id: string;
   url?: string;
-  set?: {
-    bounds: { min: number[]; max: number[] };
-    walkable?: number[][];
-  };
+  set?: SetBlock;
 }[];
 
 // The library files are downloaded, not committed: every built 3D set
@@ -32,6 +31,54 @@ describe.skipIf(!built.length)("built 3D set files", () => {
     readGLB(
       new Uint8Array(fs.readFileSync(path.join(content, set.url!.slice(9)))),
     );
+
+  it.each(
+    built
+      .filter((set) =>
+        ["set-cosy-bedroom", "set-white-living-room"].includes(set.id),
+      )
+      .map((set) => [set.id, set] as const),
+  )(
+    "%s opens with both feet visible past the foreground furniture",
+    (_, set) => {
+      const block = set.set!;
+      const camera = new Vector3(...block.camera.position);
+      // The former views looked through the bed/sofa at the cast's shoes.
+      // Check the actual converted meshes, rather than pinning camera numbers.
+      // A merged room's AABB surrounds empty space, so use the same shell
+      // exclusions as placement; browser review also checks the visible walls.
+      const furniture = meshBounds(glb(set)).filter(
+        (mesh) =>
+          mesh.role !== "floor" &&
+          mesh.role !== "shell" &&
+          !shellBox(mesh.min, mesh.max, block),
+      );
+      expect(furniture.length).toBeGreaterThan(0);
+      for (const side of [-0.1, 0, 0.1]) {
+        const foot = new Vector3(
+          block.spawn[0] + side * Math.cos(block.heading),
+          block.spawn[1] + 0.05,
+          block.spawn[2] - side * Math.sin(block.heading),
+        );
+        const ray = new Ray(camera, foot.clone().sub(camera).normalize());
+        const obstructing = furniture.filter((mesh) => {
+          const box = new Box3(
+            new Vector3().fromArray(mesh.min),
+            new Vector3().fromArray(mesh.max),
+          );
+          const hit = ray.intersectBox(box, new Vector3());
+          return (
+            box.containsPoint(camera) ||
+            (hit && camera.distanceTo(hit) < camera.distanceTo(foot))
+          );
+        });
+        expect(
+          obstructing.map((mesh) => mesh.name),
+          `foreground meshes hiding the foot at lateral offset ${side}`,
+        ).toEqual([]);
+      }
+    },
+  );
 
   it.each(built.map((set) => [set.id, set] as const))(
     "%s is one self-contained GLB with plain JPEG/PNG textures of at most 2048 px",

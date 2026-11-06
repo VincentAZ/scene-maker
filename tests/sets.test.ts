@@ -142,9 +142,11 @@ describe("3D sets catalogue", () => {
       expect(camera.maxDistance).toBeGreaterThanOrEqual(4);
       expect(camera.maxDistance).toBeLessThanOrEqual(25);
       expect(spawn).toEqual([0, 0, 0]);
-      // The set keeps its own axes (the camera is within 45° of +Z) and the
-      // cast's heading turns it to face the camera.
-      expect(Math.abs(heading)).toBeLessThanOrEqual(Math.PI / 4 + 0.01);
+      // The camera stays inside the measured bounds (checked above), but
+      // may look from a wider angle to keep furniture out of the view.
+      // The cast's normalized heading still turns it toward that camera.
+      expect(Number.isFinite(heading)).toBe(true);
+      expect(Math.abs(heading)).toBeLessThanOrEqual(Math.PI);
       expect(Math.atan2(camera.position[0], camera.position[2])).toBeCloseTo(
         heading,
         2,

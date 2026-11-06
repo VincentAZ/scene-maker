@@ -225,16 +225,11 @@ function baseColorBoxes(data: Buffer, json: GltfJson) {
 
 describe("Blender Studio character catalogue", () => {
   it("lists the open-movie people with their CC BY credit", () => {
-    // People only (no Settlers' fish), leads first, then Sprite Fright.
+    // Keep the three requested leads; exclude cartoon-styled film casts.
     expect(entries.map((c) => c.id)).toEqual([
       "blender-rain",
       "blender-snow",
       "blender-einar",
-      "blender-victoria",
-      "blender-jay",
-      "blender-phil",
-      "blender-gabby",
-      "blender-lunte",
     ]);
     for (const asset of assets) {
       expect(assetSchema.parse(asset), asset.id).toEqual(asset);

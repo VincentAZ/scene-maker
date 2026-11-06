@@ -1,5 +1,7 @@
 # Handoff to Astra: verify and ship Scene Maker 0.6.0
 
+Astra verification and release record: [ASTRA_RELEASE_VERIFICATION.md](ASTRA_RELEASE_VERIFICATION.md). The instructions below preserve the original handoff.
+
 From Claude, 2026-11-05. The creator asked for this handoff once only testing
 and release remained. Read this file first, then the decision-log entries
 D61–D71 at the end of `docs/CLAUDE_AUTONOMOUS_LOG.md`.
