@@ -1,8 +1,9 @@
 # Scene Maker 0.6.0 release verification
 
-Verification started on 2026-11-05 at integration commit `380b43d` in
-`scene-maker-natural-motion`. Release is pending the remaining browser and visual
-checks. Evidence is local under `.data/private-runtime/evidence/astra-release/`.
+Scene Maker **0.6.0 was released on 2026-11-05** at commit `e339021`.
+Verification started at integration commit `380b43d` in
+`scene-maker-natural-motion`. The release gates below are complete, with the
+explicitly documented baseline exceptions and visual limitations. Evidence is local under `.data/private-runtime/evidence/astra-release/`.
 
 ## Automated checks
 
@@ -92,9 +93,33 @@ Screenshots are reviewed as rendered evidence, not inferred from script exit cod
 
 ## Release and preservation
 
-Version fields are prepared at 0.6.0; final typecheck, production build, content
-check and diff check passed (`build-final.log`). Pending: release commit, main
-fast-forward, push both
-branches, content sync/check, desktop launcher and footer/health verification,
-agent-worktree cleanup. The creator's restored review project and protected Astra
-data are retained; production 4311 is touched only by the launcher at release.
+- All three version fields are 0.6.0. Final typecheck, production build, content
+  check and diff check passed (`build-final.log`).
+- Release commit `e339021` fast-forwarded main and was pushed to both `main` and
+  `fix/natural-motion-baseline`. This verification record follows as a docs-only
+  commit on both branches.
+- Synced the built library to main with rsync, excluding caches and unshipped
+  candidates. Main's `build-content.mjs --check` exits 0. No library conversion
+  or download was needed by the launcher.
+- Ran main's `start.sh`: it rebuilt and restarted the desktop service on 4311.
+  `/api/health` returns `{"ok":true}`; `/api/version` and the rendered status bar
+  report 0.6.0. Browser inspection had no console errors. Latest production
+  evidence is `production.json` and `production-0.6.0.png`.
+- Removed all nine merged feature worktrees and their local branches only after
+  verifying the private archives against every file. Archived 5,032 members
+  (about 1.21 GB) with hashes, original heads, modes and symlink targets preserved.
+  Main, integration, dialogue and unrelated worktrees remain.
+- Archived the private projects folder, then removed five throwaway `claude-*`
+  project files and eight history directories. Three non-test projects remain.
+  The creator's `captured-stand-walk-stop-party-review` SHA-256 is unchanged.
+  Exact cleanup and backup hashes: `cleanup.json`; archives are mode 600 in a
+  mode-700 directory.
+- Protected Astra data and service 4337 were untouched. Production 4311 was
+  restarted only through `start.sh`. Private API 4414 was refreshed by its
+  verified PID after the checks; its health endpoint is also healthy.
+
+These checks establish the scoped 0.6.0 release, not universal rig compatibility
+or photorealism for every source asset. The three baseline test failures, brief
+Sit down support limitation, fixed Grab3D fingers, stylized Rain/Snow, environment
+mirror reflections and additional long-route diagnostic limits remain disclosed
+above and in the detailed evidence.
