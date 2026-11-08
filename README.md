@@ -4,10 +4,21 @@ A local-first 3D studio for creators: build a cast, set the scene, chain actions
 
 ## Run
 
-Requires Node.js 22.12+ and npm. A GPU-capable browser is recommended.
+Requires Node.js 22.12+ and npm. A GPU-capable browser is recommended. The current release is **0.6.0**; see the [release verification and known limitations](docs/ASTRA_RELEASE_VERIFICATION.md).
+
+On Linux, the launcher installs dependencies, downloads missing library assets, builds the app, and opens its window:
+
+```sh
+./start.sh
+```
+
+The first launch can take several minutes. Blender and `unzip` are needed to build the real 3D sets; those conversions continue in the background. Launcher logs are in `.data/service.log`. Use `./start.sh --stop` to stop the service started by the launcher.
+
+For development or a manually managed server:
 
 ```sh
 npm ci
+node scripts/build-content.mjs
 npm run dev
 ```
 
@@ -19,6 +30,15 @@ npm start
 ```
 
 Then open **http://127.0.0.1:4311**. The server intentionally binds to loopback. The version and build appear in the footer; click them (or open **Studio settings**) for **Check for updates**, which compares your checkout with GitHub and shows the update commands. Nothing is downloaded or applied automatically. This is a single-user local studio, not a publicly hosted multi-user service.
+
+To update a clean checkout on `main`, stop the running service, then run:
+
+```sh
+git pull --ff-only
+./start.sh
+```
+
+The launcher rebuilds when the checked-out commit changes. Save or commit local source edits before updating. For a manually managed server, run `npm ci` and `npm run build` after pulling, then restart `npm start`.
 
 ## Create a scene
 
@@ -91,6 +111,8 @@ Conversation gestures and facing are included in baked animation. Voice playback
 - `SCENE_MAKER_DATA` changes the data directory; `PORT` changes the production server port (dev proxy uses 4311). Browser write requests require the studio header and an allowed loopback origin.
 
 ## Verification
+
+The [0.6.0 release report](docs/ASTRA_RELEASE_VERIFICATION.md) records passing TypeScript, production-build and content checks, plus browser verification. Its final suite recorded 1,624 passing tests and three known baseline assertion failures; see the report for the affected motion/contact cases and visual limitations.
 
 ```sh
 npm test
